@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
     defaults:
       run:
         working-directory: windows/ArcadeGridz.Windows
@@ -15,10 +15,24 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "8.0.x" }
-      - run: dotnet restore ArcadeGridz.sln -p:Platform=x64
-      - run: dotnet publish ArcadeGridz.App/ArcadeGridz.App.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o publish/ArcadeGridz
-      - run: Compress-Archive -Path publish/ArcadeGridz/* -DestinationPath publish/ArcadeGridz-win-x64.zip
+      - uses: microsoft/setup-msbuild@v2
+      - run: msbuild ArcadeGridz.App/ArcadeGridz.App.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=true /p:PublishDir=${{ github.workspace }}\\windows\\ArcadeGridz.Windows\\publish\\ArcadeGridz\\
+      - name: Show WinUI compiler diagnostics
+        if: failure()
+        shell: pwsh
+        run: Get-ChildItem ArcadeGridz.App/obj -Filter output.json -Recurse | ForEach-Object { Write-Host $_.FullName; Get-Content $_.FullName }
+      - name: Verify live launcher catalog
+        shell: pwsh
+        run: |
+          $catalog = Invoke-RestMethod https://arcadegridz.com/api/launcher/catalog
+          if (-not $catalog.ok) { throw "Catalog returned ok=false" }
+          if (-not ($catalog.games.id -contains "2diso")) { throw "2DISO missing from catalog" }
+          if (-not ($catalog.games.id -contains "pixel-sickness")) { throw "Pixel Sickness missing from catalog" }
+          Write-Host "Catalog $($catalog.version): $($catalog.games.Count) games"
+      - name: Add installation guide
+        shell: pwsh
+        run: Copy-Item README.md publish/ArcadeGridz/README.txt
       - uses: actions/upload-artifact@v4
         with:
           name: ArcadeGridz-win-x64
-          path: windows/ArcadeGridz.Windows/publish/ArcadeGridz-win-x64.zip
+          path: windows/ArcadeGridz.Windows/publish/ArcadeGridz/
