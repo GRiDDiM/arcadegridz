@@ -11,3 +11,5 @@ Compress-Archive publish/ArcadeGridz/* publish/ArcadeGridz-win-x64.zip
 ```
 
 The unpackaged executable is `publish/ArcadeGridz/ArcadeGridz.App.exe`. The Microsoft Edge WebView2 Runtime must be installed (included with current Windows 10/11).
+
+GitHub Actions builds the same self-contained x64 package on every launcher change and on demand.
