@@ -1,0 +1,22 @@
+name: Windows app
+on:
+  push:
+    paths: ["windows/ArcadeGridz.Windows/**", ".github/workflows/arcadegridz-windows.yml"]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows/ArcadeGridz.Windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      - run: dotnet restore ArcadeGridz.sln -p:Platform=x64
+      - run: dotnet publish ArcadeGridz.App/ArcadeGridz.App.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o publish/ArcadeGridz
+      - run: Compress-Archive -Path publish/ArcadeGridz/* -DestinationPath publish/ArcadeGridz-win-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ArcadeGridz-win-x64
+          path: windows/ArcadeGridz.Windows/publish/ArcadeGridz-win-x64.zip
