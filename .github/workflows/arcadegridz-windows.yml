@@ -15,8 +15,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "8.0.x" }
-      - run: dotnet restore ArcadeGridz.sln -p:Platform=x64
-      - run: dotnet publish ArcadeGridz.App/ArcadeGridz.App.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o publish/ArcadeGridz
+      - uses: microsoft/setup-msbuild@v2
+      - run: msbuild ArcadeGridz.App/ArcadeGridz.App.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=true /p:PublishDir=${{ github.workspace }}\\windows\\ArcadeGridz.Windows\\publish\\ArcadeGridz\\
       - name: Show WinUI compiler diagnostics
         if: failure()
         shell: pwsh
