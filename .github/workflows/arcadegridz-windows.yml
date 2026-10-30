@@ -17,6 +17,10 @@ jobs:
         with: { dotnet-version: "8.0.x" }
       - run: dotnet restore ArcadeGridz.sln -p:Platform=x64
       - run: dotnet publish ArcadeGridz.App/ArcadeGridz.App.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o publish/ArcadeGridz
+      - name: Show WinUI compiler diagnostics
+        if: failure()
+        shell: pwsh
+        run: Get-ChildItem ArcadeGridz.App/obj -Filter output.json -Recurse | ForEach-Object { Write-Host $_.FullName; Get-Content $_.FullName }
       - run: Compress-Archive -Path publish/ArcadeGridz/* -DestinationPath publish/ArcadeGridz-win-x64.zip
       - uses: actions/upload-artifact@v4
         with:
