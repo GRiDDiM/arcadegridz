@@ -88,3 +88,13 @@ v0.1 done =
 - Fixed WinUI build blockers: removed the unsupported root radial-gradient property element, pinned .NET SDK 8 with `global.json`, used Visual Studio MSBuild so PRI packaging tasks are available, and pinned the stable Windows 2022 runner.
 - Successful self-contained x64 package contains `ArcadeGridz.App.exe`, WinUI/Windows App Runtime, and WebView2 loader. CI also asserts that the live launcher catalog returns both `2diso` and `pixel-sickness`.
 - Installation, controller, sign-in, score, and offline-cache test instructions are in `windows/ArcadeGridz.Windows/README.md` and copied into every build artifact as `README.txt`.
+
+
+## 2026-10-30 — v0.1.1 startup crash fix (Codex)
+
+- User-reported failure: immediate process exit before any window, code `0xC000027B` (Windows stowed exception).
+- Startup is now explicit and diagnosable: `Program.Main` logs before WinUI/XAML creation; `App`, `MainWindow`, catalog, gamepad, fullscreen, and WebView2 startup stages are logged. Managed fatal errors show a native message box. Persistent log: `%LOCALAPPDATA%\\ArcadeGridz\\logs\\startup.log`.
+- Unpackaged self-contained deployment is explicit: `WindowsPackageType=None`, `WindowsAppSDKSelfContained=true`, registration-free WinRT initialization enabled, framework bootstrap/deployment-manager auto-initializers disabled, and both trimming and ReadyToRun disabled. Debug symbols are included.
+- WebView2 is no longer eagerly instantiated by the startup XAML. It is constructed only when launching a game or opening sign-in, so a missing/broken WebView2 runtime cannot prevent the native launcher from opening.
+- Version bumped to 0.1.1. PR #2: `codex/windows-startup-fix`. GitHub Actions run 33 rebuilds the final artifact and verifies the live catalog; use the run's `ArcadeGridz-win-x64` artifact.
+- Artifact installation must use a fresh extracted directory rather than overwriting v0.1. Physical verification on the owner's affected Windows PC remains required; if startup still fails, collect the new startup log before further changes.
