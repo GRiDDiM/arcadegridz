@@ -16,14 +16,14 @@ public static class Program
             StartupLog.Write("main", "Initializing COM wrappers");
             ComWrappersSupport.InitializeComWrappers();
             StartupLog.Write("main", "Entering WinUI Application.Start");
-            Application.Start(_ =>
+            Application.Start(initialization =>
             {
                 try
                 {
                     var queue = DispatcherQueue.GetForCurrentThread();
                     SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(queue));
                     StartupLog.Write("main", "Constructing App");
-                    _ = new App();
+                    new App();
                 }
                 catch (Exception ex)
                 {
