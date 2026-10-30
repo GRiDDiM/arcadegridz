@@ -2,6 +2,8 @@ name: Windows app
 on:
   push:
     paths: ["windows/ArcadeGridz.Windows/**", ".github/workflows/arcadegridz-windows.yml"]
+  pull_request:
+    paths: ["windows/ArcadeGridz.Windows/**", ".github/workflows/arcadegridz-windows.yml"]
   workflow_dispatch:
 jobs:
   build:
