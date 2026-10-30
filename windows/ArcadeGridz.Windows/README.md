@@ -1,16 +1,31 @@
-# ArcadeGridz Windows v0.1
+# ArcadeGridz Windows v0.1.1
 
 ArcadeGridz is a native C# + WinUI 3 fullscreen launcher for Windows 10/11. WebView2 is used only while a game or the Network sign-in page is open.
 
 ## Install
 
-1. Download the `ArcadeGridz-win-x64` workflow artifact.
-2. Extract the ZIP to a permanent folder such as `C:\Games\ArcadeGridz`. Keep every extracted file together.
-3. Run `ArcadeGridz.App.exe`.
-4. If Windows SmartScreen appears, choose **More info**, confirm the publisher is unknown, then choose **Run anyway**. This v0.1 build is not code-signed.
-5. Current Windows 10/11 installations already include the Microsoft Edge WebView2 Runtime. If a game page cannot open, install Microsoft's Evergreen WebView2 Runtime and retry.
+1. Delete or rename the previous extracted build folder. Do not copy this build over the old one.
+2. Download the `ArcadeGridz-win-x64` workflow artifact.
+3. Extract the entire ZIP to a permanent folder such as `C:\Games\ArcadeGridz`. Keep every extracted file together.
+4. Run `ArcadeGridz.App.exe`.
+5. If Windows SmartScreen appears, choose **More info**, confirm the publisher is unknown, then choose **Run anyway**. This v0.1.1 build is not code-signed.
+6. Current Windows 10/11 installations normally include the Microsoft Edge WebView2 Runtime. If a game page cannot open, install Microsoft's Evergreen WebView2 Runtime and retry.
 
-The build is self-contained; no separate .NET installation is required.
+The build is self-contained; no separate .NET or Windows App SDK installation is required.
+
+## Startup diagnostics
+
+Every launch writes a persistent diagnostic log before WinUI/XAML initialization:
+
+`%LOCALAPPDATA%\ArcadeGridz\logs\startup.log`
+
+If the app does not open, run this in PowerShell and send the output:
+
+```powershell
+Get-Content "$env:LOCALAPPDATA\ArcadeGridz\logs\startup.log" -Tail 200
+```
+
+The log records startup stages, OS/runtime/architecture details, packaged runtime file checks, HRESULTs, inner exceptions, and stack traces. Fatal managed startup errors also display a message box containing the log location.
 
 ## Controller test
 
