@@ -21,8 +21,18 @@ jobs:
         if: failure()
         shell: pwsh
         run: Get-ChildItem ArcadeGridz.App/obj -Filter output.json -Recurse | ForEach-Object { Write-Host $_.FullName; Get-Content $_.FullName }
-      - run: Compress-Archive -Path publish/ArcadeGridz/* -DestinationPath publish/ArcadeGridz-win-x64.zip
+      - name: Verify live launcher catalog
+        shell: pwsh
+        run: |
+          $catalog = Invoke-RestMethod https://arcadegridz.com/api/launcher/catalog
+          if (-not $catalog.ok) { throw "Catalog returned ok=false" }
+          if (-not ($catalog.games.id -contains "2diso")) { throw "2DISO missing from catalog" }
+          if (-not ($catalog.games.id -contains "pixel-sickness")) { throw "Pixel Sickness missing from catalog" }
+          Write-Host "Catalog $($catalog.version): $($catalog.games.Count) games"
+      - name: Add installation guide
+        shell: pwsh
+        run: Copy-Item README.md publish/ArcadeGridz/README.txt
       - uses: actions/upload-artifact@v4
         with:
           name: ArcadeGridz-win-x64
-          path: windows/ArcadeGridz.Windows/publish/ArcadeGridz-win-x64.zip
+          path: windows/ArcadeGridz.Windows/publish/ArcadeGridz/
