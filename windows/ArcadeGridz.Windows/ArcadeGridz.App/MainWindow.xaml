@@ -1,5 +1,5 @@
 <Window x:Class="ArcadeGridz.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:m="using:ArcadeGridz.App.Models" Title="ArcadeGridz">
- <Grid x:Name="Root" Background="#FF050313" KeyDown="Root_KeyDown">
+ <Grid x:Name="Root" Background="#FF050313" PreviewKeyDown="Root_KeyDown">
   <Grid.Resources>
    <Style TargetType="Button"><Setter Property="CornerRadius" Value="16"/><Setter Property="BorderThickness" Value="3"/><Setter Property="BorderBrush" Value="#FF183A58"/><Setter Property="Background" Value="#FF0C0923"/><Setter Property="Foreground" Value="#FFD7D7EB"/><Setter Property="FontFamily" Value="Consolas"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Padding" Value="24,12"/><Setter Property="Margin" Value="7"/></Style>
   </Grid.Resources>
