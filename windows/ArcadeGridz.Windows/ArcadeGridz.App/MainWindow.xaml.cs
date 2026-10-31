@@ -20,6 +20,7 @@ public sealed partial class MainWindow : Window
     readonly LeaderboardService leaderboards = new();
     readonly SettingsService settings = SettingsService.Load();
     readonly UpdateService updates = new();
+    readonly DesktopAuthService desktopAuth = new();
     readonly ObservableCollection<GameEntry> visible = [];
     readonly List<GameEntry> all = [];
     readonly List<string> categories = [];
@@ -344,10 +345,35 @@ public sealed partial class MainWindow : Window
 
     async void StartupGoogle_Click(object sender, RoutedEventArgs e)
     {
-        StartupStatus.Text = "OPENED SECURE SIGN-IN IN YOUR BROWSER. DESKTOP GOOGLE HANDOFF IS NOT ENABLED YET; EMAIL OR GUEST WORK NOW.";
-        StartupLog.Write("auth", "Opening system-browser sign-in; native callback is not registered");
-        await Windows.System.Launcher.LaunchUriAsync(new Uri("https://arcadegridz.com/?host=winapp&mode=signin"));
-        SetStartupFocus(StartupFocus.Google);
+        StartupGoogleButton.IsEnabled = false;
+        try
+        {
+            var result = await desktopAuth.SignInWithGoogleAsync(message =>
+                DispatcherQueue.TryEnqueue(() => StartupStatus.Text = message));
+            StartupStatus.Text = $"WELCOME, {result.AccountName.ToUpperInvariant()}. FINISHING SIGN-IN...";
+            startupOpen = false;
+            StartupLayer.Visibility = Visibility.Collapsed;
+            var webRuntime = EnsureWebRuntime();
+            await webRuntime.ImportDesktopSessionAsync(result.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            StartupStatus.Text = "GOOGLE SIGN-IN TIMED OUT. TRY AGAIN OR CONTINUE AS GUEST.";
+            StartupLog.Write("auth", "System-browser sign-in timed out");
+        }
+        catch (Exception ex)
+        {
+            StartupStatus.Text = "GOOGLE SIGN-IN FAILED: " + ex.Message.ToUpperInvariant();
+            StartupLog.Exception("System-browser Google sign-in", ex);
+            startupOpen = true;
+            StartupLayer.Visibility = Visibility.Visible;
+            WelcomePanel.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            StartupGoogleButton.IsEnabled = true;
+            if (startupOpen) SetStartupFocus(StartupFocus.Google);
+        }
     }
 
     void StartupGuest_Click(object sender, RoutedEventArgs e) => EnterLauncher(true);
