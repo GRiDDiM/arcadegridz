@@ -1,4 +1,4 @@
-# ArcadeGridz Windows v0.1.1
+# ArcadeGridz Windows v0.1.2
 
 ArcadeGridz is a native C# + WinUI 3 fullscreen launcher for Windows 10/11. WebView2 is used only while a game or Network sign-in page is open.
 
@@ -7,7 +7,7 @@ ArcadeGridz is a native C# + WinUI 3 fullscreen launcher for Windows 10/11. WebV
 1. Download `ArcadeGridz-Setup-x64.exe` from the official ArcadeGridz GitHub Release.
 2. Run the installer. It installs per-user, so administrator access is not required.
 3. Keep the Start Menu shortcut selected; optionally enable the desktop shortcut.
-4. If Windows SmartScreen appears, choose **More info → Run anyway**. v0.1.1 is not yet Authenticode-signed.
+4. If Windows SmartScreen appears, choose **More info → Run anyway**. v0.1.2 is not yet Authenticode-signed.
 
 The installer supports upgrades over an existing installation and provides a normal Windows uninstaller. User settings, the catalog cache, WebView2 sign-in data, and game saves live under `%LOCALAPPDATA%\ArcadeGridz` and are preserved during upgrades and uninstall.
 
@@ -33,7 +33,7 @@ The self-contained installer ships the Windows App SDK runtime, WebView2 loader,
 
 ## Controller test
 
-Connect the SNES-style USB/Bluetooth controller before starting ArcadeGridz.
+Connect the SNES-style USB/Bluetooth controller before starting ArcadeGridz. v0.1.2 supports both XInput gamepads and generic DirectInput/HID devices such as `USB,2-axis 8-button gamepad`.
 
 - D-pad: move through tiles and menus
 - A: choose/play
@@ -56,7 +56,7 @@ On Windows with Visual Studio 2022, .NET 8, and Inno Setup 6:
 
 ```powershell
 msbuild ArcadeGridz.App/ArcadeGridz.App.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=true /p:PublishDir=publish\ArcadeGridz\
-& "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=0.1.1" Installer\ArcadeGridz.iss
+& "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=0.1.2" Installer\ArcadeGridz.iss
 ```
 
 GitHub Actions also launches the published executable, waits for `Launcher ready`, validates the installer/uninstaller, verifies the live catalog, creates `update-manifest.json`, and publishes tagged builds to GitHub Releases.
