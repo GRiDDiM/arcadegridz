@@ -31,7 +31,7 @@ public sealed partial class MainWindow : Window
     UpdateInfo? availableUpdate;
     LauncherFocus launcherFocus = LauncherFocus.GameGrid;
     int panelFocus;
-    DispatcherQueueTimer? clockTimer;
+    Microsoft.UI.Dispatching.DispatcherQueueTimer? clockTimer;
 
     public MainWindow()
     {
