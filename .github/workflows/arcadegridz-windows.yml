@@ -30,13 +30,6 @@ jobs:
           python -c "from PIL import Image; im=Image.open(r'ArcadeGridz.App/Assets/favicon.png').convert('RGBA'); im.save(r'ArcadeGridz.App/Assets/ArcadeGridz.ico',format='ICO',sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])"
       - name: Publish self-contained WinUI app
         run: msbuild ArcadeGridz.App/ArcadeGridz.App.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=true /p:PublishDir=${{ github.workspace }}\\windows\\ArcadeGridz.Windows\\publish\\ArcadeGridz\\
-      - name: Generate unpackaged WinUI resource index
-        shell: pwsh
-        run: |
-          $mainWindowXbf = Get-ChildItem ArcadeGridz.App/obj/x64/Release -Filter MainWindow.xbf -File -Recurse | Where-Object { $_.Directory.Name -ne "embed" } | Sort-Object { $_.FullName.Length } | Select-Object -First 1
-          if (-not $mainWindowXbf) { throw "MainWindow.xbf was not generated." }
-          ./build/GenerateResources.ps1 -IntermediateRoot $mainWindowXbf.Directory.FullName -PublishDirectory (Resolve-Path publish/ArcadeGridz)
-
       - name: Validate unpackaged runtime payload
         shell: pwsh
         run: |
