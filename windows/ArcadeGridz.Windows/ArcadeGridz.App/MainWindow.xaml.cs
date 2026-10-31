@@ -125,7 +125,9 @@ public sealed partial class MainWindow : Window
             }
             initializingSettings = true;
             ShowAllToggle.IsOn = settings.ShowAll;
-            StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
+            initializingSettings = true;
+        StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
+        initializingSettings = false;
             initializingSettings = false;
             clockTimer = DispatcherQueue.CreateTimer();
             clockTimer.Interval = TimeSpan.FromSeconds(1);
@@ -452,7 +454,7 @@ public sealed partial class MainWindow : Window
         {
             controls.Add(ShowAllToggle);
             controls.Add(StartWithWindowsToggle);
-            controls.Add(ConsoleModeButton);
+            if (ConsoleModeButton.IsEnabled) controls.Add(ConsoleModeButton);
         }
         if (UpdateActions.Visibility == Visibility.Visible)
         {
