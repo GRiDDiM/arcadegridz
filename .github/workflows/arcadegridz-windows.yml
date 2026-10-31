@@ -17,6 +17,13 @@ jobs:
         with: { dotnet-version: "8.0.x" }
       - uses: microsoft/setup-msbuild@v2
       - run: msbuild ArcadeGridz.App/ArcadeGridz.App.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=true /p:PublishDir=${{ github.workspace }}\\windows\\ArcadeGridz.Windows\\publish\\ArcadeGridz\\
+      - name: Inspect generated XAML resources
+        shell: pwsh
+        run: |
+          Write-Host "Publish resource files:"
+          Get-ChildItem publish/ArcadeGridz -Recurse -File | Where-Object { $_.Extension -in '.pri','.xbf' } | ForEach-Object FullName
+          Write-Host "Intermediate resource files:"
+          Get-ChildItem ArcadeGridz.App/obj -Recurse -File | Where-Object { $_.Extension -in '.pri','.xbf' } | ForEach-Object FullName
       - name: Show WinUI compiler diagnostics
         if: failure()
         shell: pwsh
