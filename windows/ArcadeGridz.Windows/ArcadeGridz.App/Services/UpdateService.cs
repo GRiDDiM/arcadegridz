@@ -131,7 +131,7 @@ public sealed class UpdateService
             UseShellExecute = true,
             WorkingDirectory = Path.GetDirectoryName(installerPath)!
         };
-        Process.Start(start) ?? throw new InvalidOperationException("Windows could not start the verified installer.");
+        _ = Process.Start(start) ?? throw new InvalidOperationException("Windows could not start the verified installer.");
     }
 
     static void EnsureTrustedDownloadUri(Uri uri)
