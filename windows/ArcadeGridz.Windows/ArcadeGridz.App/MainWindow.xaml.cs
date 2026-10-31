@@ -125,9 +125,7 @@ public sealed partial class MainWindow : Window
             }
             initializingSettings = true;
             ShowAllToggle.IsOn = settings.ShowAll;
-            initializingSettings = true;
-        StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
-        initializingSettings = false;
+            StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
             initializingSettings = false;
             clockTimer = DispatcherQueue.CreateTimer();
             clockTimer.Interval = TimeSpan.FromSeconds(1);
@@ -555,7 +553,9 @@ public sealed partial class MainWindow : Window
         PanelTitle.Text = "OPTIONS";
         PanelBody.Text = "Choose which catalog entries are visible, start ArcadeGridz automatically, enable controller-only console operation, or manage updates.";
         OptionControls.Visibility = Visibility.Visible;
+        initializingSettings = true;
         StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
+        initializingSettings = false;
         VersionText.Text = $"INSTALLED VERSION  {UpdateService.InstalledVersion}";
         VersionText.Visibility = Visibility.Visible;
         UpdateStatus.Text = "Updates are optional. ArcadeGridz never installs one without confirmation.";
