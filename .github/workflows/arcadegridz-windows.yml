@@ -2,6 +2,7 @@ name: Windows app
 on:
   push:
     tags: ["v*"]
+    branches: ["release/**"]
     paths: ["windows/ArcadeGridz.Windows/**", ".github/workflows/arcadegridz-windows.yml"]
   pull_request:
     paths: ["windows/ArcadeGridz.Windows/**", ".github/workflows/arcadegridz-windows.yml"]
@@ -86,6 +87,7 @@ jobs:
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" Installer/ArcadeGridz.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with $LASTEXITCODE" }
       - name: Generate update manifest
+        id: update_metadata
         shell: pwsh
         run: |
           [xml]$project = Get-Content ArcadeGridz.App/ArcadeGridz.App.csproj
@@ -101,6 +103,7 @@ jobs:
           }
           $manifest | ConvertTo-Json | Set-Content publish/installer/update-manifest.json -Encoding utf8NoBOM
           Write-Host "Installer SHA-256: $sha256"
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
       - name: Validate installer and uninstall
         shell: pwsh
         run: |
@@ -129,9 +132,11 @@ jobs:
           name: ArcadeGridz-win-x64-portable
           path: windows/ArcadeGridz.Windows/publish/ArcadeGridz/
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.update_metadata.outputs.version }}
+          target_commitish: ${{ github.sha }}
           generate_release_notes: true
           files: |
             windows/ArcadeGridz.Windows/publish/installer/ArcadeGridz-Setup-x64.exe
