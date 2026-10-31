@@ -15,6 +15,7 @@ namespace ArcadeGridz.App;
 public sealed partial class MainWindow : Window
 {
     enum LauncherFocus { Categories, Games, Scores, Options, Exit, GameGrid, Play, SignIn }
+    enum StartupFocus { Email, Google, Guest }
     readonly CatalogService catalogs = new();
     readonly LeaderboardService leaderboards = new();
     readonly SettingsService settings = SettingsService.Load();
@@ -31,7 +32,10 @@ public sealed partial class MainWindow : Window
     UpdateInfo? availableUpdate;
     LauncherFocus launcherFocus = LauncherFocus.GameGrid;
     int panelFocus;
+    StartupFocus startupFocus = StartupFocus.Email;
+    bool startupOpen = true;
     Microsoft.UI.Dispatching.DispatcherQueueTimer? clockTimer;
+    Microsoft.UI.Dispatching.DispatcherQueueTimer? splashTimer;
 
     public MainWindow()
     {
@@ -69,6 +73,12 @@ public sealed partial class MainWindow : Window
             GameStatus.Text = status.ToUpperInvariant();
             if (status.Equals("started", StringComparison.OrdinalIgnoreCase))
                 GameCover.Visibility = Visibility.Collapsed;
+            else if (status.Equals("auth", StringComparison.OrdinalIgnoreCase))
+            {
+                NetworkState.Text = "SIGNED IN • GRID ONLINE";
+                StartupLog.Write("auth", "Desktop sign-in completed");
+                ReturnToLauncher();
+            }
         });
         return web;
     }
@@ -117,8 +127,12 @@ public sealed partial class MainWindow : Window
             ClockText.Text = DateTime.Now.ToString("h:mm tt");
             clockTimer.Start();
             await RefreshCatalog();
-            SetLauncherFocus(LauncherFocus.GameGrid);
-            StartupLog.Write("window", "Launcher ready");
+            splashTimer = DispatcherQueue.CreateTimer();
+            splashTimer.Interval = TimeSpan.FromMilliseconds(1350);
+            splashTimer.IsRepeating = false;
+            splashTimer.Tick += (_, _) => ShowWelcome();
+            splashTimer.Start();
+            StartupLog.Write("window", "Catalog ready; splash active");
         }
         catch (Exception ex)
         {
@@ -253,6 +267,11 @@ public sealed partial class MainWindow : Window
 
     void PadPressed(PadAction action) => DispatcherQueue.TryEnqueue(async () =>
     {
+        if (startupOpen && WelcomePanel.Visibility == Visibility.Visible)
+        {
+            HandleStartupAction(action);
+            return;
+        }
         if (action == PadAction.ExitCombo && gameOpen) { await ExitGame(); return; }
         if (gameOpen) return;
         if (Panel.Visibility == Visibility.Visible) { await HandlePanelAction(action); return; }
@@ -261,6 +280,71 @@ public sealed partial class MainWindow : Window
         else if (action == PadAction.B) ReturnToLauncher();
         else await HandleLauncherAction(action);
     });
+
+    void ShowWelcome()
+    {
+        SplashPanel.Visibility = Visibility.Collapsed;
+        WelcomePanel.Visibility = Visibility.Visible;
+        SetStartupFocus(StartupFocus.Email);
+        StartupLog.Write("window", "Welcome screen ready");
+    }
+
+    void EnterLauncher(bool guest)
+    {
+        startupOpen = false;
+        StartupLayer.Visibility = Visibility.Collapsed;
+        WelcomePanel.Visibility = Visibility.Collapsed;
+        Launcher.Visibility = Visibility.Visible;
+        if (guest)
+            NetworkState.Text = NetworkState.Text.StartsWith("OFFLINE", StringComparison.OrdinalIgnoreCase)
+                ? "GUEST • OFFLINE CACHE"
+                : "GUEST • " + NetworkState.Text;
+        SetLauncherFocus(LauncherFocus.GameGrid);
+        StartupLog.Write("window", guest ? "Entered launcher as guest" : "Entered launcher signed in");
+    }
+
+    void HandleStartupAction(PadAction action)
+    {
+        if (action is PadAction.Up or PadAction.Left)
+            SetStartupFocus((StartupFocus)Math.Max(0, (int)startupFocus - 1));
+        else if (action is PadAction.Down or PadAction.Right)
+            SetStartupFocus((StartupFocus)Math.Min(2, (int)startupFocus + 1));
+        else if (action == PadAction.A)
+        {
+            if (startupFocus == StartupFocus.Email) StartupEmail_Click(this, new RoutedEventArgs());
+            else if (startupFocus == StartupFocus.Google) StartupGoogle_Click(this, new RoutedEventArgs());
+            else StartupGuest_Click(this, new RoutedEventArgs());
+        }
+    }
+
+    void SetStartupFocus(StartupFocus target)
+    {
+        startupFocus = target;
+        Control control = target switch
+        {
+            StartupFocus.Google => StartupGoogleButton,
+            StartupFocus.Guest => StartupGuestButton,
+            _ => StartupEmailButton
+        };
+        control.Focus(FocusState.Programmatic);
+    }
+
+    async void StartupEmail_Click(object sender, RoutedEventArgs e)
+    {
+        startupOpen = false;
+        StartupLayer.Visibility = Visibility.Collapsed;
+        await BeginSignInAsync();
+    }
+
+    async void StartupGoogle_Click(object sender, RoutedEventArgs e)
+    {
+        StartupStatus.Text = "OPENED SECURE SIGN-IN IN YOUR BROWSER. DESKTOP GOOGLE HANDOFF IS NOT ENABLED YET; EMAIL OR GUEST WORK NOW.";
+        StartupLog.Write("auth", "Opening system-browser sign-in; native callback is not registered");
+        await Launcher.LaunchUriAsync(new Uri("https://arcadegridz.com/?host=winapp&mode=signin"));
+        SetStartupFocus(StartupFocus.Google);
+    }
+
+    void StartupGuest_Click(object sender, RoutedEventArgs e) => EnterLauncher(true);
 
     async Task HandleLauncherAction(PadAction action)
     {
@@ -411,7 +495,9 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    async void SignIn_Click(object sender, RoutedEventArgs e)
+    async void SignIn_Click(object sender, RoutedEventArgs e) => await BeginSignInAsync();
+
+    async Task BeginSignInAsync()
     {
         try
         {
@@ -421,11 +507,13 @@ public sealed partial class MainWindow : Window
             GameCover.Visibility = Visibility.Collapsed;
             GameLayer.Visibility = Visibility.Visible;
             Launcher.Visibility = Visibility.Collapsed;
+            Panel.Visibility = Visibility.Collapsed;
             await webRuntime.NavigateAsync("https://arcadegridz.com/?host=winapp&mode=signin");
         }
         catch (Exception ex)
         {
             StartupLog.Exception("Sign in", ex);
+            startupOpen = false;
             ShowMessage("SIGN-IN FAILED", $"{ex.Message}\n\nDetails: {StartupLog.LogFile}");
             ReturnToLauncher();
         }
