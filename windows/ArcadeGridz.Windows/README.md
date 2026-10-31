@@ -60,3 +60,5 @@ msbuild ArcadeGridz.App/ArcadeGridz.App.csproj /restore /t:Publish /p:Configurat
 ```
 
 GitHub Actions also launches the published executable, waits for `Launcher ready`, validates the installer/uninstaller, verifies the live catalog, creates `update-manifest.json`, and publishes tagged builds to GitHub Releases.
+
+Release build: v0.1.1
