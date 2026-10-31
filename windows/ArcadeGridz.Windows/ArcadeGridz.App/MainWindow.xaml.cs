@@ -65,7 +65,11 @@ public sealed partial class MainWindow : Window
         web = new WebGameRuntime(view);
         web.Exited += (_, _) => DispatcherQueue.TryEnqueue(ReturnToLauncher);
         web.Status += status => DispatcherQueue.TryEnqueue(() =>
-            GameStatus.Text = status.ToUpperInvariant() + " • HOLD SELECT + START TO EXIT");
+        {
+            GameStatus.Text = status.ToUpperInvariant();
+            if (status.Equals("started", StringComparison.OrdinalIgnoreCase))
+                GameCover.Visibility = Visibility.Collapsed;
+        });
         return web;
     }
 
@@ -212,6 +216,7 @@ public sealed partial class MainWindow : Window
             if (active is null) { ShowMessage("RUNTIME ERROR", "This game's runtime manifest is incomplete."); return; }
             StartupLog.Write("runtime", $"Launching id={g.Id}; type={g.Runtime.Type}");
             gameOpen = true;
+            GameCover.Visibility = Visibility.Visible;
             GameLayer.Visibility = active == web ? Visibility.Visible : Visibility.Collapsed;
             Launcher.Visibility = Visibility.Collapsed;
             Panel.Visibility = Visibility.Collapsed;
@@ -240,6 +245,7 @@ public sealed partial class MainWindow : Window
         gameOpen = false;
         active = null;
         GameLayer.Visibility = Visibility.Collapsed;
+        GameCover.Visibility = Visibility.Visible;
         Launcher.Visibility = Visibility.Visible;
         Panel.Visibility = Visibility.Collapsed;
         SetLauncherFocus(LauncherFocus.GameGrid);
@@ -412,6 +418,7 @@ public sealed partial class MainWindow : Window
             var webRuntime = EnsureWebRuntime();
             active = webRuntime;
             gameOpen = true;
+            GameCover.Visibility = Visibility.Collapsed;
             GameLayer.Visibility = Visibility.Visible;
             Launcher.Visibility = Visibility.Collapsed;
             await webRuntime.NavigateAsync("https://arcadegridz.com/?host=winapp&mode=signin");
