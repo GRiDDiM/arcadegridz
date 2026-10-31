@@ -4,7 +4,9 @@
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>ArcadeGridz.App</RootNamespace>
+    <AssemblyName>ArcadeGridz.App</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\ArcadeGridz.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
@@ -20,14 +22,32 @@
     <DebugType>portable</DebugType>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <Version>0.1.1</Version>
+    <AssemblyVersion>0.1.1.0</AssemblyVersion>
+    <FileVersion>0.1.1.0</FileVersion>
     <SelfContained>true</SelfContained>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWinUI>true</UseWinUI>
-    <EnableMsixTooling>false</EnableMsixTooling>
+    <EnableMsixTooling>true</EnableMsixTooling>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250205002" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <Content Include="Assets\ArcadeGridz.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- The WinUI compiler emits App.xbf and MainWindow.xbf in obj, but the
+       unpackaged Publish target does not copy them. Application.LoadComponent
+       resolves ms-appx XAML from these files at runtime; omitting them causes
+       0x802B000A in MainWindow.InitializeComponent. -->
+  <Target Name="CopyCompiledXamlToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_ArcadeGridzCompiledXaml Include="$(IntermediateOutputPath)*.xbf" />
+    </ItemGroup>
+    <Error Condition="'@(_ArcadeGridzCompiledXaml)' == ''"
+           Text="WinUI compiled XAML files were not generated." />
+    <Copy SourceFiles="@(_ArcadeGridzCompiledXaml)"
+          DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>

@@ -98,3 +98,14 @@ v0.1 done =
 - WebView2 is no longer eagerly instantiated by the startup XAML. It is constructed only when launching a game or opening sign-in, so a missing/broken WebView2 runtime cannot prevent the native launcher from opening.
 - Version bumped to 0.1.1. PR #2: `codex/windows-startup-fix`. GitHub Actions run 33 rebuilds the final artifact and verifies the live catalog; use the run's `ArcadeGridz-win-x64` artifact.
 - Artifact installation must use a fresh extracted directory rather than overwriting v0.1. Physical verification on the owner's affected Windows PC remains required; if startup still fails, collect the new startup log before further changes.
+
+
+## 2026-10-30 — v0.1.1 installer, startup, icon, and updater (Codex)
+
+- Root cause of `0xC000027B`: the unpackaged publish had `EnableMsixTooling=false`. The app and Windows App SDK DLLs were present, but the WinUI/MRT resource graph was incomplete, so `MainWindow.InitializeComponent()` raised `0x802B000A`; enabling the tooling while keeping `WindowsPackageType=None` produces the required `resources.pri`, compiled XAML, and framework theme resources. `PublishTrimmed` and ReadyToRun remain disabled.
+- CI now launches the full published native launcher on Windows, waits for `Launcher ready` in the persistent startup log, verifies the live catalog, and fails on an early process exit.
+- The website favicon is downloaded by CI with pinned SHA-256 `d71dcc6a80734f409e7833c21b5e6a9a517252277df5652f9ad7b2ffea60a4cf`, converted to a multi-size ICO, embedded in the EXE, applied through `AppWindow.SetIcon`, and used for installer/shortcuts/uninstall.
+- Inno Setup source: `windows/ArcadeGridz.Windows/Installer/ArcadeGridz.iss`. It installs per-user, supports in-place upgrades with a stable AppId, creates Start Menu and optional desktop shortcuts, provides uninstall, and deliberately leaves `%LOCALAPPDATA%\\ArcadeGridz` user data intact.
+- Settings now includes installed version, Check for Updates, progress/error state, and Install Update. The updater trusts HTTPS GitHub hosts only, rejects non-newer versions, and performs fixed-time SHA-256 verification against `update-manifest.json` before starting the installer.
+- GitHub Actions run 61 passed publish, full-launcher startup, live catalog, installer compilation, silent install payload verification, uninstall, manifest generation, and both artifact uploads.
+- Distribution limitation: `GRiDDiM/arcadegridz` is currently private. Manual downloads work for signed-in repository users, but an installed app cannot read a private GitHub Release without a token. Do not embed a token. Make the repository/releases publicly readable or use a separate public official releases repository before declaring unattended in-app updates operational.

@@ -18,7 +18,7 @@ public static class StartupLog
         Directory.CreateDirectory(LogDirectory);
         Write("startup", $"ArcadeGridz starting; version={Assembly.GetExecutingAssembly().GetName().Version}");
         Write("environment", $"os={Environment.OSVersion}; framework={RuntimeInformation.FrameworkDescription}; arch={RuntimeInformation.ProcessArchitecture}; base={AppContext.BaseDirectory}");
-        Write("deployment", $"WindowsAppRuntime={File.Exists(Path.Combine(AppContext.BaseDirectory, "Microsoft.WindowsAppRuntime.dll"))}; resources.pri={File.Exists(Path.Combine(AppContext.BaseDirectory, "resources.pri"))}; WebView2Loader={File.Exists(Path.Combine(AppContext.BaseDirectory, "WebView2Loader.dll"))}");
+        Write("deployment", $"WindowsAppRuntime={File.Exists(Path.Combine(AppContext.BaseDirectory, "Microsoft.WindowsAppRuntime.dll"))}; App.xbf={File.Exists(Path.Combine(AppContext.BaseDirectory, "App.xbf"))}; MainWindow.xbf={File.Exists(Path.Combine(AppContext.BaseDirectory, "MainWindow.xbf"))}; resources.pri={File.Exists(Path.Combine(AppContext.BaseDirectory, "resources.pri"))}; WebView2Loader={File.Exists(Path.Combine(AppContext.BaseDirectory, "WebView2Loader.dll"))}");
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             Exception("AppDomain.UnhandledException", e.ExceptionObject as Exception ?? new Exception(Convert.ToString(e.ExceptionObject)), e.IsTerminating);
         TaskScheduler.UnobservedTaskException += (_, e) =>
