@@ -34,6 +34,8 @@ public sealed partial class MainWindow : Window
     int panelFocus;
     StartupFocus startupFocus = StartupFocus.Email;
     bool startupOpen = true;
+    bool consoleMode;
+    bool initializingSettings;
     Microsoft.UI.Dispatching.DispatcherQueueTimer? clockTimer;
     Microsoft.UI.Dispatching.DispatcherQueueTimer? splashTimer;
 
@@ -67,6 +69,7 @@ public sealed partial class MainWindow : Window
         };
         WebViewHost.Children.Insert(0, view);
         web = new WebGameRuntime(view);
+        web.SetConsoleMode(consoleMode);
         web.Exited += (_, _) => DispatcherQueue.TryEnqueue(ReturnToLauncher);
         web.Status += status => DispatcherQueue.TryEnqueue(() =>
         {
@@ -120,7 +123,10 @@ public sealed partial class MainWindow : Window
             {
                 StartupLog.Exception("Gamepad initialization", ex);
             }
+            initializingSettings = true;
             ShowAllToggle.IsOn = settings.ShowAll;
+            StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
+            initializingSettings = false;
             clockTimer = DispatcherQueue.CreateTimer();
             clockTimer.Interval = TimeSpan.FromSeconds(1);
             clockTimer.Tick += (_, _) => ClockText.Text = DateTime.Now.ToString("h:mm tt");
@@ -168,17 +174,17 @@ public sealed partial class MainWindow : Window
     void BuildCategories()
     {
         categories.Clear();
-        categories.Add("POTATO READY");
+        categories.Add("ALL GAMES");
         categories.AddRange(all.Where(g => settings.ShowAll || (g.Potato && g.Playable)).Select(g => g.Category.ToUpperInvariant()).Where(x => x.Length > 0).Distinct().Order());
         categoryIndex = Math.Min(categoryIndex, categories.Count - 1);
     }
 
     void ApplyFilter()
     {
-        var cat = categories.Count == 0 ? "POTATO READY" : categories[categoryIndex];
+        var cat = categories.Count == 0 ? "ALL GAMES" : categories[categoryIndex];
         CategoryLabel.Text = cat;
         visible.Clear();
-        foreach (var g in all.Where(g => (settings.ShowAll || (g.Potato && g.Playable)) && (cat == "POTATO READY" ? (settings.ShowAll ? g.Potato : g.Potato && g.Playable) : g.Category.Equals(cat, StringComparison.OrdinalIgnoreCase))))
+        foreach (var g in all.Where(g => (settings.ShowAll || (g.Potato && g.Playable)) && (cat == "ALL GAMES" || g.Category.Equals(cat, StringComparison.OrdinalIgnoreCase))))
             visible.Add(g);
         if (visible.Count > 0) { GameGrid.SelectedIndex = 0; _ = ShowHero(visible[0]); }
         else
@@ -378,7 +384,7 @@ public sealed partial class MainWindow : Window
         if (launcherFocus == LauncherFocus.Play)
         {
             if (action == PadAction.Up || action == PadAction.Left) SetLauncherFocus(LauncherFocus.GameGrid);
-            else if (action == PadAction.Down) SetLauncherFocus(LauncherFocus.Exit);
+            else if (action == PadAction.Down) SetLauncherFocus(consoleMode ? LauncherFocus.Options : LauncherFocus.Exit);
             return;
         }
 
@@ -393,12 +399,14 @@ public sealed partial class MainWindow : Window
 
         if (launcherFocus == LauncherFocus.SignIn)
         {
-            if (action == PadAction.Down) SetLauncherFocus(LauncherFocus.Exit);
+            if (action == PadAction.Down) SetLauncherFocus(consoleMode ? LauncherFocus.Options : LauncherFocus.Exit);
             else if (action == PadAction.Left) SetLauncherFocus(LauncherFocus.Categories);
             return;
         }
 
-        var menu = new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Options, LauncherFocus.Exit };
+        var menu = consoleMode
+            ? new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Options }
+            : new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Options, LauncherFocus.Exit };
         var menuIndex = Array.IndexOf(menu, launcherFocus);
         if (menuIndex >= 0)
         {
@@ -420,6 +428,8 @@ public sealed partial class MainWindow : Window
 
     void SetLauncherFocus(LauncherFocus target)
     {
+        if (consoleMode && target == LauncherFocus.Exit)
+            target = LauncherFocus.Options;
         launcherFocus = target;
         Control control = target switch
         {
@@ -435,30 +445,44 @@ public sealed partial class MainWindow : Window
         control.Focus(FocusState.Programmatic);
     }
 
+    List<Control> PanelControls()
+    {
+        var controls = new List<Control>();
+        if (OptionControls.Visibility == Visibility.Visible)
+        {
+            controls.Add(ShowAllToggle);
+            controls.Add(StartWithWindowsToggle);
+            controls.Add(ConsoleModeButton);
+        }
+        if (UpdateActions.Visibility == Visibility.Visible)
+        {
+            controls.Add(CheckUpdateButton);
+            if (InstallUpdateButton.IsEnabled) controls.Add(InstallUpdateButton);
+        }
+        controls.Add(BackButton);
+        return controls;
+    }
+
     async Task HandlePanelAction(PadAction action)
     {
         if (action == PadAction.B) { ReturnToLauncher(); return; }
-        var options = ShowAllToggle.Visibility == Visibility.Visible;
-        var max = options ? (InstallUpdateButton.IsEnabled ? 3 : 2) : 0;
+        var controls = PanelControls();
         if (action is PadAction.Up or PadAction.Left) panelFocus = Math.Max(0, panelFocus - 1);
-        else if (action is PadAction.Down or PadAction.Right) panelFocus = Math.Min(max, panelFocus + 1);
+        else if (action is PadAction.Down or PadAction.Right) panelFocus = Math.Min(controls.Count - 1, panelFocus + 1);
         else if (action == PadAction.A)
         {
-            if (!options || panelFocus == max) { ReturnToLauncher(); return; }
-            if (panelFocus == 0) ShowAllToggle.IsOn = !ShowAllToggle.IsOn;
-            else if (panelFocus == 1) CheckUpdate_Click(this, new RoutedEventArgs());
-            else if (panelFocus == 2 && InstallUpdateButton.IsEnabled) InstallUpdate_Click(this, new RoutedEventArgs());
+            var control = controls[Math.Clamp(panelFocus, 0, controls.Count - 1)];
+            if (control == BackButton) { ReturnToLauncher(); return; }
+            if (control == ShowAllToggle) ShowAllToggle.IsOn = !ShowAllToggle.IsOn;
+            else if (control == StartWithWindowsToggle) StartWithWindowsToggle.IsOn = !StartWithWindowsToggle.IsOn;
+            else if (control == ConsoleModeButton) ConsoleMode_Click(this, new RoutedEventArgs());
+            else if (control == CheckUpdateButton) CheckUpdate_Click(this, new RoutedEventArgs());
+            else if (control == InstallUpdateButton) InstallUpdate_Click(this, new RoutedEventArgs());
+            controls = PanelControls();
+            panelFocus = Math.Min(panelFocus, controls.Count - 1);
         }
-        FocusPanelControl(max);
+        controls[Math.Clamp(panelFocus, 0, controls.Count - 1)].Focus(FocusState.Programmatic);
         await Task.CompletedTask;
-    }
-
-    void FocusPanelControl(int max)
-    {
-        if (panelFocus >= max) BackButton.Focus(FocusState.Programmatic);
-        else if (panelFocus == 0) ShowAllToggle.Focus(FocusState.Programmatic);
-        else if (panelFocus == 1) CheckUpdateButton.Focus(FocusState.Programmatic);
-        else InstallUpdateButton.Focus(FocusState.Programmatic);
     }
 
     void ChangeCategory(int delta)
@@ -473,6 +497,7 @@ public sealed partial class MainWindow : Window
 
     void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (consoleMode) { e.Handled = true; return; }
         if (e.Key == VirtualKey.Escape) { if (gameOpen) _ = ExitGame(); else ReturnToLauncher(); e.Handled = true; }
         else if (!gameOpen)
         {
@@ -526,8 +551,9 @@ public sealed partial class MainWindow : Window
     void Options_Click(object sender, RoutedEventArgs e)
     {
         PanelTitle.Text = "OPTIONS";
-        PanelBody.Text = "Potato-ready is the safe controller-only list. Enable all games to include titles that may require a keyboard or touch.";
-        ShowAllToggle.Visibility = Visibility.Visible;
+        PanelBody.Text = "Choose which catalog entries are visible, start ArcadeGridz automatically, enable controller-only console operation, or manage updates.";
+        OptionControls.Visibility = Visibility.Visible;
+        StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
         VersionText.Text = $"INSTALLED VERSION  {UpdateService.InstalledVersion}";
         VersionText.Visibility = Visibility.Visible;
         UpdateStatus.Text = "Updates are optional. ArcadeGridz never installs one without confirmation.";
@@ -547,7 +573,7 @@ public sealed partial class MainWindow : Window
     {
         PanelTitle.Text = title;
         PanelBody.Text = body;
-        ShowAllToggle.Visibility = Visibility.Collapsed;
+        OptionControls.Visibility = Visibility.Collapsed;
         VersionText.Visibility = Visibility.Collapsed;
         UpdateStatus.Visibility = Visibility.Collapsed;
         UpdateActions.Visibility = Visibility.Collapsed;
@@ -618,5 +644,43 @@ public sealed partial class MainWindow : Window
             UpdateProgress.Visibility = Visibility.Collapsed;
         }
     }
-    void ShowAllToggle_Toggled(object sender, RoutedEventArgs e) { settings.ShowAll = ShowAllToggle.IsOn; settings.Save(); BuildCategories(); ApplyFilter(); }
+    void ShowAllToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (initializingSettings) return;
+        settings.ShowAll = ShowAllToggle.IsOn;
+        settings.Save();
+        BuildCategories();
+        ApplyFilter();
+    }
+
+    void StartWithWindowsToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (initializingSettings) return;
+        if (WindowsStartupService.SetEnabled(StartWithWindowsToggle.IsOn))
+        {
+            UpdateStatus.Text = StartWithWindowsToggle.IsOn
+                ? "ARCADEGRIDZ WILL START WHEN YOU SIGN IN TO WINDOWS."
+                : "WINDOWS STARTUP DISABLED.";
+        }
+        else
+        {
+            initializingSettings = true;
+            StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
+            initializingSettings = false;
+            UpdateStatus.Text = "WINDOWS STARTUP COULD NOT BE CHANGED. SEE THE STARTUP LOG FOR DETAILS.";
+        }
+    }
+
+    void ConsoleMode_Click(object sender, RoutedEventArgs e)
+    {
+        if (consoleMode) return;
+        consoleMode = true;
+        ExitButton.Visibility = Visibility.Collapsed;
+        ConsoleModeButton.Content = "CONSOLE MODE ACTIVE • RESTART APP TO RESTORE";
+        ConsoleModeButton.IsEnabled = false;
+        ConsoleModeStatus.Text = "Controller-only mode is active. Keyboard and WebView pointer input are disabled; Exit ArcadeGridz stays hidden until restart.";
+        web?.SetConsoleMode(true);
+        StartupLog.Write("settings", "Console mode enabled for this session");
+        BackButton.Focus(FocusState.Programmatic);
+    }
 }
