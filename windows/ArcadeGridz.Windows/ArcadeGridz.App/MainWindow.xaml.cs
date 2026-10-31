@@ -17,6 +17,7 @@ public sealed partial class MainWindow : Window
     readonly CatalogService catalogs = new();
     readonly LeaderboardService leaderboards = new();
     readonly SettingsService settings = SettingsService.Load();
+    readonly UpdateService updates = new();
     readonly ObservableCollection<GameEntry> visible = [];
     readonly List<GameEntry> all = [];
     readonly List<string> categories = [];
@@ -26,6 +27,7 @@ public sealed partial class MainWindow : Window
     IGameRuntime? active;
     int categoryIndex;
     bool gameOpen;
+    UpdateInfo? availableUpdate;
 
     public MainWindow()
     {
@@ -69,7 +71,14 @@ public sealed partial class MainWindow : Window
         {
             var hwnd = WindowNative.GetWindowHandle(this);
             var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
-            AppWindow.GetFromWindowId(id).SetPresenter(AppWindowPresenterKind.FullScreen);
+            var appWindow = AppWindow.GetFromWindowId(id);
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "ArcadeGridz.ico");
+            if (File.Exists(iconPath))
+            {
+                appWindow.SetIcon(iconPath);
+                StartupLog.Write("window", "ArcadeGridz icon applied");
+            }
+            appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
             StartupLog.Write("window", "Fullscreen presenter active");
         }
         catch (Exception ex)
@@ -263,10 +272,96 @@ public sealed partial class MainWindow : Window
     }
 
     void Scores_Click(object sender, RoutedEventArgs e) => ShowMessage("NETWORK SCORES", "Choose a game to see its live top five. A full cross-game score browser is planned after v0.1.");
-    void Options_Click(object sender, RoutedEventArgs e) { PanelTitle.Text = "OPTIONS"; PanelBody.Text = "Potato-ready is the safe controller-only list. Enable all games to include titles that may require a keyboard or touch."; ShowAllToggle.Visibility = Visibility.Visible; Panel.Visibility = Visibility.Visible; Launcher.Visibility = Visibility.Collapsed; }
+    void Options_Click(object sender, RoutedEventArgs e)
+    {
+        PanelTitle.Text = "OPTIONS";
+        PanelBody.Text = "Potato-ready is the safe controller-only list. Enable all games to include titles that may require a keyboard or touch.";
+        ShowAllToggle.Visibility = Visibility.Visible;
+        VersionText.Text = $"INSTALLED VERSION  {UpdateService.InstalledVersion}";
+        VersionText.Visibility = Visibility.Visible;
+        UpdateStatus.Text = "Updates are optional. ArcadeGridz never installs one without confirmation.";
+        UpdateStatus.Visibility = Visibility.Visible;
+        UpdateActions.Visibility = Visibility.Visible;
+        UpdateProgress.Visibility = Visibility.Collapsed;
+        InstallUpdateButton.IsEnabled = availableUpdate is not null;
+        Panel.Visibility = Visibility.Visible;
+        Launcher.Visibility = Visibility.Collapsed;
+    }
     void Games_Click(object sender, RoutedEventArgs e) => ReturnToLauncher();
     void Back_Click(object sender, RoutedEventArgs e) => ReturnToLauncher();
     void Close_Click(object sender, RoutedEventArgs e) => Close();
-    void ShowMessage(string title, string body) { PanelTitle.Text = title; PanelBody.Text = body; ShowAllToggle.Visibility = Visibility.Collapsed; Panel.Visibility = Visibility.Visible; Launcher.Visibility = Visibility.Collapsed; }
+    void ShowMessage(string title, string body)
+    {
+        PanelTitle.Text = title;
+        PanelBody.Text = body;
+        ShowAllToggle.Visibility = Visibility.Collapsed;
+        VersionText.Visibility = Visibility.Collapsed;
+        UpdateStatus.Visibility = Visibility.Collapsed;
+        UpdateActions.Visibility = Visibility.Collapsed;
+        UpdateProgress.Visibility = Visibility.Collapsed;
+        Panel.Visibility = Visibility.Visible;
+        Launcher.Visibility = Visibility.Collapsed;
+    }
+
+    async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        CheckUpdateButton.IsEnabled = false;
+        InstallUpdateButton.IsEnabled = false;
+        UpdateProgress.IsIndeterminate = true;
+        UpdateProgress.Visibility = Visibility.Visible;
+        UpdateStatus.Text = "CHECKING OFFICIAL ARCADEGRIDZ RELEASES...";
+        try
+        {
+            var result = await updates.CheckAsync();
+            availableUpdate = result.Update;
+            UpdateStatus.Text = result.Status;
+            InstallUpdateButton.IsEnabled = availableUpdate is not null;
+            StartupLog.Write("update", $"Check completed; installed={result.InstalledVersion}; available={result.Update?.Version}");
+        }
+        catch (Exception ex)
+        {
+            availableUpdate = null;
+            UpdateStatus.Text = "UPDATE CHECK FAILED: " + ex.Message;
+            StartupLog.Exception("Update check", ex);
+        }
+        finally
+        {
+            UpdateProgress.IsIndeterminate = false;
+            UpdateProgress.Visibility = Visibility.Collapsed;
+            CheckUpdateButton.IsEnabled = true;
+        }
+    }
+
+    async void InstallUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (availableUpdate is null) return;
+        CheckUpdateButton.IsEnabled = false;
+        InstallUpdateButton.IsEnabled = false;
+        UpdateProgress.IsIndeterminate = false;
+        UpdateProgress.Value = 0;
+        UpdateProgress.Visibility = Visibility.Visible;
+        UpdateStatus.Text = $"DOWNLOADING ARCADEGRIDZ {availableUpdate.Version}...";
+        try
+        {
+            var progress = new Progress<double>(value =>
+            {
+                UpdateProgress.Value = value * 100;
+                UpdateStatus.Text = $"DOWNLOADING ARCADEGRIDZ {availableUpdate.Version}  {value:P0}";
+            });
+            var installer = await updates.DownloadAsync(availableUpdate, progress);
+            UpdateStatus.Text = "DOWNLOAD VERIFIED. STARTING INSTALLER...";
+            StartupLog.Write("update", $"Verified installer for {availableUpdate.Version}: {installer}");
+            UpdateService.InstallAndRestart(installer);
+            Close();
+        }
+        catch (Exception ex)
+        {
+            UpdateStatus.Text = "UPDATE FAILED: " + ex.Message;
+            StartupLog.Exception("Update install", ex);
+            CheckUpdateButton.IsEnabled = true;
+            InstallUpdateButton.IsEnabled = true;
+            UpdateProgress.Visibility = Visibility.Collapsed;
+        }
+    }
     void ShowAllToggle_Toggled(object sender, RoutedEventArgs e) { settings.ShowAll = ShowAllToggle.IsOn; settings.Save(); BuildCategories(); ApplyFilter(); }
 }
