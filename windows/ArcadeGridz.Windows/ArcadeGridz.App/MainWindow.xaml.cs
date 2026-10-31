@@ -14,6 +14,7 @@ namespace ArcadeGridz.App;
 
 public sealed partial class MainWindow : Window
 {
+    enum LauncherFocus { Categories, Games, Scores, Options, Exit, GameGrid, Play, SignIn }
     readonly CatalogService catalogs = new();
     readonly LeaderboardService leaderboards = new();
     readonly SettingsService settings = SettingsService.Load();
@@ -28,6 +29,9 @@ public sealed partial class MainWindow : Window
     int categoryIndex;
     bool gameOpen;
     UpdateInfo? availableUpdate;
+    LauncherFocus launcherFocus = LauncherFocus.GameGrid;
+    int panelFocus;
+    DispatcherQueueTimer? clockTimer;
 
     public MainWindow()
     {
@@ -103,8 +107,13 @@ public sealed partial class MainWindow : Window
                 StartupLog.Exception("Gamepad initialization", ex);
             }
             ShowAllToggle.IsOn = settings.ShowAll;
+            clockTimer = DispatcherQueue.CreateTimer();
+            clockTimer.Interval = TimeSpan.FromSeconds(1);
+            clockTimer.Tick += (_, _) => ClockText.Text = DateTime.Now.ToString("h:mm tt");
+            ClockText.Text = DateTime.Now.ToString("h:mm tt");
+            clockTimer.Start();
             await RefreshCatalog();
-            Root.Focus(FocusState.Programmatic);
+            SetLauncherFocus(LauncherFocus.GameGrid);
             StartupLog.Write("window", "Launcher ready");
         }
         catch (Exception ex)
@@ -120,7 +129,9 @@ public sealed partial class MainWindow : Window
         {
             var result = await catalogs.LoadAsync();
             all.Clear();
-            all.AddRange(result.Catalog.Games.Where(g => g.Playable));
+            // Keep the complete live catalog. The options toggle controls visibility;
+            // Playable controls launch authorization and is checked again at launch.
+            all.AddRange(result.Catalog.Games);
             NetworkState.Text = result.Offline ? "OFFLINE CACHE" : "GRID ONLINE • " + result.Catalog.Version;
             StartupLog.Write("catalog", $"Loaded version={result.Catalog.Version}; games={result.Catalog.Games.Count}; offline={result.Offline}");
             BuildCategories();
@@ -140,7 +151,7 @@ public sealed partial class MainWindow : Window
     {
         categories.Clear();
         categories.Add("POTATO READY");
-        categories.AddRange(all.Where(g => settings.ShowAll || g.Potato).Select(g => g.Category.ToUpperInvariant()).Where(x => x.Length > 0).Distinct().Order());
+        categories.AddRange(all.Where(g => settings.ShowAll || (g.Potato && g.Playable)).Select(g => g.Category.ToUpperInvariant()).Where(x => x.Length > 0).Distinct().Order());
         categoryIndex = Math.Min(categoryIndex, categories.Count - 1);
     }
 
@@ -149,9 +160,20 @@ public sealed partial class MainWindow : Window
         var cat = categories.Count == 0 ? "POTATO READY" : categories[categoryIndex];
         CategoryLabel.Text = cat;
         visible.Clear();
-        foreach (var g in all.Where(g => (settings.ShowAll || g.Potato) && (cat == "POTATO READY" ? g.Potato : g.Category.Equals(cat, StringComparison.OrdinalIgnoreCase))))
+        foreach (var g in all.Where(g => (settings.ShowAll || (g.Potato && g.Playable)) && (cat == "POTATO READY" ? (settings.ShowAll ? g.Potato : g.Potato && g.Playable) : g.Category.Equals(cat, StringComparison.OrdinalIgnoreCase))))
             visible.Add(g);
         if (visible.Count > 0) { GameGrid.SelectedIndex = 0; _ = ShowHero(visible[0]); }
+        else
+        {
+            GameGrid.SelectedIndex = -1;
+            HeroName.Text = "NO GAMES";
+            HeroMeta.Text = "";
+            HeroDescription.Text = "No catalog entries match this filter.";
+            HeroArt.Source = null;
+            PlayButton.IsEnabled = false;
+            PlayButton.Content = "UNAVAILABLE";
+            ScoreList.ItemsSource = null;
+        }
     }
 
     async Task ShowHero(GameEntry g)
@@ -159,6 +181,8 @@ public sealed partial class MainWindow : Window
         HeroName.Text = g.Name;
         HeroMeta.Text = $"{g.Genre}  •  {g.Status.ToUpperInvariant()}  •  {g.Runtime.Type.ToUpperInvariant()}";
         HeroDescription.Text = g.Description;
+        PlayButton.IsEnabled = g.Playable;
+        PlayButton.Content = g.Playable ? "A  PLAY" : "UNAVAILABLE";
         try { HeroArt.Source = new BitmapImage(new Uri(g.Art)); } catch { HeroArt.Source = null; }
         var scores = await leaderboards.TopAsync(g.Id);
         ScoreList.ItemsSource = scores.Select((s, i) => $"{i + 1}. {s.Name}  {s.Score:N0}  [{s.Tag}]");
@@ -172,6 +196,12 @@ public sealed partial class MainWindow : Window
     {
         try
         {
+            if (!g.Playable)
+            {
+                StartupLog.Write("runtime", $"Blocked non-playable catalog entry id={g.Id}");
+                ShowMessage("NOT PLAYABLE", $"{g.Name} is listed in the catalog but is not available in the Windows launcher.");
+                return;
+            }
             if (g.Runtime.Type.Equals("web", StringComparison.OrdinalIgnoreCase))
             {
                 var webRuntime = EnsureWebRuntime();
@@ -212,28 +242,133 @@ public sealed partial class MainWindow : Window
         GameLayer.Visibility = Visibility.Collapsed;
         Launcher.Visibility = Visibility.Visible;
         Panel.Visibility = Visibility.Collapsed;
-        GameGrid.Focus(FocusState.Programmatic);
+        SetLauncherFocus(LauncherFocus.GameGrid);
     }
 
     void PadPressed(PadAction action) => DispatcherQueue.TryEnqueue(async () =>
     {
         if (action == PadAction.ExitCombo && gameOpen) { await ExitGame(); return; }
         if (gameOpen) return;
-        if (Panel.Visibility == Visibility.Visible) { if (action == PadAction.B) ReturnToLauncher(); return; }
+        if (Panel.Visibility == Visibility.Visible) { await HandlePanelAction(action); return; }
         if (action == PadAction.LB) ChangeCategory(-1);
         else if (action == PadAction.RB) ChangeCategory(1);
-        else if (action == PadAction.A && GameGrid.SelectedItem is GameEntry g) await Launch(g);
         else if (action == PadAction.B) ReturnToLauncher();
-        else MoveSelection(action);
+        else await HandleLauncherAction(action);
     });
 
-    void MoveSelection(PadAction action)
+    async Task HandleLauncherAction(PadAction action)
+    {
+        if (action == PadAction.A)
+        {
+            switch (launcherFocus)
+            {
+                case LauncherFocus.Categories: ChangeCategory(1); break;
+                case LauncherFocus.Games: ReturnToLauncher(); break;
+                case LauncherFocus.Scores: Scores_Click(this, new RoutedEventArgs()); break;
+                case LauncherFocus.Options: Options_Click(this, new RoutedEventArgs()); break;
+                case LauncherFocus.Exit: Close(); break;
+                case LauncherFocus.SignIn: SignIn_Click(this, new RoutedEventArgs()); break;
+                case LauncherFocus.GameGrid:
+                case LauncherFocus.Play:
+                    if (GameGrid.SelectedItem is GameEntry game) await Launch(game);
+                    break;
+            }
+            return;
+        }
+
+        if (launcherFocus == LauncherFocus.GameGrid &&
+            action is PadAction.Left or PadAction.Right or PadAction.Up or PadAction.Down)
+        {
+            if (action == PadAction.Up) { SetLauncherFocus(LauncherFocus.Games); return; }
+            if (action == PadAction.Down) { SetLauncherFocus(LauncherFocus.Play); return; }
+            MoveGameSelection(action);
+            return;
+        }
+
+        if (launcherFocus == LauncherFocus.Play)
+        {
+            if (action == PadAction.Up || action == PadAction.Left) SetLauncherFocus(LauncherFocus.GameGrid);
+            else if (action == PadAction.Down) SetLauncherFocus(LauncherFocus.Exit);
+            return;
+        }
+
+        if (launcherFocus == LauncherFocus.Categories)
+        {
+            if (action == PadAction.Left) ChangeCategory(-1);
+            else if (action == PadAction.Right) ChangeCategory(1);
+            else if (action == PadAction.Down) SetLauncherFocus(LauncherFocus.Games);
+            else if (action == PadAction.Up) SetLauncherFocus(LauncherFocus.SignIn);
+            return;
+        }
+
+        if (launcherFocus == LauncherFocus.SignIn)
+        {
+            if (action == PadAction.Down) SetLauncherFocus(LauncherFocus.Exit);
+            else if (action == PadAction.Left) SetLauncherFocus(LauncherFocus.Categories);
+            return;
+        }
+
+        var menu = new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Options, LauncherFocus.Exit };
+        var menuIndex = Array.IndexOf(menu, launcherFocus);
+        if (menuIndex >= 0)
+        {
+            if (action == PadAction.Left) SetLauncherFocus(menu[Math.Max(0, menuIndex - 1)]);
+            else if (action == PadAction.Right) SetLauncherFocus(menu[Math.Min(menu.Length - 1, menuIndex + 1)]);
+            else if (action == PadAction.Up) SetLauncherFocus(launcherFocus == LauncherFocus.Exit ? LauncherFocus.SignIn : LauncherFocus.Categories);
+            else if (action == PadAction.Down) SetLauncherFocus(launcherFocus == LauncherFocus.Exit ? LauncherFocus.Play : LauncherFocus.GameGrid);
+        }
+    }
+
+    void MoveGameSelection(PadAction action)
     {
         if (visible.Count == 0) return;
         var i = Math.Max(0, GameGrid.SelectedIndex);
-        i = action switch { PadAction.Left => i - 1, PadAction.Right => i + 1, PadAction.Up => i - 3, PadAction.Down => i + 3, _ => i };
+        i += action == PadAction.Left ? -1 : 1;
         GameGrid.SelectedIndex = Math.Clamp(i, 0, visible.Count - 1);
         GameGrid.ScrollIntoView(GameGrid.SelectedItem);
+    }
+
+    void SetLauncherFocus(LauncherFocus target)
+    {
+        launcherFocus = target;
+        Control control = target switch
+        {
+            LauncherFocus.Categories => NextCategoryButton,
+            LauncherFocus.Games => GamesButton,
+            LauncherFocus.Scores => ScoresButton,
+            LauncherFocus.Options => OptionsButton,
+            LauncherFocus.Exit => ExitButton,
+            LauncherFocus.Play => PlayButton,
+            LauncherFocus.SignIn => SignInButton,
+            _ => GameGrid
+        };
+        control.Focus(FocusState.Programmatic);
+    }
+
+    async Task HandlePanelAction(PadAction action)
+    {
+        if (action == PadAction.B) { ReturnToLauncher(); return; }
+        var options = ShowAllToggle.Visibility == Visibility.Visible;
+        var max = options ? (InstallUpdateButton.IsEnabled ? 3 : 2) : 0;
+        if (action is PadAction.Up or PadAction.Left) panelFocus = Math.Max(0, panelFocus - 1);
+        else if (action is PadAction.Down or PadAction.Right) panelFocus = Math.Min(max, panelFocus + 1);
+        else if (action == PadAction.A)
+        {
+            if (!options || panelFocus == max) { ReturnToLauncher(); return; }
+            if (panelFocus == 0) ShowAllToggle.IsOn = !ShowAllToggle.IsOn;
+            else if (panelFocus == 1) CheckUpdate_Click(this, new RoutedEventArgs());
+            else if (panelFocus == 2 && InstallUpdateButton.IsEnabled) InstallUpdate_Click(this, new RoutedEventArgs());
+        }
+        FocusPanelControl(max);
+        await Task.CompletedTask;
+    }
+
+    void FocusPanelControl(int max)
+    {
+        if (panelFocus >= max) BackButton.Focus(FocusState.Programmatic);
+        else if (panelFocus == 0) ShowAllToggle.Focus(FocusState.Programmatic);
+        else if (panelFocus == 1) CheckUpdateButton.Focus(FocusState.Programmatic);
+        else InstallUpdateButton.Focus(FocusState.Programmatic);
     }
 
     void ChangeCategory(int delta)
@@ -249,7 +384,25 @@ public sealed partial class MainWindow : Window
     void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == VirtualKey.Escape) { if (gameOpen) _ = ExitGame(); else ReturnToLauncher(); e.Handled = true; }
-        else if (e.Key == VirtualKey.Enter && GameGrid.SelectedItem is GameEntry g) { _ = Launch(g); e.Handled = true; }
+        else if (!gameOpen)
+        {
+            var action = e.Key switch
+            {
+                VirtualKey.Up => PadAction.Up,
+                VirtualKey.Down => PadAction.Down,
+                VirtualKey.Left => PadAction.Left,
+                VirtualKey.Right => PadAction.Right,
+                VirtualKey.Enter or VirtualKey.Space => PadAction.A,
+                _ => (PadAction?)null
+            };
+            if (action is not null)
+            {
+                e.Handled = true;
+                _ = Panel.Visibility == Visibility.Visible
+                    ? HandlePanelAction(action.Value)
+                    : HandleLauncherAction(action.Value);
+            }
+        }
     }
 
     async void SignIn_Click(object sender, RoutedEventArgs e)
@@ -286,6 +439,8 @@ public sealed partial class MainWindow : Window
         InstallUpdateButton.IsEnabled = availableUpdate is not null;
         Panel.Visibility = Visibility.Visible;
         Launcher.Visibility = Visibility.Collapsed;
+        panelFocus = 0;
+        ShowAllToggle.Focus(FocusState.Programmatic);
     }
     void Games_Click(object sender, RoutedEventArgs e) => ReturnToLauncher();
     void Back_Click(object sender, RoutedEventArgs e) => ReturnToLauncher();
@@ -301,6 +456,8 @@ public sealed partial class MainWindow : Window
         UpdateProgress.Visibility = Visibility.Collapsed;
         Panel.Visibility = Visibility.Visible;
         Launcher.Visibility = Visibility.Collapsed;
+        panelFocus = 0;
+        BackButton.Focus(FocusState.Programmatic);
     }
 
     async void CheckUpdate_Click(object sender, RoutedEventArgs e)
