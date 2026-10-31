@@ -3,7 +3,7 @@
   <Grid.Resources>
    <Style TargetType="Button"><Setter Property="CornerRadius" Value="16"/><Setter Property="BorderThickness" Value="3"/><Setter Property="BorderBrush" Value="#FF183A58"/><Setter Property="Background" Value="#FF0C0923"/><Setter Property="Foreground" Value="#FFD7D7EB"/><Setter Property="FontFamily" Value="Consolas"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Padding" Value="24,12"/><Setter Property="Margin" Value="7"/></Style>
   </Grid.Resources>
-  <Grid x:Name="Launcher">
+  <Grid x:Name="Launcher" Visibility="Collapsed">
    <Grid.RowDefinitions><RowDefinition Height="126"/><RowDefinition Height="82"/><RowDefinition Height="*"/><RowDefinition Height="62"/></Grid.RowDefinitions>
    <Grid Grid.Row="0" Margin="34,18,34,4">
     <Grid.ColumnDefinitions><ColumnDefinition Width="1*"/><ColumnDefinition Width="1.6*"/><ColumnDefinition Width="1*"/></Grid.ColumnDefinitions>
@@ -34,5 +34,35 @@
   </Grid>
   <Grid x:Name="Panel" Visibility="Collapsed" Background="#FA050313"><StackPanel MaxWidth="780" HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock x:Name="PanelTitle" FontFamily="Consolas" FontSize="42" FontWeight="Black" Foreground="#FF55E8FF" HorizontalAlignment="Center"/><TextBlock x:Name="PanelBody" FontSize="18" Foreground="White" TextWrapping="Wrap" Margin="0,28"/><ToggleSwitch x:Name="ShowAllToggle" Header="DISPLAY ALL CATALOG GAMES (UNSUPPORTED TITLES WILL NOT LAUNCH)" Toggled="ShowAllToggle_Toggled"/><TextBlock x:Name="VersionText" Foreground="#FFB28BFF" Margin="0,24,0,4" Visibility="Collapsed"/><TextBlock x:Name="UpdateStatus" Foreground="White" TextWrapping="Wrap" Margin="0,4,0,8" Visibility="Collapsed"/><ProgressBar x:Name="UpdateProgress" Minimum="0" Maximum="100" Height="6" Margin="0,4,0,8" Visibility="Collapsed"/><StackPanel x:Name="UpdateActions" Orientation="Horizontal" HorizontalAlignment="Center" Visibility="Collapsed"><Button x:Name="CheckUpdateButton" Content="CHECK FOR UPDATES" Click="CheckUpdate_Click"/><Button x:Name="InstallUpdateButton" Content="INSTALL UPDATE" Click="InstallUpdate_Click" IsEnabled="False"/></StackPanel><Button x:Name="BackButton" Content="B  BACK" Click="Back_Click" HorizontalAlignment="Stretch"/></StackPanel></Grid>
   <Grid x:Name="GameLayer" Visibility="Collapsed" Background="Black"><Grid x:Name="WebViewHost"/><Grid x:Name="GameCover" Background="#FF050313"><TextBlock Text="LOADING GAME..." HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#FF55E8FF" FontFamily="Consolas" FontWeight="Bold" FontSize="20"/></Grid><Border Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top" Background="#CC000000" Padding="12,6"><TextBlock x:Name="GameStatus" Text="LOADING" Foreground="#FF55E8FF"/></Border></Grid>
+  <Grid x:Name="StartupLayer" Background="#FF050313">
+   <Grid x:Name="SplashPanel">
+    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="18">
+     <Border Width="176" Height="176" CornerRadius="38" Background="#FF0C0923" BorderBrush="#FF55E8FF" BorderThickness="3" Padding="20">
+      <Image Source="ms-appx:///Assets/favicon.png" Stretch="Uniform"/>
+     </Border>
+     <TextBlock Text="ARCADEGRIDZ" HorizontalAlignment="Center" Foreground="#FF66DEFF" FontFamily="Consolas" FontWeight="Black" FontSize="48" CharacterSpacing="105"/>
+     <TextBlock Text="CONNECTING TO THE GRID..." HorizontalAlignment="Center" Foreground="#FFB28BFF" FontFamily="Consolas" FontWeight="Bold" FontSize="17"/>
+    </StackPanel>
+   </Grid>
+   <Grid x:Name="WelcomePanel" Visibility="Collapsed">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="1.15*"/><ColumnDefinition Width="0.85*"/></Grid.ColumnDefinitions>
+    <StackPanel Margin="72" VerticalAlignment="Center" Spacing="15">
+     <Image Source="ms-appx:///Assets/favicon.png" Width="110" Height="110" HorizontalAlignment="Left" Stretch="Uniform"/>
+     <TextBlock Text="WELCOME TO&#xA;ARCADEGRIDZ" Foreground="White" FontFamily="Consolas" FontWeight="Black" FontSize="48"/>
+     <TextBlock Text="YOUR GAMES. YOUR SCORES. ONE GRID." Foreground="#FF55E8FF" FontFamily="Consolas" FontWeight="Bold" FontSize="18"/>
+     <TextBlock Text="Sign in for network scores and cloud identity, or jump straight into the arcade as a guest." Foreground="#FFD7D7EB" FontSize="18" TextWrapping="Wrap" MaxWidth="620" HorizontalAlignment="Left"/>
+     <TextBlock Text="GUESTS CAN BROWSE AND PLAY EVERY SUPPORTED GAME." Foreground="#FFFFD83D" FontFamily="Consolas" FontWeight="Bold" Margin="0,8,0,0"/>
+    </StackPanel>
+    <Border Grid.Column="1" Margin="34,54,72,54" Background="#E60C0923" BorderBrush="#FF183A58" BorderThickness="3" CornerRadius="24" Padding="34">
+     <StackPanel VerticalAlignment="Center" Spacing="8">
+      <TextBlock Text="ENTER THE GRID" HorizontalAlignment="Center" Foreground="#FF55E8FF" FontFamily="Consolas" FontWeight="Black" FontSize="28" Margin="0,0,0,14"/>
+      <Button x:Name="StartupEmailButton" Content="EMAIL / PASSWORD" HorizontalAlignment="Stretch" MinHeight="58" Click="StartupEmail_Click"/>
+      <Button x:Name="StartupGoogleButton" Content="GOOGLE • SYSTEM BROWSER" HorizontalAlignment="Stretch" MinHeight="58" Click="StartupGoogle_Click"/>
+      <Button x:Name="StartupGuestButton" Content="CONTINUE AS GUEST" HorizontalAlignment="Stretch" MinHeight="58" Click="StartupGuest_Click"/>
+      <TextBlock x:Name="StartupStatus" Text="A  SELECT     D-PAD  NAVIGATE" Foreground="#FF8F83AA" FontFamily="Consolas" TextWrapping="Wrap" TextAlignment="Center" Margin="4,14,4,0"/>
+     </StackPanel>
+    </Border>
+   </Grid>
+  </Grid>
  </Grid>
 </Window>
