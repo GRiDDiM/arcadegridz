@@ -17,7 +17,15 @@
    </Grid>
    <Border Grid.Row="2" BorderBrush="#FF552F88" BorderThickness="0,2,0,0"><Grid Margin="24,0"><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><Button Content="GAMES" Click="Games_Click"/><Button Content="SCORES" Click="Scores_Click"/><Button Content="OPTIONS" Click="Options_Click"/><Button Content="CLOSE" Click="Close_Click"/></StackPanel><TextBlock Text="D-PAD MOVE  •  A SELECT  •  B BACK  •  LB/RB CATEGORY" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="#FF8F83AA"/></Grid></Border>
   </Grid>
-  <Grid x:Name="Panel" Visibility="Collapsed" Background="#F2070412"><StackPanel MaxWidth="780" HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock x:Name="PanelTitle" FontSize="42" FontWeight="Black" Foreground="{StaticResource CyanBrush}" HorizontalAlignment="Center"/><TextBlock x:Name="PanelBody" FontSize="18" Foreground="White" TextWrapping="Wrap" Margin="0,28"/><ToggleSwitch x:Name="ShowAllToggle" Header="SHOW ALL PLAYABLE GAMES" Toggled="ShowAllToggle_Toggled"/><Button Content="B  BACK" Click="Back_Click" HorizontalAlignment="Stretch"/></StackPanel></Grid>
+  <Grid x:Name="Panel" Visibility="Collapsed" Background="#F2070412"><StackPanel MaxWidth="780" HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock x:Name="PanelTitle" FontSize="42" FontWeight="Black" Foreground="{StaticResource CyanBrush}" HorizontalAlignment="Center"/><TextBlock x:Name="PanelBody" FontSize="18" Foreground="White" TextWrapping="Wrap" Margin="0,28"/><ToggleSwitch x:Name="ShowAllToggle" Header="SHOW ALL PLAYABLE GAMES" Toggled="ShowAllToggle_Toggled"/>
+<TextBlock x:Name="VersionText" Foreground="#FFB28BFF" Margin="0,24,0,4" Visibility="Collapsed"/>
+<TextBlock x:Name="UpdateStatus" Foreground="White" TextWrapping="Wrap" Margin="0,4,0,8" Visibility="Collapsed"/>
+<ProgressBar x:Name="UpdateProgress" Minimum="0" Maximum="100" Height="6" Margin="0,4,0,8" Visibility="Collapsed"/>
+<StackPanel x:Name="UpdateActions" Orientation="Horizontal" HorizontalAlignment="Center" Visibility="Collapsed">
+ <Button x:Name="CheckUpdateButton" Content="CHECK FOR UPDATES" Click="CheckUpdate_Click"/>
+ <Button x:Name="InstallUpdateButton" Content="INSTALL UPDATE" Click="InstallUpdate_Click" IsEnabled="False"/>
+</StackPanel>
+<Button Content="B  BACK" Click="Back_Click" HorizontalAlignment="Stretch"/></StackPanel></Grid>
   <Grid x:Name="GameLayer" Visibility="Collapsed" Background="Black"><Grid x:Name="WebViewHost"/><Border HorizontalAlignment="Center" VerticalAlignment="Top" Background="#CC000000" Padding="12,6"><TextBlock x:Name="GameStatus" Text="LOADING • HOLD SELECT + START TO EXIT" Foreground="{StaticResource CyanBrush}"/></Border></Grid>
  </Grid>
 </Window>
