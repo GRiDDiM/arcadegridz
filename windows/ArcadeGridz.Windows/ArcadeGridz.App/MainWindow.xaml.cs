@@ -340,7 +340,7 @@ public sealed partial class MainWindow : Window
     {
         StartupStatus.Text = "OPENED SECURE SIGN-IN IN YOUR BROWSER. DESKTOP GOOGLE HANDOFF IS NOT ENABLED YET; EMAIL OR GUEST WORK NOW.";
         StartupLog.Write("auth", "Opening system-browser sign-in; native callback is not registered");
-        await Launcher.LaunchUriAsync(new Uri("https://arcadegridz.com/?host=winapp&mode=signin"));
+        await Windows.System.Launcher.LaunchUriAsync(new Uri("https://arcadegridz.com/?host=winapp&mode=signin"));
         SetStartupFocus(StartupFocus.Google);
     }
 
@@ -488,9 +488,12 @@ public sealed partial class MainWindow : Window
             if (action is not null)
             {
                 e.Handled = true;
-                _ = Panel.Visibility == Visibility.Visible
-                    ? HandlePanelAction(action.Value)
-                    : HandleLauncherAction(action.Value);
+                if (startupOpen && WelcomePanel.Visibility == Visibility.Visible)
+                    HandleStartupAction(action.Value);
+                else
+                    _ = Panel.Visibility == Visibility.Visible
+                        ? HandlePanelAction(action.Value)
+                        : HandleLauncherAction(action.Value);
             }
         }
     }
