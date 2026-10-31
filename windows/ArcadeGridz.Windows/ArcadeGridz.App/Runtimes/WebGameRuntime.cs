@@ -31,7 +31,7 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
             await view.EnsureCoreWebView2Async(environment);
             view.CoreWebView2.Settings.AreDevToolsEnabled = false;
             view.CoreWebView2.Settings.IsStatusBarEnabled = false;
-            view.CoreWebView2Controller.IsInputEnabled = !consoleMode;
+            if (consoleMode) await InstallConsoleInputLockAsync();
             view.CoreWebView2.WebMessageReceived += OnMessage;
             ready = true;
             StartupLog.Write("webview", "CoreWebView2 initialized");
@@ -69,12 +69,36 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
         catch (Exception ex) { StartupLog.Exception("WebView2 message", ex); }
     }
 
+    const string ConsoleInputLockScript = """
+        (() => {
+          if (window.__arcadeGridzConsoleInputLock) return;
+          window.__arcadeGridzConsoleInputLock = true;
+          const block = event => { event.preventDefault(); event.stopImmediatePropagation(); };
+          ['keydown','keyup','keypress','mousedown','mouseup','click','dblclick','contextmenu',
+           'pointerdown','pointerup','pointermove','touchstart','touchend','wheel']
+            .forEach(type => window.addEventListener(type, block, true));
+        })();
+        """;
+
+    async Task InstallConsoleInputLockAsync()
+    {
+        try
+        {
+            await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(ConsoleInputLockScript);
+            await view.CoreWebView2.ExecuteScriptAsync(ConsoleInputLockScript);
+            StartupLog.Write("runtime", "Console input lock installed in WebView");
+        }
+        catch (Exception ex)
+        {
+            StartupLog.Exception("Install WebView console input lock", ex);
+        }
+    }
+
     public void SetConsoleMode(bool enabled)
     {
         consoleMode = enabled;
-        if (ready)
-            view.CoreWebView2Controller.IsInputEnabled = !enabled;
-        StartupLog.Write("runtime", $"Web input enabled={!enabled}");
+        if (ready && enabled) _ = InstallConsoleInputLockAsync();
+        StartupLog.Write("runtime", $"Console mode={enabled}");
     }
 
     public async Task ExitAsync()
