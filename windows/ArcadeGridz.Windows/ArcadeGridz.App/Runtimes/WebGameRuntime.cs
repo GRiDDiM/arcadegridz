@@ -10,6 +10,8 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
 {
     bool ready;
     bool consoleMode;
+    TaskCompletionSource? desktopReady;
+    TaskCompletionSource? desktopAuthCompleted;
     public event EventHandler? Exited;
     public event Action<string>? Status;
 
@@ -64,9 +66,25 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
             using var document = JsonDocument.Parse(e.WebMessageAsJson);
             var type = document.RootElement.GetProperty("type").GetString() ?? "";
             Status?.Invoke(type);
-            if (type == "exited") Exited?.Invoke(this, EventArgs.Empty);
+            if (type == "desktop-ready") desktopReady?.TrySetResult();
+            else if (type == "auth") desktopAuthCompleted?.TrySetResult();
+            else if (type == "exited") Exited?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex) { StartupLog.Exception("WebView2 message", ex); }
+    }
+
+    public async Task ImportDesktopSessionAsync(string token, CancellationToken cancellationToken = default)
+    {
+        await EnsureAsync();
+        desktopReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        desktopAuthCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        view.Source = new Uri("https://arcadegridz.com/?host=winapp&mode=desktop-complete");
+        await desktopReady.Task.WaitAsync(TimeSpan.FromSeconds(20), cancellationToken);
+        view.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "desktop-auth", token }));
+        await desktopAuthCompleted.Task.WaitAsync(TimeSpan.FromSeconds(20), cancellationToken);
+        desktopReady = null;
+        desktopAuthCompleted = null;
+        StartupLog.Write("auth", "Desktop session imported into persistent WebView profile");
     }
 
     const string ConsoleInputLockScript = """
