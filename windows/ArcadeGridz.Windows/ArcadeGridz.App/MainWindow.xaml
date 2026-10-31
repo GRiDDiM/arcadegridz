@@ -75,7 +75,7 @@
      <StackPanel VerticalAlignment="Center" Spacing="8">
       <TextBlock Text="ENTER THE GRID" HorizontalAlignment="Center" Foreground="#FF55E8FF" FontFamily="Consolas" FontWeight="Black" FontSize="28" Margin="0,0,0,14"/>
       <Button x:Name="StartupEmailButton" Content="EMAIL / PASSWORD" HorizontalAlignment="Stretch" MinHeight="58" Click="StartupEmail_Click"/>
-      <Button x:Name="StartupGoogleButton" Content="GOOGLE • SYSTEM BROWSER" HorizontalAlignment="Stretch" MinHeight="58" Click="StartupGoogle_Click"/>
+      <Button x:Name="StartupGoogleButton" Content="CONTINUE WITH GOOGLE" HorizontalAlignment="Stretch" MinHeight="58" Click="StartupGoogle_Click"/>
       <Button x:Name="StartupGuestButton" Content="CONTINUE AS GUEST" HorizontalAlignment="Stretch" MinHeight="58" Click="StartupGuest_Click"/>
       <TextBlock x:Name="StartupStatus" Text="A  SELECT     D-PAD  NAVIGATE" Foreground="#FF8F83AA" FontFamily="Consolas" TextWrapping="Wrap" TextAlignment="Center" Margin="4,14,4,0"/>
      </StackPanel>
