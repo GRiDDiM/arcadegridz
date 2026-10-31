@@ -9,6 +9,7 @@ namespace ArcadeGridz.App.Runtimes;
 public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
 {
     bool ready;
+    bool consoleMode;
     public event EventHandler? Exited;
     public event Action<string>? Status;
 
@@ -30,6 +31,7 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
             await view.EnsureCoreWebView2Async(environment);
             view.CoreWebView2.Settings.AreDevToolsEnabled = false;
             view.CoreWebView2.Settings.IsStatusBarEnabled = false;
+            view.CoreWebView2Controller.IsInputEnabled = !consoleMode;
             view.CoreWebView2.WebMessageReceived += OnMessage;
             ready = true;
             StartupLog.Write("webview", "CoreWebView2 initialized");
@@ -65,6 +67,14 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
             if (type == "exited") Exited?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex) { StartupLog.Exception("WebView2 message", ex); }
+    }
+
+    public void SetConsoleMode(bool enabled)
+    {
+        consoleMode = enabled;
+        if (ready)
+            view.CoreWebView2Controller.IsInputEnabled = !enabled;
+        StartupLog.Write("runtime", $"Web input enabled={!enabled}");
     }
 
     public async Task ExitAsync()
