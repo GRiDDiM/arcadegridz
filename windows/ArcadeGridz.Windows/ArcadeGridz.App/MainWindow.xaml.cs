@@ -132,7 +132,7 @@ public sealed partial class MainWindow : Window
             splashTimer.IsRepeating = false;
             splashTimer.Tick += (_, _) => ShowWelcome();
             splashTimer.Start();
-            StartupLog.Write("window", "Catalog ready; splash active");
+            StartupLog.Write("window", "Launcher ready; splash active");
         }
         catch (Exception ex)
         {
