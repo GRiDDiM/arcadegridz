@@ -16,14 +16,56 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "8.0.x" }
       - uses: microsoft/setup-msbuild@v2
-      - run: msbuild ArcadeGridz.App/ArcadeGridz.App.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=true /p:PublishDir=${{ github.workspace }}\\windows\\ArcadeGridz.Windows\\publish\\ArcadeGridz\\
-      - name: Inspect generated XAML resources
+      - name: Generate Windows icon from official favicon
         shell: pwsh
         run: |
-          Write-Host "Publish resource files:"
-          Get-ChildItem publish/ArcadeGridz -Recurse -File | Where-Object { $_.Extension -in '.pri','.xbf' } | ForEach-Object FullName
-          Write-Host "Intermediate resource files:"
-          Get-ChildItem ArcadeGridz.App/obj -Recurse -File | Where-Object { $_.Extension -in '.pri','.xbf' } | ForEach-Object FullName
+          New-Item -ItemType Directory -Force ArcadeGridz.App/Assets | Out-Null
+          Invoke-WebRequest https://arcadegridz.com/assets/favicon_arcadegridz_090826.png -OutFile ArcadeGridz.App/Assets/favicon.png
+          $actual = (Get-FileHash ArcadeGridz.App/Assets/favicon.png -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne "d71dcc6a80734f409e7833c21b5e6a9a517252277df5652f9ad7b2ffea60a4cf") { throw "Official favicon hash changed: $actual" }
+          python -m pip install --disable-pip-version-check pillow
+          python -c "from PIL import Image; im=Image.open(r'ArcadeGridz.App/Assets/favicon.png').convert('RGBA'); im.save(r'ArcadeGridz.App/Assets/ArcadeGridz.ico',format='ICO',sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+      - run: msbuild ArcadeGridz.App/ArcadeGridz.App.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=true /p:PublishDir=${{ github.workspace }}\\windows\\ArcadeGridz.Windows\\publish\\ArcadeGridz\\
+      - name: Validate unpackaged runtime payload
+        shell: pwsh
+        run: |
+          $required = @(
+            "ArcadeGridz.App.exe",
+            "ArcadeGridz.App.dll",
+            "App.xbf",
+            "MainWindow.xbf",
+            "Assets/ArcadeGridz.ico",
+            "Microsoft.WindowsAppRuntime.dll",
+            "WebView2Loader.dll"
+          )
+          foreach ($file in $required) {
+            if (-not (Test-Path (Join-Path "publish/ArcadeGridz" $file))) { throw "Missing required runtime file: $file" }
+          }
+      - name: Smoke-test native launcher startup
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:LOCALAPPDATA "ArcadeGridz/logs/startup.log"
+          Remove-Item $log -Force -ErrorAction SilentlyContinue
+          $process = Start-Process -FilePath (Resolve-Path "publish/ArcadeGridz/ArcadeGridz.App.exe") -PassThru
+          try {
+            $deadline = (Get-Date).AddSeconds(30)
+            do {
+              Start-Sleep -Milliseconds 500
+              $process.Refresh()
+              if ($process.HasExited) {
+                $content = if (Test-Path $log) { Get-Content $log -Raw } else { "<startup log missing>" }
+                throw "Launcher exited during startup with $($process.ExitCode). Log:
+$content"
+              }
+              $content = if (Test-Path $log) { Get-Content $log -Raw } else { "" }
+            } until ($content -match "Launcher ready" -or (Get-Date) -gt $deadline)
+            if ($content -notmatch "Launcher ready") { throw "Launcher did not reach ready state. Log:
+$content" }
+            Write-Host $content
+          }
+          finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
       - name: Show WinUI compiler diagnostics
         if: failure()
         shell: pwsh
