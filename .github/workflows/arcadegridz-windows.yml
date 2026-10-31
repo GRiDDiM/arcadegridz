@@ -54,13 +54,11 @@ jobs:
               $process.Refresh()
               if ($process.HasExited) {
                 $content = if (Test-Path $log) { Get-Content $log -Raw } else { "<startup log missing>" }
-                throw "Launcher exited during startup with $($process.ExitCode). Log:
-$content"
+                throw ("Launcher exited during startup with $($process.ExitCode). Log: " + [Environment]::NewLine + $content)
               }
               $content = if (Test-Path $log) { Get-Content $log -Raw } else { "" }
             } until ($content -match "Launcher ready" -or (Get-Date) -gt $deadline)
-            if ($content -notmatch "Launcher ready") { throw "Launcher did not reach ready state. Log:
-$content" }
+            if ($content -notmatch "Launcher ready") { throw ("Launcher did not reach ready state. Log: " + [Environment]::NewLine + $content) }
             Write-Host $content
           }
           finally {
