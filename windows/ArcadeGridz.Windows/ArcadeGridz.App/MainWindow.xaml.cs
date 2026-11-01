@@ -39,6 +39,7 @@ public sealed partial class MainWindow : Window
     bool initializingSettings;
     Microsoft.UI.Dispatching.DispatcherQueueTimer? clockTimer;
     Microsoft.UI.Dispatching.DispatcherQueueTimer? splashTimer;
+    CancellationTokenSource? heroLoad;
 
     public MainWindow()
     {
@@ -203,14 +204,29 @@ public sealed partial class MainWindow : Window
 
     async Task ShowHero(GameEntry g)
     {
+        heroLoad?.Cancel();
+        heroLoad?.Dispose();
+        heroLoad = new CancellationTokenSource();
+        var cancellationToken = heroLoad.Token;
+
+        // Update the selection immediately. Network score loading is debounced so
+        // holding a direction never starts one request per repeated selection.
         HeroName.Text = g.Name;
         HeroMeta.Text = $"{g.Genre}  •  {g.Status.ToUpperInvariant()}  •  {g.Runtime.Type.ToUpperInvariant()}";
         HeroDescription.Text = g.Description;
         PlayButton.IsEnabled = g.Playable;
         PlayButton.Content = g.Playable ? "A  PLAY" : "UNAVAILABLE";
+        ScoreList.ItemsSource = null;
         try { HeroArt.Source = new BitmapImage(new Uri(g.Art)); } catch { HeroArt.Source = null; }
-        var scores = await leaderboards.TopAsync(g.Id);
-        ScoreList.ItemsSource = scores.Select((s, i) => $"{i + 1}. {s.Name}  {s.Score:N0}  [{s.Tag}]");
+
+        try
+        {
+            await Task.Delay(120, cancellationToken);
+            var scores = await leaderboards.TopAsync(g.Id);
+            cancellationToken.ThrowIfCancellationRequested();
+            ScoreList.ItemsSource = scores.Select((s, i) => $"{i + 1}. {s.Name}  {s.Score:N0}  [{s.Tag}]");
+        }
+        catch (OperationCanceledException) { }
     }
 
     void GameGrid_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (GameGrid.SelectedItem is GameEntry g) _ = ShowHero(g); }
@@ -272,8 +288,10 @@ public sealed partial class MainWindow : Window
         SetLauncherFocus(LauncherFocus.GameGrid);
     }
 
-    void PadPressed(PadAction action) => DispatcherQueue.TryEnqueue(async () =>
+    async void PadPressed(PadAction action)
     {
+        // GamepadService is driven by a DispatcherQueueTimer, so this already runs
+        // on the UI thread. Handling it directly avoids a second queued UI hop.
         if (startupOpen && WelcomePanel.Visibility == Visibility.Visible)
         {
             HandleStartupAction(action);
@@ -286,7 +304,7 @@ public sealed partial class MainWindow : Window
         else if (action == PadAction.RB) ChangeCategory(1);
         else if (action == PadAction.B) ReturnToLauncher();
         else await HandleLauncherAction(action);
-    });
+    }
 
     void ShowWelcome()
     {
