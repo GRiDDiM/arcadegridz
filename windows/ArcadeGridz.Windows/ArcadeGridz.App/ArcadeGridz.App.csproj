@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- ArcadeGridz Windows v0.1.8 release -->
+  <!-- ArcadeGridz Windows v0.1.8: validates the persistent web session before showing sign-in. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
