@@ -135,12 +135,23 @@ public sealed partial class MainWindow : Window
             ClockText.Text = DateTime.Now.ToString("h:mm tt");
             clockTimer.Start();
             await RefreshCatalog();
+            var hasPersistedSession = await EnsureWebRuntime().HasPersistedSessionAsync();
             splashTimer = DispatcherQueue.CreateTimer();
             splashTimer.Interval = TimeSpan.FromMilliseconds(1350);
             splashTimer.IsRepeating = false;
-            splashTimer.Tick += (_, _) => ShowWelcome();
+            splashTimer.Tick += (_, _) =>
+            {
+                if (hasPersistedSession)
+                {
+                    NetworkState.Text = "SIGNED IN • GRID ONLINE";
+                    EnterLauncher(false);
+                }
+                else ShowWelcome();
+            };
             splashTimer.Start();
-            StartupLog.Write("window", "Launcher ready; splash active");
+            StartupLog.Write("window", hasPersistedSession
+                ? "Launcher ready; valid session will bypass welcome"
+                : "Launcher ready; splash active");
         }
         catch (Exception ex)
         {
