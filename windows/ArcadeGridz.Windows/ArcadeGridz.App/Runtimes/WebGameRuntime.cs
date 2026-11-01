@@ -12,6 +12,7 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
     bool consoleMode;
     TaskCompletionSource? desktopReady;
     TaskCompletionSource? desktopAuthCompleted;
+    TaskCompletionSource<bool>? sessionCheck;
     public event EventHandler? Exited;
     public event Action<string>? Status;
 
@@ -66,11 +67,47 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
             using var document = JsonDocument.Parse(e.WebMessageAsJson);
             var type = document.RootElement.GetProperty("type").GetString() ?? "";
             Status?.Invoke(type);
-            if (type == "desktop-ready") desktopReady?.TrySetResult();
+            if (type == "hello")
+            {
+                var signedIn = document.RootElement.TryGetProperty("signedIn", out var signedInValue) &&
+                    signedInValue.ValueKind == JsonValueKind.True;
+                var hasAccount = document.RootElement.TryGetProperty("account", out var accountValue) &&
+                    accountValue.ValueKind == JsonValueKind.Object;
+                sessionCheck?.TrySetResult(signedIn && hasAccount);
+            }
+            else if (type == "desktop-ready") desktopReady?.TrySetResult();
             else if (type == "auth") desktopAuthCompleted?.TrySetResult();
             else if (type == "exited") Exited?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex) { StartupLog.Exception("WebView2 message", ex); }
+    }
+
+    public async Task<bool> HasPersistedSessionAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureAsync();
+        sessionCheck = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            StartupLog.Write("auth", "Checking persistent WebView session");
+            view.Source = new Uri("https://arcadegridz.com/?host=winapp&mode=session-check");
+            var signedIn = await sessionCheck.Task.WaitAsync(TimeSpan.FromSeconds(12), cancellationToken);
+            StartupLog.Write("auth", signedIn ? "Persistent session is valid" : "No valid persistent session");
+            return signedIn;
+        }
+        catch (TimeoutException)
+        {
+            StartupLog.Write("auth", "Persistent session check timed out; showing welcome screen");
+            return false;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            StartupLog.Exception("Persistent session check", ex);
+            return false;
+        }
+        finally
+        {
+            sessionCheck = null;
+        }
     }
 
     public async Task ImportDesktopSessionAsync(string token, CancellationToken cancellationToken = default)
