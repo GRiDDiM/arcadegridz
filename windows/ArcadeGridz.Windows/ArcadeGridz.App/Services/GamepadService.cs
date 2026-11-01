@@ -7,11 +7,23 @@ public enum PadAction { Up, Down, Left, Right, A, B, LB, RB, ExitCombo }
 
 public sealed class GamepadService : IDisposable
 {
+    const int PollMilliseconds = 16;
+    const long InitialRepeatDelayMilliseconds = 320;
+    const long RepeatIntervalMilliseconds = 105;
+    const double AxisPressLow = 0.28;
+    const double AxisReleaseLow = 0.42;
+    const double AxisPressHigh = 0.72;
+    const double AxisReleaseHigh = 0.58;
+
     readonly DispatcherQueueTimer timer;
+    readonly bool[] directionHeld = new bool[4];
+    readonly long[] nextRepeatAt = new long[4];
     GamepadButtons previous;
     RawGameController? activeRaw;
+    bool[] rawButtons = [];
     bool[] previousRawButtons = [];
-    readonly bool[] previousDirections = new bool[4];
+    GameControllerSwitchPosition[] rawSwitches = [];
+    double[] rawAxes = [];
     DateTime comboSince;
     bool comboSent;
     bool loggedNoController;
@@ -21,7 +33,7 @@ public sealed class GamepadService : IDisposable
     public GamepadService(DispatcherQueue queue)
     {
         timer = queue.CreateTimer();
-        timer.Interval = TimeSpan.FromMilliseconds(33);
+        timer.Interval = TimeSpan.FromMilliseconds(PollMilliseconds);
         timer.Tick += Tick;
         timer.Start();
     }
@@ -58,14 +70,14 @@ public sealed class GamepadService : IDisposable
             ResetRaw();
 
         var buttons = pad.GetCurrentReading().Buttons;
-        Emit(buttons, GamepadButtons.DPadUp, PadAction.Up);
-        Emit(buttons, GamepadButtons.DPadDown, PadAction.Down);
-        Emit(buttons, GamepadButtons.DPadLeft, PadAction.Left);
-        Emit(buttons, GamepadButtons.DPadRight, PadAction.Right);
-        Emit(buttons, GamepadButtons.A, PadAction.A);
-        Emit(buttons, GamepadButtons.B, PadAction.B);
-        Emit(buttons, GamepadButtons.LeftShoulder, PadAction.LB);
-        Emit(buttons, GamepadButtons.RightShoulder, PadAction.RB);
+        EmitDirection(0, (buttons & GamepadButtons.DPadUp) != 0, PadAction.Up);
+        EmitDirection(1, (buttons & GamepadButtons.DPadDown) != 0, PadAction.Down);
+        EmitDirection(2, (buttons & GamepadButtons.DPadLeft) != 0, PadAction.Left);
+        EmitDirection(3, (buttons & GamepadButtons.DPadRight) != 0, PadAction.Right);
+        EmitButton(buttons, GamepadButtons.A, PadAction.A);
+        EmitButton(buttons, GamepadButtons.B, PadAction.B);
+        EmitButton(buttons, GamepadButtons.LeftShoulder, PadAction.LB);
+        EmitButton(buttons, GamepadButtons.RightShoulder, PadAction.RB);
         UpdateExitCombo((buttons & (GamepadButtons.View | GamepadButtons.Menu)) ==
                         (GamepadButtons.View | GamepadButtons.Menu));
         previous = buttons;
@@ -76,39 +88,37 @@ public sealed class GamepadService : IDisposable
         if (!ReferenceEquals(activeRaw, raw))
         {
             activeRaw = raw;
+            rawButtons = new bool[(int)raw.ButtonCount];
             previousRawButtons = new bool[(int)raw.ButtonCount];
-            Array.Clear(previousDirections);
+            rawSwitches = new GameControllerSwitchPosition[(int)raw.SwitchCount];
+            rawAxes = new double[(int)raw.AxisCount];
+            ResetDirections();
             StartupLog.Write("controller",
                 $"Raw controller connected: name={raw.DisplayName}; buttons={raw.ButtonCount}; switches={raw.SwitchCount}; axes={raw.AxisCount}");
             for (var i = 0; i < (int)raw.ButtonCount; i++)
                 StartupLog.Write("controller", $"button[{i}] label={raw.GetButtonLabel(i)}");
         }
 
-        var buttons = new bool[(int)raw.ButtonCount];
-        var switches = new GameControllerSwitchPosition[(int)raw.SwitchCount];
-        var axes = new double[(int)raw.AxisCount];
-        raw.GetCurrentReading(buttons, switches, axes);
+        raw.GetCurrentReading(rawButtons, rawSwitches, rawAxes);
 
-        // Most inexpensive SNES-style DirectInput adapters expose their D-pad
-        // as the first two 0..1 axes. Prefer an actual POV switch when present.
         var up = false;
         var down = false;
         var left = false;
         var right = false;
-        if (switches.Length > 0)
+        if (rawSwitches.Length > 0)
         {
-            var position = switches[0];
+            var position = rawSwitches[0];
             up = position is GameControllerSwitchPosition.Up or GameControllerSwitchPosition.UpLeft or GameControllerSwitchPosition.UpRight;
             down = position is GameControllerSwitchPosition.Down or GameControllerSwitchPosition.DownLeft or GameControllerSwitchPosition.DownRight;
             left = position is GameControllerSwitchPosition.Left or GameControllerSwitchPosition.UpLeft or GameControllerSwitchPosition.DownLeft;
             right = position is GameControllerSwitchPosition.Right or GameControllerSwitchPosition.UpRight or GameControllerSwitchPosition.DownRight;
         }
-        else if (axes.Length >= 2)
+        else if (rawAxes.Length >= 2)
         {
-            left = axes[0] <= 0.25;
-            right = axes[0] >= 0.75;
-            up = axes[1] <= 0.25;
-            down = axes[1] >= 0.75;
+            left = LowAxisActive(rawAxes[0], directionHeld[2]);
+            right = HighAxisActive(rawAxes[0], directionHeld[3]);
+            up = LowAxisActive(rawAxes[1], directionHeld[0]);
+            down = HighAxisActive(rawAxes[1], directionHeld[1]);
         }
 
         EmitDirection(0, up, PadAction.Up);
@@ -116,41 +126,64 @@ public sealed class GamepadService : IDisposable
         EmitDirection(2, left, PadAction.Left);
         EmitDirection(3, right, PadAction.Right);
 
-        // Standard 8-button USB/SNES DirectInput order (zero-based):
-        // face 0..3, shoulders 4..5, Select 6, Start 7.
-        EmitRawButton(buttons, 0, PadAction.A);
-        EmitRawButton(buttons, 1, PadAction.B);
-        EmitRawButton(buttons, 4, PadAction.LB);
-        EmitRawButton(buttons, 5, PadAction.RB);
-        UpdateExitCombo(IsPressed(buttons, 6) && IsPressed(buttons, 7));
+        EmitRawButton(0, PadAction.A);
+        EmitRawButton(1, PadAction.B);
+        EmitRawButton(4, PadAction.LB);
+        EmitRawButton(5, PadAction.RB);
+        UpdateExitCombo(IsPressed(rawButtons, 6) && IsPressed(rawButtons, 7));
 
-        for (var i = 0; i < buttons.Length; i++)
+        for (var i = 0; i < rawButtons.Length; i++)
         {
-            if (buttons[i] && (i >= previousRawButtons.Length || !previousRawButtons[i]))
+            if (rawButtons[i] && !previousRawButtons[i])
                 StartupLog.Write("controller", $"raw button pressed: index={i}; label={raw.GetButtonLabel(i)}");
         }
 
-        previousRawButtons = buttons;
+        Array.Copy(rawButtons, previousRawButtons, rawButtons.Length);
     }
 
-    void Emit(GamepadButtons buttons, GamepadButtons mask, PadAction action)
+    static bool LowAxisActive(double value, bool wasHeld) =>
+        wasHeld ? value < AxisReleaseLow : value <= AxisPressLow;
+
+    static bool HighAxisActive(double value, bool wasHeld) =>
+        wasHeld ? value > AxisReleaseHigh : value >= AxisPressHigh;
+
+    void EmitButton(GamepadButtons buttons, GamepadButtons mask, PadAction action)
     {
         if ((buttons & mask) != 0 && (previous & mask) == 0)
             Pressed?.Invoke(action);
     }
 
-    void EmitRawButton(bool[] buttons, int index, PadAction action)
+    void EmitRawButton(int index, PadAction action)
     {
-        if (IsPressed(buttons, index) &&
-            (index >= previousRawButtons.Length || !previousRawButtons[index]))
+        if (IsPressed(rawButtons, index) && !IsPressed(previousRawButtons, index))
             Pressed?.Invoke(action);
     }
 
     void EmitDirection(int index, bool active, PadAction action)
     {
-        if (active && !previousDirections[index])
+        var now = Environment.TickCount64;
+        if (!active)
+        {
+            directionHeld[index] = false;
+            nextRepeatAt[index] = 0;
+            return;
+        }
+
+        if (!directionHeld[index])
+        {
+            directionHeld[index] = true;
+            nextRepeatAt[index] = now + InitialRepeatDelayMilliseconds;
             Pressed?.Invoke(action);
-        previousDirections[index] = active;
+            return;
+        }
+
+        if (now < nextRepeatAt[index])
+            return;
+
+        // Emit at most once per poll. Reset from the current time instead of
+        // catching up after a busy UI frame, which prevents queued bursts.
+        nextRepeatAt[index] = now + RepeatIntervalMilliseconds;
+        Pressed?.Invoke(action);
     }
 
     void UpdateExitCombo(bool held)
@@ -175,11 +208,20 @@ public sealed class GamepadService : IDisposable
     static bool IsPressed(bool[] buttons, int index) =>
         index >= 0 && index < buttons.Length && buttons[index];
 
+    void ResetDirections()
+    {
+        Array.Clear(directionHeld);
+        Array.Clear(nextRepeatAt);
+    }
+
     void ResetRaw()
     {
         activeRaw = null;
+        rawButtons = [];
         previousRawButtons = [];
-        Array.Clear(previousDirections);
+        rawSwitches = [];
+        rawAxes = [];
+        ResetDirections();
         comboSince = default;
         comboSent = false;
     }
