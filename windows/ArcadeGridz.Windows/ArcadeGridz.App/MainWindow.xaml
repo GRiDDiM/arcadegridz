@@ -1,85 +1,389 @@
-<Window x:Class="ArcadeGridz.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:m="using:ArcadeGridz.App.Models" Title="ArcadeGridz">
- <Grid x:Name="Root" Background="#FF050313" PreviewKeyDown="Root_KeyDown">
+<Window x:Class="ArcadeGridz.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:m="using:ArcadeGridz.App.Models" xmlns:local="using:ArcadeGridz.App" Title="ArcadeGridz">
+ <Grid x:Name="Root" Background="{StaticResource AgInk}" PreviewKeyDown="Root_KeyDown">
   <Grid.Resources>
-   <Style TargetType="Button"><Setter Property="CornerRadius" Value="16"/><Setter Property="BorderThickness" Value="3"/><Setter Property="BorderBrush" Value="#FF183A58"/><Setter Property="Background" Value="#FF0C0923"/><Setter Property="Foreground" Value="#FFD7D7EB"/><Setter Property="FontFamily" Value="Consolas"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Padding" Value="24,12"/><Setter Property="Margin" Value="7"/></Style>
+   <Storyboard x:Key="SplashPulse" RepeatBehavior="Forever" AutoReverse="True">
+    <DoubleAnimation Storyboard.TargetName="SplashStatus" Storyboard.TargetProperty="Opacity" From="1" To="0.25" Duration="0:0:0.6"/>
+    <DoubleAnimation Storyboard.TargetName="SplashGlow" Storyboard.TargetProperty="Opacity" From="0.35" To="1" Duration="0:0:0.6"/>
+   </Storyboard>
+   <Storyboard x:Key="CoverPulse" RepeatBehavior="Forever" AutoReverse="True">
+    <DoubleAnimation Storyboard.TargetName="GameCoverLoading" Storyboard.TargetProperty="Opacity" From="1" To="0.3" Duration="0:0:0.55"/>
+   </Storyboard>
+   <Storyboard x:Key="InsertCoinBlink" RepeatBehavior="Forever">
+    <DoubleAnimationUsingKeyFrames Storyboard.TargetName="InsertCoin" Storyboard.TargetProperty="Opacity">
+     <DiscreteDoubleKeyFrame KeyTime="0:0:0" Value="1"/>
+     <DiscreteDoubleKeyFrame KeyTime="0:0:0.7" Value="0.15"/>
+     <DiscreteDoubleKeyFrame KeyTime="0:0:1.1" Value="1"/>
+    </DoubleAnimationUsingKeyFrames>
+   </Storyboard>
+
+   <!-- Game tile: art card that lights up with a neon ring and grows when selected -->
+   <Style x:Key="TileItemStyle" TargetType="GridViewItem">
+    <Setter Property="Margin" Value="0"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="UseSystemFocusVisuals" Value="False"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+    <Setter Property="Template">
+     <Setter.Value>
+      <ControlTemplate TargetType="GridViewItem">
+       <Grid x:Name="TileRoot" Margin="10" RenderTransformOrigin="0.5,0.5">
+        <Grid.RenderTransform><ScaleTransform x:Name="TileScale" ScaleX="1" ScaleY="1"/></Grid.RenderTransform>
+        <Border x:Name="TileGlow" Margin="-8" CornerRadius="24" BorderThickness="8" BorderBrush="#665EE7FF" Opacity="0"/>
+        <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"/>
+        <Border x:Name="TileRing" CornerRadius="18" BorderThickness="3" BorderBrush="{StaticResource AgCyan}" Opacity="0"/>
+        <VisualStateManager.VisualStateGroups>
+         <VisualStateGroup x:Name="CommonStates">
+          <VisualStateGroup.Transitions><VisualTransition GeneratedDuration="0:0:0.12"/></VisualStateGroup.Transitions>
+          <VisualState x:Name="Normal"/>
+          <VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="TileRing.Opacity" Value="0.5"/></VisualState.Setters></VisualState>
+          <VisualState x:Name="Pressed"><VisualState.Setters><Setter Target="TileRing.Opacity" Value="0.7"/></VisualState.Setters></VisualState>
+          <VisualState x:Name="Selected">
+           <Storyboard>
+            <DoubleAnimation Storyboard.TargetName="TileScale" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.12"/>
+            <DoubleAnimation Storyboard.TargetName="TileScale" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.12"/>
+            <DoubleAnimation Storyboard.TargetName="TileRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12"/>
+            <DoubleAnimation Storyboard.TargetName="TileGlow" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12"/>
+           </Storyboard>
+          </VisualState>
+          <VisualState x:Name="PointerOverSelected">
+           <Storyboard>
+            <DoubleAnimation Storyboard.TargetName="TileScale" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.12"/>
+            <DoubleAnimation Storyboard.TargetName="TileScale" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.12"/>
+            <DoubleAnimation Storyboard.TargetName="TileRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12"/>
+            <DoubleAnimation Storyboard.TargetName="TileGlow" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12"/>
+           </Storyboard>
+          </VisualState>
+          <VisualState x:Name="PressedSelected">
+           <Storyboard>
+            <DoubleAnimation Storyboard.TargetName="TileScale" Storyboard.TargetProperty="ScaleX" To="1.03" Duration="0:0:0.08"/>
+            <DoubleAnimation Storyboard.TargetName="TileScale" Storyboard.TargetProperty="ScaleY" To="1.03" Duration="0:0:0.08"/>
+            <DoubleAnimation Storyboard.TargetName="TileRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.08"/>
+            <DoubleAnimation Storyboard.TargetName="TileGlow" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.08"/>
+           </Storyboard>
+          </VisualState>
+         </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+       </Grid>
+      </ControlTemplate>
+     </Setter.Value>
+    </Setter>
+   </Style>
   </Grid.Resources>
+
+  <!-- ===== Backdrop: 80s arcade hall, neon haze, scanlines ===== -->
+  <Grid x:Name="Backdrop" IsHitTestVisible="False">
+   <Image Source="ms-appx:///Assets/arcadegridz-hall.jpg" Stretch="UniformToFill" Opacity="0.5"/>
+   <Rectangle>
+    <Rectangle.Fill>
+     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+      <GradientStop Color="#E607051A" Offset="0"/>
+      <GradientStop Color="#9907051A" Offset="0.3"/>
+      <GradientStop Color="#B307051A" Offset="0.65"/>
+      <GradientStop Color="#FA07051A" Offset="1"/>
+     </LinearGradientBrush>
+    </Rectangle.Fill>
+   </Rectangle>
+   <Rectangle>
+    <Rectangle.Fill>
+     <RadialGradientBrush Center="0.88,0.05" GradientOrigin="0.88,0.05" RadiusX="0.55" RadiusY="0.75">
+      <GradientStop Color="#55FF3AA7" Offset="0"/>
+      <GradientStop Color="#00FF3AA7" Offset="1"/>
+     </RadialGradientBrush>
+    </Rectangle.Fill>
+   </Rectangle>
+   <Rectangle>
+    <Rectangle.Fill>
+     <RadialGradientBrush Center="0.08,1" GradientOrigin="0.08,1" RadiusX="0.6" RadiusY="0.8">
+      <GradientStop Color="#445EE7FF" Offset="0"/>
+      <GradientStop Color="#005EE7FF" Offset="1"/>
+     </RadialGradientBrush>
+    </Rectangle.Fill>
+   </Rectangle>
+   <Image Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.6"/>
+   <Rectangle Height="4" VerticalAlignment="Top" Fill="{StaticResource AgNeonGradient}"/>
+  </Grid>
+
+  <!-- ===== Game browser ===== -->
   <Grid x:Name="Launcher" Visibility="Collapsed">
-   <Grid.RowDefinitions><RowDefinition Height="126"/><RowDefinition Height="82"/><RowDefinition Height="*"/><RowDefinition Height="62"/></Grid.RowDefinitions>
-   <Grid Grid.Row="0" Margin="34,18,34,4">
-    <Grid.ColumnDefinitions><ColumnDefinition Width="1*"/><ColumnDefinition Width="1.6*"/><ColumnDefinition Width="1*"/></Grid.ColumnDefinitions>
-    <StackPanel VerticalAlignment="Center"><TextBlock Text="ARCADEGRIDZ" Foreground="#FF66DEFF" FontFamily="Consolas" FontWeight="Black" FontSize="34" CharacterSpacing="105"/><TextBlock Text="NATIVE ARCADE LAUNCHER" Foreground="#FF8EE8FF" FontFamily="Consolas" FontWeight="Bold" Margin="0,8,0,0"/></StackPanel>
-    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"><Button x:Name="PreviousCategoryButton" Content="LB" Padding="12,7" CornerRadius="8" Click="PreviousCategory_Click"/><Border Background="#FF55E8FF" CornerRadius="28" Padding="24,13" Margin="8,0"><TextBlock x:Name="CategoryLabel" Text="ALL GAMES" Foreground="#FF050313" FontFamily="Consolas" FontSize="20" FontWeight="Black"/></Border><Button x:Name="NextCategoryButton" Content="RB" Padding="12,7" CornerRadius="8" Click="NextCategory_Click"/></StackPanel>
-    <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center"><TextBlock x:Name="ClockText" Text="--:--" Foreground="#FFD7D7EB" FontFamily="Consolas" FontSize="22" FontWeight="Bold" HorizontalAlignment="Right"/><StackPanel Orientation="Horizontal"><TextBlock x:Name="NetworkState" Text="SYNCING GRID..." Foreground="#FFB28BFF" VerticalAlignment="Center" Margin="0,0,8,0"/><Button x:Name="SignInButton" Content="SIGN IN" Padding="12,6" Click="SignIn_Click"/></StackPanel></StackPanel>
+   <Grid.RowDefinitions><RowDefinition Height="118"/><RowDefinition Height="78"/><RowDefinition Height="*"/><RowDefinition Height="66"/></Grid.RowDefinitions>
+
+   <!-- Header: logo / genre switcher / clock + account -->
+   <Grid Grid.Row="0" Margin="40,16,40,0">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="1*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="1*"/></Grid.ColumnDefinitions>
+    <Image Source="ms-appx:///Assets/arcadegridz-logo.png" Height="86" HorizontalAlignment="Left" VerticalAlignment="Center" Stretch="Uniform"/>
+    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+     <Button x:Name="PreviousCategoryButton" Content="LB" FontSize="11" Padding="14,10" CornerRadius="10" Click="PreviousCategory_Click"/>
+     <Grid Margin="8,0" MinWidth="300">
+      <Border CornerRadius="30" Margin="-6" BorderThickness="6" BorderBrush="#335EE7FF"/>
+      <Border CornerRadius="26" Padding="30,14" Background="{StaticResource AgNeonGradient}">
+       <TextBlock x:Name="CategoryLabel" Text="ALL GAMES" Foreground="{StaticResource AgInk}" FontFamily="{StaticResource AgDisplay}" FontSize="24" HorizontalAlignment="Center" CharacterSpacing="40"/>
+      </Border>
+     </Grid>
+     <Button x:Name="NextCategoryButton" Content="RB" FontSize="11" Padding="14,10" CornerRadius="10" Click="NextCategory_Click"/>
+    </StackPanel>
+    <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="6">
+     <TextBlock x:Name="ClockText" Text="--:--" Foreground="{StaticResource AgText}" FontFamily="{StaticResource AgDisplay}" FontSize="30" HorizontalAlignment="Right"/>
+     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+      <Ellipse Width="9" Height="9" Fill="{StaticResource AgGreen}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+      <TextBlock x:Name="NetworkState" Text="SYNCING GRID..." Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgViolet}" Margin="0,0,6,0"/>
+      <Button x:Name="SignInButton" Content="SIGN IN" FontSize="10" Padding="14,9" Click="SignIn_Click"/>
+     </StackPanel>
+    </StackPanel>
    </Grid>
+
+   <!-- Main nav -->
    <Grid Grid.Row="1" Margin="34,0">
-    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"><Button x:Name="GamesButton" Content="GAMES" MinWidth="170" Click="Games_Click"/><Button x:Name="ScoresButton" Content="HI-SCORES" MinWidth="220" Click="Scores_Click"/><Button x:Name="OptionsButton" Content="OPTIONS" MinWidth="190" Click="Options_Click"/></StackPanel>
-    <Button x:Name="ExitButton" Content="EXIT ARCADEGRIDZ" HorizontalAlignment="Right" MinWidth="300" Click="Close_Click"/>
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+     <Button x:Name="GamesButton" MinWidth="180" Click="Games_Click"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE7FC;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="GAMES" VerticalAlignment="Center"/></StackPanel></Button>
+     <Button x:Name="ScoresButton" MinWidth="220" Click="Scores_Click"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE734;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="HI-SCORES" VerticalAlignment="Center"/></StackPanel></Button>
+     <Button x:Name="OptionsButton" MinWidth="200" Click="Options_Click"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE713;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="OPTIONS" VerticalAlignment="Center"/></StackPanel></Button>
+    </StackPanel>
+    <Button x:Name="ExitButton" Style="{StaticResource DangerButton}" HorizontalAlignment="Right" MinWidth="240" Click="Close_Click"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE7E8;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="EXIT" VerticalAlignment="Center"/></StackPanel></Button>
    </Grid>
-   <Grid Grid.Row="2" Margin="38,12,38,20">
-    <Grid.ColumnDefinitions><ColumnDefinition Width="1.05*"/><ColumnDefinition Width="0.95*"/></Grid.ColumnDefinitions>
-    <GridView x:Name="GameGrid" IsItemClickEnabled="True" ItemClick="GameGrid_ItemClick" SelectionChanged="GameGrid_SelectionChanged" SelectionMode="Single" IsTabStop="True">
-     <GridView.ItemsPanel><ItemsPanelTemplate><ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="2"/></ItemsPanelTemplate></GridView.ItemsPanel>
-     <GridView.ItemTemplate><DataTemplate x:DataType="m:GameEntry"><Border Width="230" Height="310" CornerRadius="18" BorderBrush="#FF183A58" BorderThickness="3" Margin="9" Background="#E20C0920"><Grid><Image Source="{x:Bind Art}" Stretch="UniformToFill" Opacity="0.74"/><Border VerticalAlignment="Top" HorizontalAlignment="Left" Background="#D9000711" BorderBrush="#FF55E8FF" BorderThickness="1" CornerRadius="5" Padding="8,4" Margin="10"><TextBlock Text="{x:Bind Status}" Foreground="#FF55E8FF" FontFamily="Consolas" FontSize="11" FontWeight="Bold"/></Border><Border VerticalAlignment="Bottom" Background="#E6000000" Padding="12"><TextBlock Text="{x:Bind Name}" Foreground="White" FontFamily="Consolas" FontSize="16" FontWeight="Bold" TextTrimming="CharacterEllipsis"/></Border></Grid></Border></DataTemplate></GridView.ItemTemplate>
+
+   <!-- Game grid + hero -->
+   <Grid Grid.Row="2" Margin="30,10,40,14">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="1.15*"/><ColumnDefinition Width="0.85*" MaxWidth="760"/></Grid.ColumnDefinitions>
+    <GridView x:Name="GameGrid" Padding="12" IsItemClickEnabled="True" ItemClick="GameGrid_ItemClick" SelectionChanged="GameGrid_SelectionChanged" SelectionMode="Single" IsTabStop="True" UseSystemFocusVisuals="False" ItemContainerStyle="{StaticResource TileItemStyle}" ScrollViewer.VerticalScrollBarVisibility="Hidden">
+     <GridView.ItemsPanel><ItemsPanelTemplate><ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="4" ItemWidth="224" ItemHeight="300"/></ItemsPanelTemplate></GridView.ItemsPanel>
+     <GridView.ItemTemplate>
+      <DataTemplate x:DataType="m:GameEntry">
+       <Border CornerRadius="18" BorderBrush="#335EE7FF" BorderThickness="2" Background="{StaticResource AgCardSolid}" Opacity="{x:Bind local:UiTheme.PlayableOpacity(Playable)}">
+        <Grid>
+         <Image Source="{x:Bind Art}" Stretch="UniformToFill"/>
+         <Rectangle>
+          <Rectangle.Fill>
+           <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#00000000" Offset="0.45"/>
+            <GradientStop Color="#F2050312" Offset="1"/>
+           </LinearGradientBrush>
+          </Rectangle.Fill>
+         </Rectangle>
+         <Border VerticalAlignment="Top" HorizontalAlignment="Left" Background="#D9050312" BorderBrush="{x:Bind local:UiTheme.StatusBrush(Status)}" BorderThickness="1" CornerRadius="6" Padding="8,5" Margin="12">
+          <TextBlock Text="{x:Bind local:UiTheme.Upper(Status)}" Foreground="{x:Bind local:UiTheme.StatusBrush(Status)}" FontFamily="{StaticResource AgPixel}" FontSize="8"/>
+         </Border>
+         <Border VerticalAlignment="Top" HorizontalAlignment="Right" Background="#D9050312" BorderBrush="{StaticResource AgRed}" BorderThickness="1" CornerRadius="6" Padding="8,5" Margin="12" Visibility="{x:Bind local:UiTheme.LockedVisibility(Playable)}">
+          <TextBlock Text="LOCKED" Foreground="{StaticResource AgRed}" FontFamily="{StaticResource AgPixel}" FontSize="8"/>
+         </Border>
+         <StackPanel VerticalAlignment="Bottom" Margin="14,0,14,14" Spacing="6">
+          <TextBlock Text="{x:Bind local:UiTheme.Upper(Genre)}" Foreground="{StaticResource AgCyan}" FontFamily="{StaticResource AgPixel}" FontSize="7" TextTrimming="CharacterEllipsis"/>
+          <TextBlock Text="{x:Bind Name}" Foreground="White" FontFamily="{StaticResource AgDisplay}" FontSize="19" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"/>
+         </StackPanel>
+        </Grid>
+       </Border>
+      </DataTemplate>
+     </GridView.ItemTemplate>
     </GridView>
-    <Grid Grid.Column="1" Margin="28,0,0,0">
-     <Grid.RowDefinitions><RowDefinition Height="260"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-     <Border CornerRadius="18" Background="#FF0C0923"><Image x:Name="HeroArt" Stretch="UniformToFill"/></Border>
-     <TextBlock x:Name="HeroName" Grid.Row="1" FontFamily="Consolas" FontSize="38" FontWeight="Black" Foreground="White" Margin="0,18,0,4"/>
-     <TextBlock x:Name="HeroMeta" Grid.Row="2" Foreground="#FF8EE8FF" FontFamily="Consolas" FontWeight="Bold"/>
-     <TextBlock x:Name="HeroDescription" Grid.Row="3" Foreground="#FFD7D7EB" TextWrapping="Wrap" FontSize="16" Margin="0,12"/>
-     <StackPanel Grid.Row="4"><Button x:Name="PlayButton" Content="A  PLAY" FontSize="22" HorizontalAlignment="Left" MinWidth="210" Click="Play_Click"/><TextBlock Text="HIGH SCORES" Foreground="#FFFFD83D" FontFamily="Consolas" FontWeight="Bold" FontSize="17" Margin="0,8,0,4"/><ItemsControl x:Name="ScoreList"/></StackPanel>
+
+    <Grid Grid.Column="1" Margin="24,8,0,0">
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+     <Grid>
+      <Border Margin="-8" CornerRadius="26" BorderThickness="8" BorderBrush="#225EE7FF"/>
+      <Border CornerRadius="20" Background="{StaticResource AgCardSolid}" BorderBrush="#665EE7FF" BorderThickness="2" Height="250">
+       <Grid>
+        <Image x:Name="HeroArt" Stretch="UniformToFill"/>
+        <Rectangle>
+         <Rectangle.Fill>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+           <GradientStop Color="#00000000" Offset="0.55"/>
+           <GradientStop Color="#CC050312" Offset="1"/>
+          </LinearGradientBrush>
+         </Rectangle.Fill>
+        </Rectangle>
+       </Grid>
+      </Border>
+     </Grid>
+     <TextBlock x:Name="HeroName" Grid.Row="1" FontFamily="{StaticResource AgDisplay}" FontSize="42" Foreground="White" Margin="0,22,0,6" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"/>
+     <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12">
+      <Border x:Name="HeroStatusChip" BorderBrush="{StaticResource AgCyan}" BorderThickness="1" CornerRadius="6" Padding="9,6" VerticalAlignment="Center">
+       <TextBlock x:Name="HeroStatus" Foreground="{StaticResource AgCyan}" FontFamily="{StaticResource AgPixel}" FontSize="9"/>
+      </Border>
+      <TextBlock x:Name="HeroMeta" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgCyan}"/>
+     </StackPanel>
+     <TextBlock x:Name="HeroDescription" Grid.Row="3" Foreground="#FFC9D2E2" FontFamily="{StaticResource AgBody}" TextWrapping="Wrap" FontSize="16" LineHeight="25" MaxLines="4" TextTrimming="WordEllipsis" Margin="0,14,0,10"/>
+     <Button x:Name="PlayButton" Grid.Row="4" Style="{StaticResource PlayButton}" HorizontalAlignment="Left" MinWidth="230" Click="Play_Click">
+      <StackPanel Orientation="Horizontal" Spacing="14"><FontIcon Glyph="&#xE768;" FontFamily="{StaticResource AgIcons}" FontSize="20"/><TextBlock x:Name="PlayLabel" Text="PLAY" VerticalAlignment="Center"/></StackPanel>
+     </Button>
+     <Border Grid.Row="5" Margin="0,16,0,0" Background="#B30B0820" BorderBrush="#33FFC14D" BorderThickness="1" CornerRadius="14" Padding="18,14" VerticalAlignment="Top">
+      <StackPanel Spacing="8">
+       <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE734;" FontFamily="{StaticResource AgIcons}" FontSize="14" Foreground="{StaticResource AgGold}"/><TextBlock Text="HIGH SCORES" Foreground="{StaticResource AgGold}" FontFamily="{StaticResource AgPixel}" FontSize="11" VerticalAlignment="Center"/></StackPanel>
+       <TextBlock x:Name="ScoreEmpty" Text="NO SCORES YET. BE THE FIRST." Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}" Visibility="Collapsed"/>
+       <ItemsControl x:Name="ScoreList">
+        <ItemsControl.ItemTemplate>
+         <DataTemplate x:DataType="m:ScoreRow">
+          <Grid Margin="0,3">
+           <Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+           <TextBlock Text="{x:Bind Rank}" Foreground="{StaticResource AgGold}" FontFamily="{StaticResource AgPixel}" FontSize="10" VerticalAlignment="Center"/>
+           <TextBlock Grid.Column="1" Text="{x:Bind Name}" Foreground="{StaticResource AgText}" FontFamily="{StaticResource AgBody}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+           <TextBlock Grid.Column="2" Text="{x:Bind ScoreText}" Foreground="White" FontFamily="{StaticResource AgPixel}" FontSize="10" Margin="12,0" VerticalAlignment="Center"/>
+           <Border Grid.Column="3" BorderBrush="{x:Bind local:UiTheme.TagBrush(Tag)}" BorderThickness="1" CornerRadius="4" Padding="5,3" VerticalAlignment="Center">
+            <TextBlock Text="{x:Bind Tag}" Foreground="{x:Bind local:UiTheme.TagBrush(Tag)}" FontFamily="{StaticResource AgPixel}" FontSize="6"/>
+           </Border>
+          </Grid>
+         </DataTemplate>
+        </ItemsControl.ItemTemplate>
+       </ItemsControl>
+      </StackPanel>
+     </Border>
     </Grid>
    </Grid>
-   <Border Grid.Row="3" BorderBrush="#FF18152B" BorderThickness="0,1,0,0"><Grid Margin="34,0"><TextBlock Text="HOLD SELECT + START IN A GAME TO COME BACK" VerticalAlignment="Center" Foreground="#FF8F83AA" FontFamily="Consolas" FontWeight="Bold"/><TextBlock Text="A  SELECT     B  BACK     LB / RB  GENRE     START  MENU" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="#FFD7D7EB" FontFamily="Consolas" FontWeight="Bold"/></Grid></Border>
-  </Grid>
-  <Grid x:Name="Panel" Visibility="Collapsed" Background="#FA050313">
-   <ScrollViewer VerticalScrollBarVisibility="Auto">
-    <StackPanel MaxWidth="820" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="36">
-     <TextBlock x:Name="PanelTitle" FontFamily="Consolas" FontSize="42" FontWeight="Black" Foreground="#FF55E8FF" HorizontalAlignment="Center"/>
-     <TextBlock x:Name="PanelBody" FontSize="18" Foreground="White" TextWrapping="Wrap" Margin="0,22"/>
-     <StackPanel x:Name="OptionControls" Spacing="10" Visibility="Collapsed">
-      <ToggleSwitch x:Name="ShowAllToggle" Header="DISPLAY UNSUPPORTED CATALOG GAMES (THEY WILL NOT LAUNCH)" Toggled="ShowAllToggle_Toggled"/>
-      <ToggleSwitch x:Name="StartWithWindowsToggle" Header="START ARCADEGRIDZ WITH WINDOWS" Toggled="StartWithWindowsToggle_Toggled"/>
-      <Button x:Name="ConsoleModeButton" Content="ENABLE CONSOLE MODE UNTIL RESTART" Click="ConsoleMode_Click" HorizontalAlignment="Stretch"/>
-      <TextBlock x:Name="ConsoleModeStatus" Text="Controller-only mode hides Exit ArcadeGridz and disables keyboard and pointer input until the app restarts." Foreground="#FF8F83AA" TextWrapping="Wrap"/>
+
+   <!-- Controller legend -->
+   <Border Grid.Row="3" Background="#CC050312" BorderBrush="{StaticResource AgLine}" BorderThickness="0,1,0,0">
+    <Grid Margin="40,0">
+     <TextBlock Text="HOLD SELECT + START IN A GAME TO COME BACK" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}"/>
+     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="26">
+      <StackPanel Orientation="Horizontal"><Border Style="{StaticResource PadChip}" Background="{StaticResource AgGreen}"><TextBlock Text="A" Style="{StaticResource PadChipText}"/></Border><TextBlock Text="SELECT" Style="{StaticResource PixelLabel}" FontSize="9"/></StackPanel>
+      <StackPanel Orientation="Horizontal"><Border Style="{StaticResource PadChip}" Background="{StaticResource AgRed}"><TextBlock Text="B" Style="{StaticResource PadChipText}" Foreground="White"/></Border><TextBlock Text="BACK" Style="{StaticResource PixelLabel}" FontSize="9"/></StackPanel>
+      <StackPanel Orientation="Horizontal"><Border Style="{StaticResource PadChip}" Margin="0,0,6,0"><TextBlock Text="LB" Style="{StaticResource PadChipText}" FontSize="8"/></Border><Border Style="{StaticResource PadChip}"><TextBlock Text="RB" Style="{StaticResource PadChipText}" FontSize="8"/></Border><TextBlock Text="GENRE" Style="{StaticResource PixelLabel}" FontSize="9"/></StackPanel>
      </StackPanel>
-     <TextBlock x:Name="VersionText" Foreground="#FFB28BFF" Margin="0,20,0,4" Visibility="Collapsed"/>
-     <TextBlock x:Name="UpdateStatus" Foreground="White" TextWrapping="Wrap" Margin="0,4,0,8" Visibility="Collapsed"/>
-     <ProgressBar x:Name="UpdateProgress" Minimum="0" Maximum="100" Height="6" Margin="0,4,0,8" Visibility="Collapsed"/>
-     <StackPanel x:Name="UpdateActions" Orientation="Horizontal" HorizontalAlignment="Center" Visibility="Collapsed"><Button x:Name="CheckUpdateButton" Content="CHECK FOR UPDATES" Click="CheckUpdate_Click"/><Button x:Name="InstallUpdateButton" Content="INSTALL UPDATE" Click="InstallUpdate_Click" IsEnabled="False"/></StackPanel>
-     <Button x:Name="BackButton" Content="B  BACK" Click="Back_Click" HorizontalAlignment="Stretch"/>
-    </StackPanel>
+    </Grid>
+   </Border>
+  </Grid>
+
+  <!-- ===== Options / message panel ===== -->
+  <Grid x:Name="Panel" Visibility="Collapsed" Background="#D907051A">
+   <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <Grid MaxWidth="880" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40">
+     <Border Margin="-8" CornerRadius="32" BorderThickness="8" BorderBrush="#1F5EE7FF"/>
+     <Border x:Name="PanelCard" Background="{StaticResource AgCard}" BorderBrush="#665EE7FF" BorderThickness="2" CornerRadius="26" Padding="44,40">
+      <StackPanel>
+       <Rectangle Height="4" RadiusX="2" RadiusY="2" Width="120" HorizontalAlignment="Center" Fill="{StaticResource AgNeonGradient}" Margin="0,0,0,22"/>
+       <TextBlock x:Name="PanelTitle" FontFamily="{StaticResource AgDisplay}" FontSize="46" Foreground="{StaticResource AgNeonGradient}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+       <TextBlock x:Name="PanelBody" FontSize="17" FontFamily="{StaticResource AgBody}" LineHeight="26" Foreground="#FFC9D2E2" TextWrapping="Wrap" TextAlignment="Center" Margin="0,18,0,26"/>
+       <StackPanel x:Name="OptionControls" Spacing="12" Visibility="Collapsed">
+        <Border Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="1" CornerRadius="14" Padding="22,14">
+         <ToggleSwitch x:Name="ShowAllToggle" Header="SHOW UNSUPPORTED GAMES (THEY WON'T LAUNCH)" Toggled="ShowAllToggle_Toggled"/>
+        </Border>
+        <Border Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="1" CornerRadius="14" Padding="22,14">
+         <ToggleSwitch x:Name="StartWithWindowsToggle" Header="START ARCADEGRIDZ WITH WINDOWS" Toggled="StartWithWindowsToggle_Toggled"/>
+        </Border>
+        <Button x:Name="ConsoleModeButton" Content="ENABLE CONSOLE MODE UNTIL RESTART" Click="ConsoleMode_Click" HorizontalAlignment="Stretch" Margin="0,4,0,0"/>
+        <TextBlock x:Name="ConsoleModeStatus" Text="Controller-only mode hides Exit ArcadeGridz and disables keyboard and pointer input until the app restarts." Foreground="{StaticResource AgMuted}" FontFamily="{StaticResource AgBody}" FontSize="14" TextWrapping="Wrap" TextAlignment="Center"/>
+       </StackPanel>
+       <Border x:Name="UpdateCard" Visibility="Collapsed" Margin="0,22,0,6" Background="#990C0A26" BorderBrush="#339F7CFF" BorderThickness="1" CornerRadius="14" Padding="22,18">
+        <StackPanel>
+         <TextBlock x:Name="VersionText" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgViolet}" HorizontalAlignment="Center" Visibility="Collapsed"/>
+         <TextBlock x:Name="UpdateStatus" Foreground="{StaticResource AgText}" FontFamily="{StaticResource AgBody}" FontSize="15" TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,8" Visibility="Collapsed"/>
+         <ProgressBar x:Name="UpdateProgress" Minimum="0" Maximum="100" Height="6" Margin="0,4,0,8" Foreground="{StaticResource AgCyan}" Background="#22FFFFFF" Visibility="Collapsed"/>
+         <StackPanel x:Name="UpdateActions" Orientation="Horizontal" HorizontalAlignment="Center" Visibility="Collapsed"><Button x:Name="CheckUpdateButton" Content="CHECK FOR UPDATES" Click="CheckUpdate_Click"/><Button x:Name="InstallUpdateButton" Content="INSTALL UPDATE" Click="InstallUpdate_Click" IsEnabled="False"/></StackPanel>
+        </StackPanel>
+       </Border>
+       <StackPanel x:Name="OptionsLegal" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,4" Visibility="Collapsed">
+        <Button x:Name="OptionsTermsButton" Style="{StaticResource LinkButton}" Content="TERMS OF SERVICE" Click="Terms_Click"/>
+        <TextBlock Text="·" Foreground="{StaticResource AgDim}" VerticalAlignment="Center"/>
+        <Button x:Name="OptionsPrivacyButton" Style="{StaticResource LinkButton}" Content="PRIVACY POLICY" Click="Privacy_Click"/>
+       </StackPanel>
+       <Button x:Name="BackButton" Click="Back_Click" HorizontalAlignment="Stretch" Margin="0,14,0,0">
+        <StackPanel Orientation="Horizontal" Spacing="12"><Border Style="{StaticResource PadChip}" Background="{StaticResource AgRed}" Margin="0"><TextBlock Text="B" Style="{StaticResource PadChipText}" Foreground="White"/></Border><TextBlock Text="BACK" VerticalAlignment="Center"/></StackPanel>
+       </Button>
+      </StackPanel>
+     </Border>
+    </Grid>
    </ScrollViewer>
   </Grid>
-  <Grid x:Name="GameLayer" Visibility="Collapsed" Background="Black"><Grid x:Name="WebViewHost"/><Grid x:Name="GameCover" Background="#FF050313"><TextBlock Text="LOADING GAME..." HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#FF55E8FF" FontFamily="Consolas" FontWeight="Bold" FontSize="20"/></Grid><Border Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top" Background="#CC000000" Padding="12,6"><TextBlock x:Name="GameStatus" Text="LOADING" Foreground="#FF55E8FF"/></Border></Grid>
-  <Grid x:Name="StartupLayer" Background="#FF050313">
-   <Grid x:Name="SplashPanel">
-    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="18">
-     <Border Width="176" Height="176" CornerRadius="38" Background="#FF0C0923" BorderBrush="#FF55E8FF" BorderThickness="3" Padding="20">
-      <Image Source="ms-appx:///Assets/favicon.png" Stretch="Uniform"/>
-     </Border>
-     <TextBlock Text="ARCADEGRIDZ" HorizontalAlignment="Center" Foreground="#FF66DEFF" FontFamily="Consolas" FontWeight="Black" FontSize="48" CharacterSpacing="105"/>
-     <TextBlock Text="CONNECTING TO THE GRID..." HorizontalAlignment="Center" Foreground="#FFB28BFF" FontFamily="Consolas" FontWeight="Bold" FontSize="17"/>
+
+  <!-- ===== Running game (WebView2) + loading cover ===== -->
+  <Grid x:Name="GameLayer" Visibility="Collapsed" Background="Black">
+   <Grid x:Name="WebViewHost"/>
+   <Grid x:Name="GameCover" Background="{StaticResource AgInk}">
+    <Image x:Name="GameCoverArt" Stretch="UniformToFill" Opacity="0.35"/>
+    <Rectangle>
+     <Rectangle.Fill>
+      <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+       <GradientStop Color="#9907051A" Offset="0"/>
+       <GradientStop Color="#F207051A" Offset="1"/>
+      </LinearGradientBrush>
+     </Rectangle.Fill>
+    </Rectangle>
+    <Image Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.6" IsHitTestVisible="False"/>
+    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="22">
+     <TextBlock x:Name="GameCoverTitle" Text="ARCADEGRIDZ" FontFamily="{StaticResource AgDisplay}" FontSize="64" Foreground="{StaticResource AgNeonGradient}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="1200"/>
+     <ProgressBar IsIndeterminate="True" Width="360" Foreground="{StaticResource AgCyan}" Background="#22FFFFFF"/>
+     <TextBlock x:Name="GameCoverLoading" Text="LOADING GAME..." HorizontalAlignment="Center" Foreground="{StaticResource AgCyan}" FontFamily="{StaticResource AgPixel}" FontSize="14" CharacterSpacing="120"/>
     </StackPanel>
    </Grid>
-   <Grid x:Name="WelcomePanel" Visibility="Collapsed">
-    <Grid.ColumnDefinitions><ColumnDefinition Width="1.15*"/><ColumnDefinition Width="0.85*"/></Grid.ColumnDefinitions>
-    <StackPanel Margin="72" VerticalAlignment="Center" Spacing="15">
-     <Image Source="ms-appx:///Assets/favicon.png" Width="110" Height="110" HorizontalAlignment="Left" Stretch="Uniform"/>
-     <TextBlock Text="WELCOME TO&#xA;ARCADEGRIDZ" Foreground="White" FontFamily="Consolas" FontWeight="Black" FontSize="48"/>
-     <TextBlock Text="YOUR GAMES. YOUR SCORES. ONE GRID." Foreground="#FF55E8FF" FontFamily="Consolas" FontWeight="Bold" FontSize="18"/>
-     <TextBlock Text="Sign in for network scores and cloud identity, or jump straight into the arcade as a guest." Foreground="#FFD7D7EB" FontSize="18" TextWrapping="Wrap" MaxWidth="620" HorizontalAlignment="Left"/>
-     <TextBlock Text="GUESTS CAN BROWSE AND PLAY EVERY SUPPORTED GAME." Foreground="#FFFFD83D" FontFamily="Consolas" FontWeight="Bold" Margin="0,8,0,0"/>
+   <Border Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top" Background="#CC000000" Padding="12,6"><TextBlock x:Name="GameStatus" Text="LOADING" Foreground="{StaticResource AgCyan}"/></Border>
+  </Grid>
+
+  <!-- ===== Splash + welcome / sign-in ===== -->
+  <Grid x:Name="StartupLayer" Background="Transparent">
+   <Grid x:Name="SplashPanel">
+    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="30">
+     <Grid HorizontalAlignment="Center">
+      <Ellipse x:Name="SplashGlow" Width="560" Height="200" Opacity="0.4">
+       <Ellipse.Fill>
+        <RadialGradientBrush>
+         <GradientStop Color="#665EE7FF" Offset="0"/>
+         <GradientStop Color="#00FF3AA7" Offset="1"/>
+        </RadialGradientBrush>
+       </Ellipse.Fill>
+      </Ellipse>
+      <Image Source="ms-appx:///Assets/arcadegridz-logo.png" Width="620" Stretch="Uniform"/>
+     </Grid>
+     <ProgressBar IsIndeterminate="True" Width="380" Foreground="{StaticResource AgCyan}" Background="#22FFFFFF"/>
+     <TextBlock x:Name="SplashStatus" Text="CONNECTING TO THE GRID..." HorizontalAlignment="Center" Foreground="{StaticResource AgViolet}" FontFamily="{StaticResource AgPixel}" FontSize="14" CharacterSpacing="100"/>
     </StackPanel>
-    <Border Grid.Column="1" Margin="34,54,72,54" Background="#E60C0923" BorderBrush="#FF183A58" BorderThickness="3" CornerRadius="24" Padding="34">
-     <StackPanel VerticalAlignment="Center" Spacing="8">
-      <TextBlock Text="ENTER THE GRID" HorizontalAlignment="Center" Foreground="#FF55E8FF" FontFamily="Consolas" FontWeight="Black" FontSize="28" Margin="0,0,0,14"/>
-      <Button x:Name="StartupEmailButton" Content="EMAIL / PASSWORD" HorizontalAlignment="Stretch" MinHeight="58" Click="StartupEmail_Click"/>
-      <Button x:Name="StartupGoogleButton" Content="CONTINUE WITH GOOGLE" HorizontalAlignment="Stretch" MinHeight="58" Click="StartupGoogle_Click"/>
-      <Button x:Name="StartupGuestButton" Content="CONTINUE AS GUEST" HorizontalAlignment="Stretch" MinHeight="58" Click="StartupGuest_Click"/>
-      <TextBlock x:Name="StartupStatus" Text="A  SELECT     D-PAD  NAVIGATE" Foreground="#FF8F83AA" FontFamily="Consolas" TextWrapping="Wrap" TextAlignment="Center" Margin="4,14,4,0"/>
-     </StackPanel>
-    </Border>
+   </Grid>
+
+   <Grid x:Name="WelcomePanel" Visibility="Collapsed">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="1.2*"/><ColumnDefinition Width="0.8*" MaxWidth="660"/></Grid.ColumnDefinitions>
+    <StackPanel Margin="80,60,40,60" VerticalAlignment="Center" Spacing="20">
+     <Image Source="ms-appx:///Assets/arcadegridz-logo.png" Width="560" HorizontalAlignment="Left" Stretch="Uniform"/>
+     <TextBlock x:Name="InsertCoin" Text="INSERT COIN  ·  PRESS A" Foreground="{StaticResource AgGold}" FontFamily="{StaticResource AgPixel}" FontSize="16" CharacterSpacing="80"/>
+     <TextBlock Text="YOUR GAMES. YOUR SCORES. ONE GRID." Foreground="{StaticResource AgCyan}" FontFamily="{StaticResource AgDisplay}" FontSize="30"/>
+     <TextBlock Text="Sign in to post network high scores and keep your identity across the GRiDDiM Network, or jump straight into the arcade as a guest." Foreground="#FFC9D2E2" FontFamily="{StaticResource AgBody}" FontSize="18" LineHeight="28" TextWrapping="Wrap" MaxWidth="660" HorizontalAlignment="Left"/>
+     <ItemsControl x:Name="WelcomeShowcase" Margin="0,14,0,0" IsTabStop="False">
+      <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="16"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+       <DataTemplate x:DataType="m:GameEntry">
+        <Border Width="132" Height="176" CornerRadius="14" BorderBrush="#555EE7FF" BorderThickness="2" Background="{StaticResource AgCardSolid}">
+         <Grid>
+          <Image Source="{x:Bind Art}" Stretch="UniformToFill"/>
+          <Rectangle>
+           <Rectangle.Fill>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+             <GradientStop Color="#00000000" Offset="0.5"/>
+             <GradientStop Color="#E6050312" Offset="1"/>
+            </LinearGradientBrush>
+           </Rectangle.Fill>
+          </Rectangle>
+          <TextBlock Text="{x:Bind Name}" VerticalAlignment="Bottom" Margin="10" Foreground="White" FontFamily="{StaticResource AgDisplay}" FontSize="12" TextWrapping="Wrap" MaxLines="2"/>
+         </Grid>
+        </Border>
+       </DataTemplate>
+      </ItemsControl.ItemTemplate>
+     </ItemsControl>
+    </StackPanel>
+
+    <Grid Grid.Column="1" Margin="20,60,80,60" VerticalAlignment="Center">
+     <Border Margin="-8" CornerRadius="34" BorderThickness="8" BorderBrush="#225EE7FF"/>
+     <Border Background="{StaticResource AgCard}" BorderBrush="#665EE7FF" BorderThickness="2" CornerRadius="28" Padding="38,36">
+      <StackPanel Spacing="10">
+       <Rectangle Height="4" RadiusX="2" RadiusY="2" Width="110" HorizontalAlignment="Center" Fill="{StaticResource AgNeonGradient}" Margin="0,0,0,14"/>
+       <TextBlock Text="ENTER THE GRID" HorizontalAlignment="Center" Foreground="{StaticResource AgNeonGradient}" FontFamily="{StaticResource AgDisplay}" FontSize="34"/>
+       <TextBlock Text="ONE GRiDDiM ACCOUNT FOR EVERY NETWORK SITE" HorizontalAlignment="Center" Style="{StaticResource PixelLabel}" FontSize="8" Margin="0,0,0,16"/>
+       <Button x:Name="StartupEmailButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="64" Click="StartupEmail_Click">
+        <StackPanel Orientation="Horizontal" Spacing="18"><FontIcon Glyph="&#xE715;" FontFamily="{StaticResource AgIcons}" FontSize="20"/><TextBlock Text="EMAIL / PASSWORD" VerticalAlignment="Center"/></StackPanel>
+       </Button>
+       <Button x:Name="StartupGoogleButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="64" Click="StartupGoogle_Click">
+        <StackPanel Orientation="Horizontal" Spacing="18"><TextBlock Text="G" FontFamily="{StaticResource AgDisplay}" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/><TextBlock Text="CONTINUE WITH GOOGLE" VerticalAlignment="Center"/></StackPanel>
+       </Button>
+       <Button x:Name="StartupGuestButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="64" Click="StartupGuest_Click">
+        <StackPanel Orientation="Horizontal" Spacing="18"><FontIcon Glyph="&#xE768;" FontFamily="{StaticResource AgIcons}" FontSize="20"/><TextBlock Text="PLAY AS GUEST" VerticalAlignment="Center"/></StackPanel>
+       </Button>
+       <TextBlock Text="GUESTS CAN BROWSE AND PLAY EVERY SUPPORTED GAME." HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Style="{StaticResource PixelLabel}" FontSize="8" Foreground="{StaticResource AgGold}" Margin="0,6,0,0"/>
+       <TextBlock x:Name="StartupStatus" Text="D-PAD  NAVIGATE     A  SELECT" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" Margin="4,10,4,0"/>
+       <Rectangle Height="1" Fill="{StaticResource AgLine}" Margin="0,14,0,6"/>
+       <TextBlock Text="By signing in you agree to the GRiDDiM Network Terms of Service and acknowledge the Privacy Policy." Foreground="{StaticResource AgMuted}" FontFamily="{StaticResource AgBody}" FontSize="13" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"/>
+       <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+        <Button x:Name="TermsButton" Style="{StaticResource LinkButton}" Content="TERMS OF SERVICE" Click="Terms_Click"/>
+        <TextBlock Text="·" Foreground="{StaticResource AgDim}" VerticalAlignment="Center"/>
+        <Button x:Name="PrivacyButton" Style="{StaticResource LinkButton}" Content="PRIVACY POLICY" Click="Privacy_Click"/>
+       </StackPanel>
+      </StackPanel>
+     </Border>
+    </Grid>
    </Grid>
   </Grid>
  </Grid>

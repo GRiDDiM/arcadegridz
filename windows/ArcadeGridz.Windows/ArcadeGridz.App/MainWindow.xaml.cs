@@ -15,7 +15,9 @@ namespace ArcadeGridz.App;
 public sealed partial class MainWindow : Window
 {
     enum LauncherFocus { Categories, Games, Scores, Options, Exit, GameGrid, Play, SignIn }
-    enum StartupFocus { Email, Google, Guest }
+    enum StartupFocus { Email, Google, Guest, Terms, Privacy }
+    const string TermsUrl = "https://griddim.com/terms/";
+    const string PrivacyUrl = "https://griddim.com/privacy/";
     readonly CatalogService catalogs = new();
     readonly LeaderboardService leaderboards = new();
     readonly SettingsService settings = SettingsService.Load();
@@ -77,7 +79,10 @@ public sealed partial class MainWindow : Window
         {
             GameStatus.Text = status.ToUpperInvariant();
             if (status.Equals("started", StringComparison.OrdinalIgnoreCase))
+            {
                 GameCover.Visibility = Visibility.Collapsed;
+                StopStoryboard("CoverPulse");
+            }
             else if (status.Equals("auth", StringComparison.OrdinalIgnoreCase))
             {
                 NetworkState.Text = "SIGNED IN • GRID ONLINE";
@@ -115,6 +120,7 @@ public sealed partial class MainWindow : Window
         StartupLog.Write("window", "Root loaded");
         try
         {
+            BeginStoryboard("SplashPulse");
             try
             {
                 pads = new GamepadService(DispatcherQueue);
@@ -205,10 +211,12 @@ public sealed partial class MainWindow : Window
             GameGrid.SelectedIndex = -1;
             HeroName.Text = "NO GAMES";
             HeroMeta.Text = "";
+            HeroStatusChip.Visibility = Visibility.Collapsed;
+            ScoreEmpty.Visibility = Visibility.Collapsed;
             HeroDescription.Text = "No catalog entries match this filter.";
             HeroArt.Source = null;
             PlayButton.IsEnabled = false;
-            PlayButton.Content = "UNAVAILABLE";
+            PlayLabel.Text = "UNAVAILABLE";
             ScoreList.ItemsSource = null;
         }
     }
@@ -223,11 +231,17 @@ public sealed partial class MainWindow : Window
         // Update the selection immediately. Network score loading is debounced so
         // holding a direction never starts one request per repeated selection.
         HeroName.Text = g.Name;
-        HeroMeta.Text = $"{g.Genre}  •  {g.Status.ToUpperInvariant()}  •  {g.Runtime.Type.ToUpperInvariant()}";
+        HeroMeta.Text = $"{g.Genre.ToUpperInvariant()}  ·  {g.Runtime.Type.ToUpperInvariant()}";
+        HeroStatus.Text = g.Playable ? g.Status.ToUpperInvariant() : "LOCKED";
+        var statusBrush = g.Playable ? UiTheme.StatusBrush(g.Status) : UiTheme.TagBrush("CHEATER");
+        HeroStatus.Foreground = statusBrush;
+        HeroStatusChip.BorderBrush = statusBrush;
+        HeroStatusChip.Visibility = Visibility.Visible;
         HeroDescription.Text = g.Description;
         PlayButton.IsEnabled = g.Playable;
-        PlayButton.Content = g.Playable ? "A  PLAY" : "UNAVAILABLE";
+        PlayLabel.Text = g.Playable ? "PLAY" : "UNAVAILABLE";
         ScoreList.ItemsSource = null;
+        ScoreEmpty.Visibility = Visibility.Collapsed;
         try { HeroArt.Source = new BitmapImage(new Uri(g.Art)); } catch { HeroArt.Source = null; }
 
         try
@@ -235,7 +249,8 @@ public sealed partial class MainWindow : Window
             await Task.Delay(120, cancellationToken);
             var scores = await leaderboards.TopAsync(g.Id);
             cancellationToken.ThrowIfCancellationRequested();
-            ScoreList.ItemsSource = scores.Select((s, i) => $"{i + 1}. {s.Name}  {s.Score:N0}  [{s.Tag}]");
+            ScoreList.ItemsSource = scores.Select((s, i) => new ScoreRow($"#{i + 1}", s.Name, s.Score.ToString("N0"), s.Tag)).ToList();
+            ScoreEmpty.Visibility = scores.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
         catch (OperationCanceledException) { }
     }
@@ -264,7 +279,10 @@ public sealed partial class MainWindow : Window
             if (active is null) { ShowMessage("RUNTIME ERROR", "This game's runtime manifest is incomplete."); return; }
             StartupLog.Write("runtime", $"Launching id={g.Id}; type={g.Runtime.Type}");
             gameOpen = true;
+            GameCoverTitle.Text = g.Name;
+            try { GameCoverArt.Source = new BitmapImage(new Uri(g.Art)); } catch { GameCoverArt.Source = null; }
             GameCover.Visibility = Visibility.Visible;
+            BeginStoryboard("CoverPulse");
             GameLayer.Visibility = active == web ? Visibility.Visible : Visibility.Collapsed;
             Launcher.Visibility = Visibility.Collapsed;
             Panel.Visibility = Visibility.Collapsed;
@@ -293,6 +311,7 @@ public sealed partial class MainWindow : Window
         gameOpen = false;
         active = null;
         GameLayer.Visibility = Visibility.Collapsed;
+        StopStoryboard("CoverPulse");
         GameCover.Visibility = Visibility.Visible;
         Launcher.Visibility = Visibility.Visible;
         Panel.Visibility = Visibility.Collapsed;
@@ -320,7 +339,10 @@ public sealed partial class MainWindow : Window
     void ShowWelcome()
     {
         SplashPanel.Visibility = Visibility.Collapsed;
+        StopStoryboard("SplashPulse");
+        WelcomeShowcase.ItemsSource = all.Where(g => g.Potato && g.Playable).Take(4).ToList();
         WelcomePanel.Visibility = Visibility.Visible;
+        BeginStoryboard("InsertCoinBlink");
         SetStartupFocus(StartupFocus.Email);
         StartupLog.Write("window", "Welcome screen ready");
     }
@@ -328,6 +350,8 @@ public sealed partial class MainWindow : Window
     void EnterLauncher(bool guest)
     {
         startupOpen = false;
+        StopStoryboard("SplashPulse");
+        StopStoryboard("InsertCoinBlink");
         StartupLayer.Visibility = Visibility.Collapsed;
         WelcomePanel.Visibility = Visibility.Collapsed;
         Launcher.Visibility = Visibility.Visible;
@@ -344,11 +368,13 @@ public sealed partial class MainWindow : Window
         if (action is PadAction.Up or PadAction.Left)
             SetStartupFocus((StartupFocus)Math.Max(0, (int)startupFocus - 1));
         else if (action is PadAction.Down or PadAction.Right)
-            SetStartupFocus((StartupFocus)Math.Min(2, (int)startupFocus + 1));
+            SetStartupFocus((StartupFocus)Math.Min((int)StartupFocus.Privacy, (int)startupFocus + 1));
         else if (action == PadAction.A)
         {
             if (startupFocus == StartupFocus.Email) StartupEmail_Click(this, new RoutedEventArgs());
             else if (startupFocus == StartupFocus.Google) StartupGoogle_Click(this, new RoutedEventArgs());
+            else if (startupFocus == StartupFocus.Terms) OpenExternal(TermsUrl);
+            else if (startupFocus == StartupFocus.Privacy) OpenExternal(PrivacyUrl);
             else StartupGuest_Click(this, new RoutedEventArgs());
         }
     }
@@ -360,6 +386,8 @@ public sealed partial class MainWindow : Window
         {
             StartupFocus.Google => StartupGoogleButton,
             StartupFocus.Guest => StartupGuestButton,
+            StartupFocus.Terms => TermsButton,
+            StartupFocus.Privacy => PrivacyButton,
             _ => StartupEmailButton
         };
         control.Focus(FocusState.Programmatic);
@@ -430,8 +458,6 @@ public sealed partial class MainWindow : Window
         if (launcherFocus == LauncherFocus.GameGrid &&
             action is PadAction.Left or PadAction.Right or PadAction.Up or PadAction.Down)
         {
-            if (action == PadAction.Up) { SetLauncherFocus(LauncherFocus.Games); return; }
-            if (action == PadAction.Down) { SetLauncherFocus(LauncherFocus.Play); return; }
             MoveGameSelection(action);
             return;
         }
@@ -472,11 +498,39 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    int GridColumns()
+    {
+        // Tiles use an ItemsWrapGrid with a fixed 224px item width (max 4 columns).
+        var usable = GameGrid.ActualWidth - GameGrid.Padding.Left - GameGrid.Padding.Right;
+        return Math.Clamp((int)(usable / 224), 1, 4);
+    }
+
     void MoveGameSelection(PadAction action)
     {
-        if (visible.Count == 0) return;
+        if (visible.Count == 0)
+        {
+            if (action == PadAction.Up) SetLauncherFocus(LauncherFocus.Games);
+            else if (action is PadAction.Down or PadAction.Right) SetLauncherFocus(LauncherFocus.Play);
+            return;
+        }
+        var cols = GridColumns();
         var i = Math.Max(0, GameGrid.SelectedIndex);
-        i += action == PadAction.Left ? -1 : 1;
+        var col = i % cols;
+        switch (action)
+        {
+            case PadAction.Up:
+                if (i - cols < 0) { SetLauncherFocus(LauncherFocus.Games); return; }
+                i -= cols; break;
+            case PadAction.Down:
+                if (i / cols == (visible.Count - 1) / cols) { SetLauncherFocus(LauncherFocus.Play); return; }
+                i = Math.Min(i + cols, visible.Count - 1); break;
+            case PadAction.Left:
+                if (col == 0) return;
+                i -= 1; break;
+            case PadAction.Right:
+                if (col == cols - 1 || i == visible.Count - 1) { SetLauncherFocus(LauncherFocus.Play); return; }
+                i += 1; break;
+        }
         GameGrid.SelectedIndex = Math.Clamp(i, 0, visible.Count - 1);
         GameGrid.ScrollIntoView(GameGrid.SelectedItem);
     }
@@ -514,6 +568,11 @@ public sealed partial class MainWindow : Window
             controls.Add(CheckUpdateButton);
             if (InstallUpdateButton.IsEnabled) controls.Add(InstallUpdateButton);
         }
+        if (OptionsLegal.Visibility == Visibility.Visible)
+        {
+            controls.Add(OptionsTermsButton);
+            controls.Add(OptionsPrivacyButton);
+        }
         controls.Add(BackButton);
         return controls;
     }
@@ -533,6 +592,8 @@ public sealed partial class MainWindow : Window
             else if (control == ConsoleModeButton) ConsoleMode_Click(this, new RoutedEventArgs());
             else if (control == CheckUpdateButton) CheckUpdate_Click(this, new RoutedEventArgs());
             else if (control == InstallUpdateButton) InstallUpdate_Click(this, new RoutedEventArgs());
+            else if (control == OptionsTermsButton) OpenExternal(TermsUrl);
+            else if (control == OptionsPrivacyButton) OpenExternal(PrivacyUrl);
             controls = PanelControls();
             panelFocus = Math.Min(panelFocus, controls.Count - 1);
         }
@@ -606,7 +667,7 @@ public sealed partial class MainWindow : Window
     void Options_Click(object sender, RoutedEventArgs e)
     {
         PanelTitle.Text = "OPTIONS";
-        PanelBody.Text = "Choose which catalog entries are visible, start ArcadeGridz automatically, enable controller-only console operation, or manage updates.";
+        PanelBody.Text = "Tune your arcade: pick which games show up, launch with Windows, lock it to controller-only console mode, or grab the latest update.";
         OptionControls.Visibility = Visibility.Visible;
         initializingSettings = true;
         StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
@@ -616,6 +677,8 @@ public sealed partial class MainWindow : Window
         UpdateStatus.Text = "Updates are optional. ArcadeGridz never installs one without confirmation.";
         UpdateStatus.Visibility = Visibility.Visible;
         UpdateActions.Visibility = Visibility.Visible;
+        UpdateCard.Visibility = Visibility.Visible;
+        OptionsLegal.Visibility = Visibility.Visible;
         UpdateProgress.Visibility = Visibility.Collapsed;
         InstallUpdateButton.IsEnabled = availableUpdate is not null;
         Panel.Visibility = Visibility.Visible;
@@ -634,6 +697,8 @@ public sealed partial class MainWindow : Window
         VersionText.Visibility = Visibility.Collapsed;
         UpdateStatus.Visibility = Visibility.Collapsed;
         UpdateActions.Visibility = Visibility.Collapsed;
+        UpdateCard.Visibility = Visibility.Collapsed;
+        OptionsLegal.Visibility = Visibility.Collapsed;
         UpdateProgress.Visibility = Visibility.Collapsed;
         Panel.Visibility = Visibility.Visible;
         Launcher.Visibility = Visibility.Collapsed;
@@ -739,5 +804,32 @@ public sealed partial class MainWindow : Window
         web?.SetConsoleMode(true);
         StartupLog.Write("settings", "Console mode enabled for this session");
         BackButton.Focus(FocusState.Programmatic);
+    }
+
+    void Terms_Click(object sender, RoutedEventArgs e) => OpenExternal(TermsUrl);
+    void Privacy_Click(object sender, RoutedEventArgs e) => OpenExternal(PrivacyUrl);
+
+    async void OpenExternal(string url)
+    {
+        // Legal pages open in the system browser; the launcher stays native.
+        try
+        {
+            var opened = await Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+            StartupLog.Write("window", $"Opened external page {url}; ok={opened}");
+            if (!opened && startupOpen) StartupStatus.Text = "COULD NOT OPEN YOUR BROWSER. VISIT " + url.ToUpperInvariant();
+        }
+        catch (Exception ex) { StartupLog.Exception("Open external page", ex); }
+    }
+
+    void BeginStoryboard(string key)
+    {
+        try { if (Root.Resources[key] is Microsoft.UI.Xaml.Media.Animation.Storyboard sb) sb.Begin(); }
+        catch (Exception ex) { StartupLog.Exception($"Storyboard {key}", ex); }
+    }
+
+    void StopStoryboard(string key)
+    {
+        try { if (Root.Resources[key] is Microsoft.UI.Xaml.Media.Animation.Storyboard sb) sb.Stop(); }
+        catch { }
     }
 }

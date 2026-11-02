@@ -40,3 +40,4 @@ public sealed class ScoreEntry
     [JsonPropertyName("cheater")] public bool Cheater { get; set; }
     public string Tag => Cheater ? "CHEATER" : Assisted ? "ASSISTED" : Verified ? "VERIFIED" : "UNVERIFIED";
 }
+public sealed record ScoreRow(string Rank, string Name, string ScoreText, string Tag);

@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- ArcadeGridz Windows v0.1.8: validates the persistent web session before showing sign-in. -->
+  <!-- ArcadeGridz Windows v0.1.9: neon arcade redesign, legal links on sign-in. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
@@ -22,9 +22,9 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>portable</DebugType>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
-    <Version>0.1.8</Version>
-    <AssemblyVersion>0.1.8.0</AssemblyVersion>
-    <FileVersion>0.1.8.0</FileVersion>
+    <Version>0.1.9</Version>
+    <AssemblyVersion>0.1.9.0</AssemblyVersion>
+    <FileVersion>0.1.9.0</FileVersion>
     <SelfContained>true</SelfContained>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -34,7 +34,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250205002" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
-    <Content Include="Assets\ArcadeGridz.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- All launcher art, brand images and bundled OFL fonts ship next to the exe (ms-appx:///Assets/...). -->
+    <Content Remove="Assets\**" />
+    <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- The WinUI compiler emits App.xbf and MainWindow.xbf in obj, but the
