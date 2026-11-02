@@ -42,6 +42,12 @@ public sealed partial class MainWindow : Window
     Microsoft.UI.Dispatching.DispatcherQueueTimer? clockTimer;
     Microsoft.UI.Dispatching.DispatcherQueueTimer? splashTimer;
     CancellationTokenSource? heroLoad;
+    // live catalog: re-checked after a game, when the window regains focus and every few minutes (ETag, so cheap)
+    enum CatalogRefresh { Changed, Same, Offline, Failed }
+    static readonly TimeSpan CatalogCheckThrottle = TimeSpan.FromSeconds(20);
+    DateTime lastCatalogCheck = DateTime.MinValue;
+    bool catalogBusy;
+    Microsoft.UI.Dispatching.DispatcherQueueTimer? catalogTimer;
 
     public MainWindow()
     {
@@ -95,6 +101,7 @@ public sealed partial class MainWindow : Window
 
     void OnActivated(object sender, WindowActivatedEventArgs e)
     {
+        if (e.WindowActivationState != WindowActivationState.Deactivated) QueueCatalogCheck();
         try
         {
             var hwnd = WindowNative.GetWindowHandle(this);
@@ -141,6 +148,10 @@ public sealed partial class MainWindow : Window
             ClockText.Text = DateTime.Now.ToString("h:mm tt");
             clockTimer.Start();
             await RefreshCatalog();
+            catalogTimer = DispatcherQueue.CreateTimer();
+            catalogTimer.Interval = TimeSpan.FromMinutes(5);
+            catalogTimer.Tick += (_, _) => QueueCatalogCheck();
+            catalogTimer.Start();
             var hasPersistedSession = await EnsureWebRuntime().HasPersistedSessionAsync();
             splashTimer = DispatcherQueue.CreateTimer();
             splashTimer.Interval = TimeSpan.FromMilliseconds(1350);
@@ -166,28 +177,79 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    async Task RefreshCatalog()
+    void QueueCatalogCheck(bool force = false)
     {
+        if (startupOpen || gameOpen || catalogBusy) return;
+        if (!force && DateTime.UtcNow - lastCatalogCheck < CatalogCheckThrottle) return;
+        _ = RefreshCatalog(true);
+    }
+
+    // quiet = background check: no rebuild when nothing changed (304), keeps the player's category and
+    // selected game, and never replaces the screen with an error panel.
+    async Task<CatalogRefresh> RefreshCatalog(bool quiet = false)
+    {
+        if (catalogBusy) return CatalogRefresh.Same;
+        catalogBusy = true;
         try
         {
             var result = await catalogs.LoadAsync();
+            lastCatalogCheck = DateTime.UtcNow;
+            if (quiet && !result.Changed)
+            {
+                if (!result.Offline && NetworkState.Text.StartsWith("OFFLINE", StringComparison.OrdinalIgnoreCase))
+                    NetworkState.Text = "GRID ONLINE • " + result.Catalog.Version;
+                return result.Offline ? CatalogRefresh.Offline : CatalogRefresh.Same;
+            }
+            var keepCategory = categories.Count > 0 ? categories[Math.Clamp(categoryIndex, 0, categories.Count - 1)] : "ALL GAMES";
+            var keepGame = (GameGrid.SelectedItem as GameEntry)?.Id;
             all.Clear();
             // Keep the complete live catalog. The options toggle controls visibility;
             // Playable controls launch authorization and is checked again at launch.
             all.AddRange(result.Catalog.Games);
-            NetworkState.Text = result.Offline ? "OFFLINE CACHE" : "GRID ONLINE • " + result.Catalog.Version;
-            StartupLog.Write("catalog", $"Loaded version={result.Catalog.Version}; games={result.Catalog.Games.Count}; offline={result.Offline}");
+            if (!quiet) NetworkState.Text = result.Offline ? "OFFLINE CACHE" : "GRID ONLINE • " + result.Catalog.Version;
+            StartupLog.Write("catalog", $"Loaded version={result.Catalog.Version}; games={result.Catalog.Games.Count}; offline={result.Offline}; quiet={quiet}");
             BuildCategories();
+            var ci = categories.IndexOf(keepCategory);
+            categoryIndex = ci >= 0 ? ci : 0;
             ApplyFilter();
+            if (keepGame is not null)
+            {
+                var gi = visible.ToList().FindIndex(g => g.Id == keepGame);
+                if (gi > 0) GameGrid.SelectedIndex = gi;
+            }
+            return result.Offline ? CatalogRefresh.Offline : CatalogRefresh.Changed;
         }
         catch (Exception ex)
         {
-            StartupLog.Exception("Catalog load", ex);
-            NetworkState.Text = "CATALOG ERROR";
-            PanelTitle.Text = "NO GRID SIGNAL";
-            PanelBody.Text = ex.Message;
-            Panel.Visibility = Visibility.Visible;
+            StartupLog.Exception(quiet ? "Background catalog check" : "Catalog load", ex);
+            if (!quiet)
+            {
+                NetworkState.Text = "CATALOG ERROR";
+                PanelTitle.Text = "NO GRID SIGNAL";
+                PanelBody.Text = ex.Message;
+                Panel.Visibility = Visibility.Visible;
+            }
+            return CatalogRefresh.Failed;
         }
+        finally { catalogBusy = false; }
+    }
+
+    async void RefreshCatalog_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshCatalogButton.IsEnabled = false;
+        UpdateStatus.Visibility = Visibility.Visible;
+        UpdateStatus.Text = "CHECKING THE GRID FOR NEW GAMES...";
+        var outcome = await RefreshCatalog(true);
+        var ready = all.Count(g => settings.ShowAll || (g.Potato && g.Playable));
+        UpdateStatus.Text = outcome switch
+        {
+            CatalogRefresh.Changed => $"GAME LIST UPDATED • {ready} GAMES READY.",
+            CatalogRefresh.Same => $"GAME LIST IS UP TO DATE • {ready} GAMES READY.",
+            CatalogRefresh.Offline => "COULDN'T REACH ARCADEGRIDZ. SHOWING THE SAVED GAME LIST.",
+            _ => "GAME LIST REFRESH FAILED. SEE THE STARTUP LOG FOR DETAILS."
+        };
+        RefreshCatalogButton.IsEnabled = true;
+        RefreshCatalogButton.Focus(FocusState.Programmatic);
     }
 
     void BuildCategories()
@@ -316,6 +378,7 @@ public sealed partial class MainWindow : Window
         Launcher.Visibility = Visibility.Visible;
         Panel.Visibility = Visibility.Collapsed;
         SetLauncherFocus(LauncherFocus.GameGrid);
+        QueueCatalogCheck();
     }
 
     async void PadPressed(PadAction action)
@@ -561,6 +624,7 @@ public sealed partial class MainWindow : Window
         {
             controls.Add(ShowAllToggle);
             controls.Add(StartWithWindowsToggle);
+            controls.Add(RefreshCatalogButton);
             if (ConsoleModeButton.IsEnabled) controls.Add(ConsoleModeButton);
         }
         if (UpdateActions.Visibility == Visibility.Visible)
@@ -589,6 +653,7 @@ public sealed partial class MainWindow : Window
             if (control == BackButton) { ReturnToLauncher(); return; }
             if (control == ShowAllToggle) ShowAllToggle.IsOn = !ShowAllToggle.IsOn;
             else if (control == StartWithWindowsToggle) StartWithWindowsToggle.IsOn = !StartWithWindowsToggle.IsOn;
+            else if (control == RefreshCatalogButton) { if (RefreshCatalogButton.IsEnabled) RefreshCatalog_Click(this, new RoutedEventArgs()); return; }
             else if (control == ConsoleModeButton) ConsoleMode_Click(this, new RoutedEventArgs());
             else if (control == CheckUpdateButton) CheckUpdate_Click(this, new RoutedEventArgs());
             else if (control == InstallUpdateButton) InstallUpdate_Click(this, new RoutedEventArgs());
@@ -667,7 +732,7 @@ public sealed partial class MainWindow : Window
     void Options_Click(object sender, RoutedEventArgs e)
     {
         PanelTitle.Text = "OPTIONS";
-        PanelBody.Text = "Tune your arcade: pick which games show up, launch with Windows, lock it to controller-only console mode, or grab the latest update.";
+        PanelBody.Text = "Tune your arcade: pick which games show up, launch with Windows, refresh the game list, lock it to controller-only console mode, or grab the latest update.";
         OptionControls.Visibility = Visibility.Visible;
         initializingSettings = true;
         StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
