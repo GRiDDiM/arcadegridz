@@ -679,7 +679,10 @@ public sealed partial class MainWindow : Window
     void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (consoleMode) { e.Handled = true; return; }
-        if (e.Key == VirtualKey.Escape) { if (gameOpen) _ = ExitGame(); else ReturnToLauncher(); e.Handled = true; }
+        // While a game runs every key belongs to the game: Escape/back opens the game's own pause menu there.
+        // Games are left only through their EXIT GAME / QUIT menu items (or the SELECT+START combo).
+        if (gameOpen) return;
+        if (e.Key == VirtualKey.Escape) { ReturnToLauncher(); e.Handled = true; }
         else if (!gameOpen)
         {
             var action = e.Key switch
