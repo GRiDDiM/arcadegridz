@@ -128,7 +128,8 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
         (() => {
           if (window.__arcadeGridzConsoleInputLock) return;
           window.__arcadeGridzConsoleInputLock = true;
-          const block = event => { event.preventDefault(); event.stopImmediatePropagation(); };
+          // only real keyboard/mouse input: synthetic key events from the site's gamepad mapper must reach the game
+          const block = event => { if (!event.isTrusted) return; event.preventDefault(); event.stopImmediatePropagation(); };
           ['keydown','keyup','keypress','mousedown','mouseup','click','dblclick','contextmenu',
            'pointerdown','pointerup','pointermove','touchstart','touchend','wheel']
             .forEach(type => window.addEventListener(type, block, true));

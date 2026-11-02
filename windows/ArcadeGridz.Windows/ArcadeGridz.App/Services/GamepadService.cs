@@ -74,8 +74,10 @@ public sealed class GamepadService : IDisposable
         EmitDirection(1, (buttons & GamepadButtons.DPadDown) != 0, PadAction.Down);
         EmitDirection(2, (buttons & GamepadButtons.DPadLeft) != 0, PadAction.Left);
         EmitDirection(3, (buttons & GamepadButtons.DPadRight) != 0, PadAction.Right);
-        EmitButton(buttons, GamepadButtons.A, PadAction.A);
-        EmitButton(buttons, GamepadButtons.B, PadAction.B);
+        // Network-wide SNES/Nintendo layout (same as 2DISO, Potato Mode and every web game):
+        // the RIGHT face button (SNES A, Xbox "B") confirms, the BOTTOM one (SNES B, Xbox "A") goes back.
+        EmitButton(buttons, GamepadButtons.B, PadAction.A);
+        EmitButton(buttons, GamepadButtons.A, PadAction.B);
         EmitButton(buttons, GamepadButtons.LeftShoulder, PadAction.LB);
         EmitButton(buttons, GamepadButtons.RightShoulder, PadAction.RB);
         UpdateExitCombo((buttons & (GamepadButtons.View | GamepadButtons.Menu)) ==
@@ -126,8 +128,9 @@ public sealed class GamepadService : IDisposable
         EmitDirection(2, left, PadAction.Left);
         EmitDirection(3, right, PadAction.Right);
 
-        EmitRawButton(0, PadAction.A);
-        EmitRawButton(1, PadAction.B);
+        // standard-layout indices: 1 = right face button (confirm), 0 = bottom face button (back)
+        EmitRawButton(1, PadAction.A);
+        EmitRawButton(0, PadAction.B);
         EmitRawButton(4, PadAction.LB);
         EmitRawButton(5, PadAction.RB);
         UpdateExitCombo(IsPressed(rawButtons, 6) && IsPressed(rawButtons, 7));
