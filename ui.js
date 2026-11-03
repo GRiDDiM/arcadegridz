@@ -69,14 +69,15 @@ export function mountOota(root,{onExit}={}){
  let titleOn=true,idle=false,fireHeld=false,cut=null;
  const fromTitle=sc=>()=>menu.open({...sc,back:()=>menu.close()});
  const title=createTitle({ctx,CW,CH,atlas,planetOf,skyOf,stars,audio,rumble:(ms,s)=>{try{window.ArcadeGridzPad?.rumble?.(ms,s)}catch{}},items:name=>{
-  if(name==="diff")return[1,2,3].map(d=>({label:DIFF[d].name,hint:["","A GENTLE START. ROOKIE PILOTS.","THE INTENDED INVASION.","SHARP PILOTS. NO MERCY."][d],off:()=>false,act:()=>newRun(d)})).concat([{label:"BACK",hint:"",off:()=>false,act:()=>title.openList("main")}]);
-  if(name==="defense")return LEVELS.map((L,i)=>({L,i})).filter(o=>o.L.kind!=="bonus").map(({L,i})=>({label:L.name,hint:`DEFEND ${L.name} // ${DIFF[opts.difficulty].name}`,off:()=>false,act:()=>startDefense(i)})).concat([{label:"BACK",hint:"",off:()=>false,act:()=>title.openList("main")}]);
-  if(name==="over")return[{label:"START OVER",hint:"YOUR SAVED INVASION WILL BE LOST",off:()=>false,act:()=>title.openList("diff",opts.difficulty-1)},{label:"KEEP MY SAVE",hint:"",off:()=>false,act:()=>title.openList("main")}];
-  return[{label:"NEW GAME",hint:"INVADE THE SOLAR SYSTEM, EARTH LAST",off:()=>false,act:()=>savedRun()?title.openList("over"):title.openList("diff",opts.difficulty-1)},
-   {label:"CONTINUE",hint:()=>{const r=savedRun();return r?`LEVEL ${r.level+1} ${LEVELS[r.level].name} // ${DIFF[r.difficulty].name} // ${fmt(r.score)}`:"NO INVASION IN PROGRESS"},off:()=>!savedRun(),act:continueRun},
+  if(name==="diff")return[1,2,3].map(d=>({label:DIFF[d].name,hint:["","A GENTLE START. ROOKIE PILOTS.","THE INTENDED INVASION.","SHARP PILOTS. NO MERCY."][d],off:()=>false,act:()=>newRun(d)})).concat([{label:"BACK",hint:"",off:()=>false,act:()=>title.openList("play",1)}]);
+  if(name==="defense")return LEVELS.map((L,i)=>({L,i})).filter(o=>o.L.kind!=="bonus").map(({L,i})=>({label:L.name,hint:`DEFEND ${L.name} // ${DIFF[opts.difficulty].name}`,off:()=>false,act:()=>startDefense(i)})).concat([{label:"BACK",hint:"",off:()=>false,act:()=>title.openList("play",2)}]);
+  if(name==="over")return[{label:"START OVER",hint:"YOUR SAVED INVASION WILL BE LOST",off:()=>false,act:()=>title.openList("diff",opts.difficulty-1)},{label:"KEEP MY SAVE",hint:"",off:()=>false,act:()=>title.openList("play",0)}];
+  if(name==="play")return[{label:"CONTINUE",hint:()=>{const r=savedRun();return r?`LEVEL ${r.level+1} ${LEVELS[r.level].name} // ${DIFF[r.difficulty].name} // ${fmt(r.score)}`:"NO INVASION IN PROGRESS"},off:()=>!savedRun(),act:continueRun},
+   {label:"NEW GAME",hint:"INVADE THE SOLAR SYSTEM, EARTH LAST",off:()=>false,act:()=>savedRun()?title.openList("over"):title.openList("diff",opts.difficulty-1)},
    {label:"DEFENSE MODE",hint:"FLY THE HUMAN SHIP. HOLD OFF THE SWARM",off:()=>false,act:()=>title.openList("defense")},
-   {label:"OPTIONS",hint:"SOUND, DIALOGUE, ASSIST, SLOW-MO",off:()=>false,act:fromTitle(optionsScreen())},
-   {label:"CONTROLS",hint:"REMAP YOUR CONTROLLER",off:()=>false,act:fromTitle(controls())},
+   {label:"BACK",hint:"",off:()=>false,act:()=>title.openList("main")}];
+  return[{label:"PLAY GAME",hint:()=>savedRun()?"CONTINUE, NEW GAME OR DEFENSE MODE":"NEW GAME OR DEFENSE MODE",off:()=>false,act:()=>title.openList("play",savedRun()?0:1)},
+   {label:"OPTIONS",hint:"SOUND, CONTROLS, DIALOGUE, ASSIST",off:()=>false,act:fromTitle(optionsScreen())},
    {label:"HOW TO PLAY",hint:"",off:()=>false,act:fromTitle(howTo())},
    {label:"EXIT GAME",hint:"BACK TO ARCADEGRIDZ",off:()=>false,act:exitGame}]}});
  const rumble=(ms,s)=>{try{if(!demo)window.ArcadeGridzPad?.rumble?.(ms,s)}catch{}};
@@ -355,6 +356,7 @@ export function mountOota(root,{onExit}={}){
   {label:"SOUND",value:()=>onoff(!audio.muted),left:toggleAudio,right:toggleAudio},
   {label:"SCREEN SHAKE",value:()=>onoff(opts.shake),left:()=>tog("shake",!opts.shake),right:()=>tog("shake",!opts.shake)},
   {label:"VIBRATION",value:()=>onoff(window.ArcadeGridzPad?.settings?.().vibration!==false),off:()=>!window.ArcadeGridzPad,left:vib,right:vib},
+  {label:"CONTROLS",hint:"REMAP YOUR CONTROLLER",act:()=>menu.push(controls())},
   {label:"BACK",act:()=>menu.pop()}]}}
  function vib(){const P=window.ArcadeGridzPad;if(P){P.update({vibration:!P.settings().vibration});P.rumble?.(120,.5)}}
  function controls(){return controlsScreen(binds,{menu,extra:[{label:"KEYBOARD + MOUSE",act:()=>menu.push(kbScreen())}]})}
