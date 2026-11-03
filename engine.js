@@ -43,7 +43,7 @@ export function createGame({difficulty=2,level=0,seed=Date.now(),assist=false,ca
   spawner:{x:61,t:60},aliens:[],me:carry?.me?{...carry.me}:{speed:0,spit:0,bugs:0,spawn:0,armor:0,tentacles:0},man:null,manb:{speed:0,lasers:0,missiles:0,plazma:0,shields:0,option:0},manlives:3,
   skill:clamp(L.ai??0+0,0,4),ships:[],options:[],shots:[],manshots:[],missiles:[],plazmas:[],bugs:[],tentacles:[],globs:[],loots:[],sats:[],moons:[],bossShots:[],hazards:[],flares:[],ice:[],ufos:[],beams:[],
   prise:-16,health:100,boss:null,menu:null,bigdive:0,rushCD:0,merge:null,timer:(L.time||0)*30,chain:0,chainT:0,bonusPts:0,
-  score:carry?.score||0,startScore:carry?.score||0,combo:0,level0:level,lvl:0,stage:0,kills:0,deaths:0,moonT:240,hazT:200,fleetT:1200,result:null};
+  score:carry?.score||0,startScore:carry?.score||0,combo:0,level0:level,lvl:0,stage:0,kills:0,deaths:0,moonT:420,hazT:200,fleetT:1200,result:null};
  g.skill=clamp((L.ai||0)+D.ai,0,4);
  if(g.phase==="bonus")setupBonus(g);
  else{spawnMan(g);g.man.y=bot(g)+70;g.man.inv=60;for(const k of L.fleet)spawnShip(g,k);for(let i=0;i<8;i++){const a=spawnAlien(g,CX-56+i*16);a.y=-20-i*6}g.spawner.x=CX+72}
@@ -212,7 +212,7 @@ function fleet(g){const mb=g.manb;
   const row=manY(g)+T.dy;if(s.y>row)s.y=Math.max(row,s.y-1.5);else s.y=row;
   const lane=s.kind==="carrier"||s.kind==="repair"?CX+(s.id%2?-40:40):null;
   const P=pilot(g,s,T.sp+mb.speed*.3,Math.max(0,g.skill-1),{hunts:s.kind==="interceptor",greedy:false,lane});
-  if(T.fire&&g.aliens.length&&--s.fireT<=0&&(P.aligned||s.fireT<-40)){s.fireT=T.fire;g.manshots.push({x:s.x,y:s.y-6,vy:s.kind==="interceptor"?-5:-4});sfx(g,"manshoot")}
+  if(T.fire&&g.aliens.length&&--s.fireT<=0&&(P.aligned||s.fireT<-40)){s.fireT=T.fire*(g.difficulty===1?1.6:1);g.manshots.push({x:s.x,y:s.y-6,vy:s.kind==="interceptor"?-5:-4});sfx(g,"manshoot")}
   if(s.kind==="carrier"&&--s.launchT<=0){s.launchT=360;if(g.ships.filter(o=>o.kind==="fighter").length<4){spawnShip(g,"fighter",s.x);ev(g,{type:"launch",x:s.x,y:s.y})}}
   if(s.kind==="repair"&&--s.healT<=0){s.healT=120;const hurt=g.ships.filter(o=>o!==s&&o.hp<o.max).sort((a,b)=>a.hp/a.max-b.hp/b.max)[0];
    if(hurt){hurt.hp++;g.beams.push({x0:s.x,y0:s.y,id:hurt.id,t:20});sfx(g,"shield")}else if(g.man&&g.man.shields<2){g.man.shields++;g.beams.push({x0:s.x,y0:s.y,hero:true,t:20})}}
