@@ -15,6 +15,21 @@ function tank(f){const P=painter(20,18);P.box(2,4,16,10,R.orange,{bevel:1});P.bo
  P.eye(7,9,1.8,R.lava);P.eye(13,9,1.8,R.lava);P.box(6,12,8,2,R.dark,{bevel:0});for(const x of[4,8,12,16])P.line(x,14,x+(f?1:-1),17,R.orange[2]);return P.outline("#05040a")}
 function healer(f){const P=painter(16,16);P.ellipse(8,9,6,5,R.pink,{amb:.3});P.ellipse(8,7,3.5,2.3,R.white,{amb:.6});P.eye(6,9,1.6,R.teal);P.eye(10,9,1.6,R.teal);
  P.ellipse(8,2,4.5,1.4,R.yellow,{amb:.6,gloss:false});P.set(8,2,"#fff6b8");for(const x of[5,8,11])P.line(x,13,x+(f?1:-1),15,R.pink[2]);return P.outline("#05040a")}
+// planet natives: one species per planet
+function phantom(f){const P=painter(16,16);P.ellipse(8,7,6,5.5,R.purple,{amb:.45});P.ellipse(8,5,3.5,2.3,R.white,{amb:.7});P.eye(6,7,1.6,R.cyan);P.eye(10,7,1.6,R.cyan);
+ const t=f?[[3,12],[6,14],[9,12],[12,14]]:[[3,14],[6,12],[9,14],[12,12]];for(const[x,y]of t)P.line(x+1,11,x,y,R.purple[2]);return P.outline("#160628")}
+function froster(f){const P=painter(16,16);P.ellipse(8,8,6.5,5.5,R.white,{amb:.3});P.ellipse(8,6,3.5,2.3,R.cyan,{amb:.6});P.eye(6,8,1.6,R.blue);P.eye(10,8,1.6,R.blue);
+ for(const[a,b,c,d]of[[8,2,8,0],[4,3,2,1],[12,3,14,1]])P.line(a,b,c,d,R.cyan[3]);P.set(8,0,"#ffffff");for(const x of[4,8,12])P.line(x,13,x+(f?1:-1),15,R.cyan[2]);return P.outline("#05040a")}
+function rocker(f){const P=painter(18,16);P.ellipse(9,8,7.5,6,R.stone,{amb:.25});P.disc(5,5,1.3,"#4a4452");P.disc(13,10,1.1,"#4a4452");P.eye(7,8,1.7,R.gold);P.eye(11,8,1.7,R.gold);
+ P.line(1,9,17,7,R.gold[3]);for(const x of[4,9,14])P.line(x,13,x+(f?1:-1),15,R.stone[2]);return P.outline("#05040a")}
+function firebug(f){const P=painter(16,16);P.ellipse(8,8,6.5,5.5,R.red,{amb:.3});P.ellipse(8,6,3.5,2.3,R.orange,{amb:.6});P.eye(6,8,1.6,R.yellow);P.eye(10,8,1.6,R.yellow);
+ P.line(5,2,4,0,R.orange[3]);P.line(11,2,12,0,R.orange[3]);P.set(4,0,f?"#ffd93a":"#ff5468");P.set(12,0,f?"#ff5468":"#ffd93a");P.disc(8,14,1.6,f?"#ffd93a":"#ff9a2e");return P.outline("#05040a")}
+function spore(f){const P=painter(16,16);P.ellipse(8,8,6,6,R.olive||R.green,{amb:.35});for(const[x,y]of[[4,4],[11,5],[5,11],[11,11],[8,2]])P.disc(x,y,1.3,"#e6ff8a");P.eye(6,8,1.5,R.pink);P.eye(10,8,1.5,R.pink);
+ for(const x of[5,8,11])P.line(x,13,x+(f?1:-1),15,R.green[2]);return P.outline("#05040a")}
+function brood(f){const P=painter(26,22);P.ellipse(13,11,11,8,R.purple,{amb:.3});P.ellipse(13,7,6,3.5,R.pink,{amb:.5});for(const x of[8,13,18])P.eye(x,11,2,R.yellow);
+ for(const[x,y]of[[6,16],[13,17],[20,16]])P.ellipse(x,y,2.2,2.6,R.white,{amb:.6});P.poly([[9,2],[11,0],[13,2],[15,0],[17,2]],R.gold,{flat:true});
+ for(let i=0;i<6;i++){const x=3+i*4;P.line(x,18,x+(f?1:-1),21,R.purple[2])}return P.outline("#05040a")}
+function bombLoot(f){const P=painter(16,16);P.ellipse(8,9,6,6,R.navy,{amb:.4});P.ellipse(8,9,3.5,3.5,R.blue,{amb:.6});P.line(8,3,10,1,R.steel[3]);P.set(11,0,f?"#ffd93a":"#ff9a2e");P.set(6,7,"#ffffff");return P.outline("#05040a")}
 function pod(f){const P=painter(16,16);P.ellipse(8,8,6,7,R.yellow,{amb:.3});P.box(3,6,10,4,R.dark,{bevel:0});P.set(6,8,"#ffd93a");P.set(8,8,"#ffd93a");P.set(10,8,"#ffd93a");P.line(8,0,8,2,R.steel[3]);P.set(8,0,f?"#ff5468":"#7d0c1f");P.line(4,14,12,14,R.red[3]);return P.outline("#05040a")}
 function superLoot(f){const P=painter(16,16),cols=[R.pink,R.yellow,R.cyan,R.green];P.ellipse(8,8,7,7,cols[f%4],{amb:.35});P.ellipse(8,8,4,4,R.white,{amb:.8});P.poly([[8,3],[9.5,6.5],[13,7],[10,9.5],[11,13],[8,11],[5,13],[6,9.5],[3,7],[6.5,6.5]],R.yellow,{flat:true});return P.outline("#05040a")}
 // the humans
@@ -55,6 +70,13 @@ function icon(kind,locked){const P=painter(13,13),ramp=locked?R.dark:[R.navy,R.b
  if(kind===9){P.line(6,2,6,7,c);P.line(7,2,7,7,c);P.set(6,9,c);P.set(7,9,c);P.set(6,10,c);P.set(7,10,c)}
  if(kind===10){P.line(6,3,6,10,"#5fd456");P.line(3,6,10,6,"#5fd456");P.line(7,3,7,10,"#5fd456");P.line(3,7,10,7,"#5fd456")}
  if(kind===11){P.ellipse(6.5,7,3,4,locked?R.dark:R.white,{amb:.5});P.set(5,6,"#5fd456");P.set(7,8,"#5fd456")}
+ if(kind===13){P.ellipse(6.5,6,3.5,3.5,locked?R.dark:R.purple,{amb:.4,gloss:false});P.set(4,10,c);P.set(6,11,c);P.set(9,10,c)}
+ if(kind===14){P.line(6,2,6,10,c);P.line(2,6,10,6,c);P.line(3,3,9,9,c);P.line(9,3,3,9,c)}
+ if(kind===15){P.ellipse(6.5,7,4,3.5,locked?R.dark:R.stone,{amb:.3});P.line(1,8,11,6,locked?c:"#ffd93a")}
+ if(kind===16){P.ellipse(6.5,8,3,3,locked?R.dark:R.orange,{amb:.5,gloss:false});P.line(6,2,6,5,c);P.set(5,3,"#ffd93a")}
+ if(kind===17){for(const[x,y]of[[4,4],[8,4],[6,7],[4,10],[8,10]])P.disc(x,y,1.2,locked?c:"#e6ff8a")}
+ if(kind===18){for(const x of[3,6,9])P.ellipse(x+.5,7,1.6,2.2,locked?R.dark:R.white,{amb:.6})}
+ if(kind===19){P.poly([[6,1],[8,5],[11,4],[9,8],[11,11],[6,9],[2,11],[4,8],[2,4],[5,5]],locked?R.dark:R.red,{flat:true})}
  if(kind===12){P.ellipse(6.5,4,4,1.5,R.yellow,{amb:.6,gloss:false});P.line(4,7,9,7,c);P.line(4,7,6.5,11,c);P.line(9,7,6.5,11,c)}
  return P.outline("#05040a")}
 function arrow(dir){const P=painter(24,48);P.poly(dir<0?[[2,24],[22,4],[22,44]]:[[22,24],[2,4],[2,44]],R.steel);P.poly(dir<0?[[8,24],[18,14],[18,34]]:[[16,24],[6,14],[6,34]],R.cyan,{flat:true});return P.outline("#05040a")}
@@ -88,4 +110,4 @@ export function buildAtlas(){const C=toCanvas;return{
  fighter:C(fighter()),interceptor:C(interceptor()),carrier:C(carrier()),repair:C(repair()),frigate:C(frigate()),
  sat:C(sat(false)),ufo:C(sat(true)),good:[0,1].map(f=>C(loot(true,f))),bad:[0,1].map(f=>C(loot(false,f))),orb:[0,1].map(f=>C(orb(f))),bug:[0,1].map(f=>C(bug(f))),glob:[0,1].map(f=>C(glob(f))),
  missile:C(missile()),rock:[0,1].map(i=>C(rock(i))),ice:[0,1,2,3].map(k=>C(iceBlock(k))),cloud:cloud(),
- icon:[...Array(13).keys()].map(k=>C(icon(k,false))),iconLocked:[...Array(13).keys()].map(k=>C(icon(k,true))),zapper:[0,1].map(f=>C(zapper(f))),tank:[0,1].map(f=>C(tank(f))),healer:[0,1].map(f=>C(healer(f))),pod:[0,1].map(f=>C(pod(f))),super:[0,1,2,3].map(f=>C(superLoot(f))),arrowL:C(arrow(-1)),arrowR:C(arrow(1)),moon:C(moon())}}
+ icon:[...Array(20).keys()].map(k=>C(icon(k,false))),iconLocked:[...Array(20).keys()].map(k=>C(icon(k,true))),phantom:[0,1].map(f=>C(phantom(f))),froster:[0,1].map(f=>C(froster(f))),rocker:[0,1].map(f=>C(rocker(f))),firebug:[0,1].map(f=>C(firebug(f))),spore:[0,1].map(f=>C(spore(f))),brood:[0,1].map(f=>C(brood(f))),bombLoot:[0,1].map(f=>C(bombLoot(f))),zapper:[0,1].map(f=>C(zapper(f))),tank:[0,1].map(f=>C(tank(f))),healer:[0,1].map(f=>C(healer(f))),pod:[0,1].map(f=>C(pod(f))),super:[0,1,2,3].map(f=>C(superLoot(f))),arrowL:C(arrow(-1)),arrowR:C(arrow(1)),moon:C(moon())}}
