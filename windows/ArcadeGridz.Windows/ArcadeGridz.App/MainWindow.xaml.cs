@@ -65,9 +65,16 @@ public sealed partial class MainWindow : Window
             // launcher or sign-in panel is ready, so there is never a full-screen loading screen.
             SetCloaked(true);
             revealFailsafe = DispatcherQueue.CreateTimer();
-            revealFailsafe.Interval = TimeSpan.FromSeconds(12);
+            // a cold WebView profile can take up to 12s to answer the saved-session check; don't hold the splash
+            // that long: show the sign-in card, and a late "already signed in" answer still skips to the launcher
+            revealFailsafe.Interval = TimeSpan.FromSeconds(8);
             revealFailsafe.IsRepeating = false;
-            revealFailsafe.Tick += (_, _) => { StartupLog.Write("window", "Reveal failsafe fired"); Reveal(); };
+            revealFailsafe.Tick += (_, _) =>
+            {
+                StartupLog.Write("window", "Reveal failsafe fired; showing sign-in while the session check finishes");
+                if (startupOpen) ShowWelcome();
+                Reveal();
+            };
             revealFailsafe.Start();
             GameGrid.ItemsSource = visible;
             native.Exited += (_, _) => DispatcherQueue.TryEnqueue(ReturnToLauncher);
@@ -172,7 +179,12 @@ public sealed partial class MainWindow : Window
             splashTimer.IsRepeating = false;
             splashTimer.Tick += (_, _) =>
             {
-                if (hasPersistedSession)
+                // the user already chose (guest / email sign-in) on the card the failsafe showed: leave it alone
+                if (revealed && !startupOpen)
+                {
+                    if (hasPersistedSession && !signInPanelOpen) NetworkState.Text = "SIGNED IN • GRID ONLINE";
+                }
+                else if (hasPersistedSession)
                 {
                     NetworkState.Text = "SIGNED IN • GRID ONLINE";
                     EnterLauncher(false);
@@ -421,6 +433,7 @@ public sealed partial class MainWindow : Window
     void ShowWelcome()
     {
         // centered sign-in card over the (dimmed, inert) launcher, like Steam / Battle.net
+        if (startupOpen && WelcomePanel.Visibility == Visibility.Visible) return;
         startupOpen = true;
         Launcher.Visibility = Visibility.Visible;
         StartupLayer.Visibility = Visibility.Visible;
