@@ -2,20 +2,20 @@
 // campaign. You command the alien swarm at the top; the human ship (and later a whole fleet) fights back.
 // One step = one original 30 fps frame. World units match the original 310x180 screen at zoom 1; as the swarm
 // grows the camera zooms out (to ZMIN) and the field widens/deepens around the top centre.
-export const W=310,H=180,DT=1/30,CX=155,FX0=57,FX1=253,SLOT_Y=16,ZMIN=.76;
+export const W=310,H=180,DT=1/30,CX=155,FX0=57,FX1=253,SLOT_Y=26,ZMIN=.62,ZBASE=.92;
 export const CMD={RANDOM:0,BUGS:1,ATTACK:2,DIVE:3,TENTACLES:4};
 export const CMD_NAMES=["RANDOM","BUGS","ATTACK","DIVE","TENTACLES"];
 // command icon offsets around the alien (original: random on top, bugs left, attack/dive below, tentacles right)
 export const CMD_POS=[[0,-17],[-18,0],[-9,15],[9,15],[18,0]];
 export const ME_BUFFS=["speed","spit","bugs","spawn","armor","tentacles"],MAN_BUFFS=["speed","lasers","missiles","plazma","shields","option"];
 export const DIFF=[null,
- {name:"EASY",planetdmg:1,bossdmg:1,goodloot:1,badloot:10,badfire:90,goodspeed:1,badspeed:.1,stopper:0,stages:false,ai:-1,ice:6},
- {name:"NORMAL",planetdmg:.5,bossdmg:1,goodloot:2,badloot:4,badfire:70,goodspeed:.5,badspeed:.5,stopper:0,stages:true,ai:0,ice:9},
- {name:"HARD",planetdmg:.5,bossdmg:.5,goodloot:2,badloot:2,badfire:45,goodspeed:.25,badspeed:1,stopper:1,stages:true,ai:1,ice:12}];
+ {name:"EASY",planetdmg:1,bossdmg:1,goodloot:1,badloot:10,badfire:90,goodspeed:1,badspeed:.1,stopper:0,stages:false,ai:-1,ice:10},
+ {name:"NORMAL",planetdmg:.5,bossdmg:1,goodloot:2,badloot:4,badfire:70,goodspeed:.5,badspeed:.5,stopper:0,stages:true,ai:0,ice:12},
+ {name:"HARD",planetdmg:.5,bossdmg:.5,goodloot:2,badloot:2,badfire:45,goodspeed:.25,badspeed:1,stopper:1,stages:true,ai:1,ice:15}];
 // the campaign: planet levels (wreck the planet, beat its boss) and bonus stages
 export const LEVELS=[
- {id:"earth",name:"EARTH",kind:"planet",art:1,rise:.03,boss:1,ai:0,hp:1.8,fleet:[],brief:"Wreck the planet. Beat the defender."},
- {id:"mars",name:"MARS",kind:"planet",art:2,rise:.05,boss:2,ai:1,hp:2,fleet:["fighter"],brief:"A wingman joins the ship."},
+ {id:"earth",name:"EARTH",kind:"planet",art:1,rise:.03,boss:1,ai:1,hp:2.4,fleet:[],brief:"Wreck the planet. Beat the defender."},
+ {id:"mars",name:"MARS",kind:"planet",art:2,rise:.05,boss:2,ai:1,hp:2.4,fleet:["fighter"],brief:"A wingman joins the ship."},
  {id:"sun",name:"THE SUN",kind:"bonus",bonus:"sun",art:8,time:45,brief:"Shift the swarm away from the solar flares. Snatch the energy orbs."},
  {id:"venus",name:"VENUS",kind:"planet",art:4,rise:.05,boss:1,ai:1,hp:2.2,fleet:["fighter","fighter"],hazard:"acid",brief:"Acid clouds drift through the swarm."},
  {id:"jupiter",name:"JUPITER",kind:"planet",art:3,rise:.07,boss:3,ai:2,hp:2.4,fleet:["interceptor","fighter"],hazard:"moons",brief:"Interceptors hunt your divers."},
@@ -39,7 +39,7 @@ function aim(o,tx,ty,sp){const dx=tx-o.x,dy=ty-o.y,d=Math.hypot(dx,dy)||1;o.vx=d
 export const fx0=g=>CX-98/g.z,fx1=g=>CX+98/g.z,bot=g=>H/g.z,manY=g=>bot(g)-40,kamiY=g=>bot(g)*.53,surfaceY=g=>bot(g)-g.prise;
 export function createGame({difficulty=2,level=0,seed=Date.now(),assist=false,carry=null}={}){
  const D=DIFF[difficulty],L=LEVELS[level],r=rng(seed);
- const g={difficulty,level,D,L,assist,seed:seed>>>0,rand:r,frame:0,state:"play",phase:L.kind==="bonus"?"bonus":"planet",events:[],uid:1,z:1,
+ const g={difficulty,level,D,L,assist,seed:seed>>>0,rand:r,frame:0,state:"play",phase:L.kind==="bonus"?"bonus":"planet",events:[],uid:1,z:ZBASE,march:{dir:1,last:0},
   spawner:{x:61,t:60},aliens:[],me:carry?.me?{...carry.me}:{speed:0,spit:0,bugs:0,spawn:0,armor:0,tentacles:0},man:null,manb:{speed:0,lasers:0,missiles:0,plazma:0,shields:0,option:0},manlives:3,
   skill:clamp(L.ai??0+0,0,4),ships:[],options:[],shots:[],manshots:[],missiles:[],plazmas:[],bugs:[],tentacles:[],globs:[],loots:[],sats:[],moons:[],bossShots:[],hazards:[],flares:[],ice:[],ufos:[],beams:[],
   prise:2,health:100,boss:null,menu:null,bigdive:0,rushCD:0,merge:null,timer:(L.time||0)*30,chain:0,chainT:0,bonusPts:0,
@@ -133,11 +133,12 @@ function pilot(g,u,sp,skill,{hunts=false,greedy=true,lane=null}={}){const S=AI[c
 // ---------------- planet levels ----------------
 function tick(g){const f=g.frame,D=g.D,me=g.me,mb=g.manb,L=g.L;
  // camera: zoom out as the swarm grows (capped), ease back in when it shrinks
- const zt=clamp(1-(g.aliens.length-14)*.011,ZMIN,1);g.z+=(zt-g.z)*.02;
+ const zt=clamp(ZBASE-(g.aliens.length-10)*.012,ZMIN,ZBASE);g.z+=(zt-g.z)*.02;
+ march(g);
  if(g.rushCD>0)g.rushCD--;if(g.bigdive>0&&--g.bigdive===0)endRush(g);
  // the hand of god: formation spawner sweeping the top row
- if(--g.spawner.t<=0){const s=g.spawner;if(s.x>fx1(g)-24){s.x=fx0(g)+4;for(const a of g.aliens)a.mey+=16;ev(g,{type:"descend"})}s.x+=16;if(g.aliens.length<56)spawnAlien(g,s.x);
-  s.t=f<300?14:Math.max(22,80-me.spawn*3);
+ if(--g.spawner.t<=0){const s=g.spawner;if(s.x>fx1(g)-24)s.x=fx0(g)+4;s.x+=16;if(g.aliens.length<56&&!g.aliens.some(a=>Math.abs(a.mey-SLOT_Y)<10&&Math.abs(a.mex-s.x)<12))spawnAlien(g,s.x);
+  s.t=f<300||g.aliens.length<8?14:Math.max(22,80-me.spawn*3);
   if(f>300&&!g.sats.length&&g.rand()<.05){const dir=g.rand()<.5?1:-1;g.sats.push({x:dir>0?fx0(g)+16:fx1(g)-16,y:bot(g)*.45,dir,ufo:g.rand()<.5})}}
  if(D.stages&&f%1800===0){const mins=f/1800;g.stage=mins+1;buffMan(g,1);ev(g,{type:"stage",stage:g.stage})}
  // planet rises / boss
@@ -193,6 +194,11 @@ function tick(g){const f=g.frame,D=g.D,me=g.me,mb=g.manb,L=g.L;
  else if(g.phase==="boss"&&g.health<1&&g.state==="play"){const B=g.boss;g.score+=2000*g.difficulty*(g.level+1);sfx(g,"win");ev(g,{type:"boss",x:B.x,y:B.y});
   g.state=L.final?"won":"clear";g.result="win";g.boss=null;ev(g,{type:"end",result:"win"})}
  if(g.state==="play"&&g.aliens.length===0&&g.frame>60){g.state="over";g.result="lose";sfx(g,"over");ev(g,{type:"end",result:"lose"})}}
+// Galaxian / Invaders march: the formation drifts side to side and steps down a notch at the edges
+function march(g){const m=g.march;let lo=1e9,hi=-1e9;for(const a of g.aliens)if(!a.kami&&!a.mergeInto){lo=Math.min(lo,a.mex);hi=Math.max(hi,a.mex)}
+ if(lo>hi)return;const sp=.15+g.level*.008,L=fx0(g)+12,R=fx1(g)-12;if(hi-lo>R-L-8)return;
+ if(m.dir>0&&hi+sp>R||m.dir<0&&lo-sp<L){m.dir=-m.dir;if(g.frame-m.last>360){m.last=g.frame;for(const a of g.aliens)if(!a.kami)a.mey+=5;ev(g,{type:"descend"})}}
+ else for(const a of g.aliens)if(!a.kami&&!a.mergeInto)a.mex+=m.dir*sp}
 function nearestFoe(g,a){let best=g.man||g.boss,bd=best?Math.abs(best.x-a.x):1e9;for(const s of g.ships){const d=Math.abs(s.x-a.x);if(d<bd){bd=d;best=s}}return best}
 function hazards(g){const L=g.L;
  if(L.hazard==="moons"&&--g.moonT<=0){g.moonT=420;if(!g.moons.length){g.moons.push({x:fx0(g)+20+g.rand()*(fx1(g)-fx0(g)-40),y:bot(g)+30,r:18,hit:new Set()});ev(g,{type:"hazard",kind:"moon"})}}

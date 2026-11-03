@@ -5,6 +5,7 @@
 import{W,H,DT,CX,CMD,CMD_NAMES,CMD_POS,DIFF,LEVELS,createGame,step,snapshot,idleAliens,commandable,lockedCmd,fx0,fx1,bot,surfaceY}from"./engine.js?v=1102-v2a";
 import{buildAtlas,buildPlanet,buildSky,buildStars}from"./sprites.js?v=1102-v2a";
 import{createAudio}from"./audio.js?v=1013-oota1";
+import{createTitle}from"./title.js?v=1102-t1";
 import{isPad,padDir,padLabel,anyPad,createBindings,createMenu,controlsScreen}from"/potato-kit.js?v=1101-pk2";
 const GAME_ID="offense-of-the-aliens",S=4,CW=W*S,CH=H*S,RUN_KEY="run.v2";
 const store={get(k,d){try{const v=localStorage.getItem("oota."+k);return v==null?d:JSON.parse(v)}catch{return d}},set(k,v){try{localStorage.setItem("oota."+k,JSON.stringify(v))}catch{}},del(k){try{localStorage.removeItem("oota."+k)}catch{}}};
@@ -31,9 +32,9 @@ const ACTIONS=[
  {id:"repeat",label:"REPEAT LAST ORDER",def:"KeyZ",hint:"GIVE THE SAME ORDER AGAIN"},
  {id:"snatch",label:"SNATCH LOOT",def:"KeyX",hint:"GRAB GREEN, BLOCK RED"},
  {id:"rush",label:"SWARM RUSH",def:"Space",hint:"EVERYONE DIVES AT THE SHIP"},
- {id:"scope",label:"GROUP: ONE / ROW / ALL",def:"ShiftLeft"},
- {id:"shift",label:"HOLD + D-PAD: SHIFT SWARM",def:"KeyE"},
- {id:"idle",label:"NEXT IDLE ALIEN",def:"KeyM"},
+ {id:"left",label:"MOVE SWARM LEFT",def:"ShiftLeft",hint:"HOLD"},
+ {id:"right",label:"MOVE SWARM RIGHT",def:"KeyE",hint:"HOLD"},
+ {id:"scope",label:"GROUP: ONE / ROW / ALL",def:"KeyM",hint:"ORDER A WHOLE ROW OR EVERYONE"},
  {id:"pause",label:"PAUSE MENU",def:"KeyP",fixed:true}];
 const SCOPES=["ONE","ROW","ALL"];
 const potato=()=>document.documentElement.classList.contains("agbm-on")||document.documentElement.classList.contains("ag-winapp");
@@ -50,11 +51,22 @@ export function mountOota(root,{onExit}={}){
  const atlas=buildAtlas(),planets=[],skies=[],planetOf=k=>planets[k]||(planets[k]=buildPlanet(k)),skyOf=k=>skies[k]||(skies[k]=buildSky(k)),stars=[buildStars(3),buildStars(9)],audio=createAudio(),reduceMotion=matchMedia?.("(prefers-reduced-motion: reduce)").matches;
  let opts={difficulty:store.get("difficulty",2),dial:store.get("dial",true),assist:store.get("assist",false),slowmo:store.get("slowmo",true),shake:store.get("shake",true)};
  let g=null,demo=true,paused=false,focusPaused=false,destroyed=false,raf=0,last=performance.now(),acc=0,publishT=0,submitted=false,endT=0,bannerTimer=0,tick=0,shake=0,flash=0,hitstop=0,result=null,run=null;
- let particles=[],pops=[],fx=[],taps=[],shiftHold={l:false,r:false},inpQ={},hoverX=CX,dial=null;
- const binds=createBindings("oota.padmap.v2",ACTIONS);
+ let particles=[],pops=[],fx=[],taps=[],shiftHold={l:false,r:false},inpQ={},hoverX=CX,hoverY=0,dial=null;
+ const binds=createBindings("oota.padmap.v3",ACTIONS);
  const sel={on:anyPad(),anchor:0,scope:0,menu:null,pick:null,last:null,shift:false,ax:CX,ay:20,dirs:{up:0,down:0,left:0,right:0}};
  const menu=createMenu(stage,{sfx:n=>{if(n==="move")audio.sfx("pick");else if(n==="ok")audio.sfx("ok");else if(n==="back")audio.sfx("deny")}});
  const L=id=>padLabel(binds.get(id));
+ let titleOn=true;
+ const fromTitle=sc=>()=>menu.open({...sc,back:()=>menu.close()});
+ const title=createTitle({ctx,CW,CH,atlas,planetOf,skyOf,stars,audio,rumble:(ms,s)=>{try{window.ArcadeGridzPad?.rumble?.(ms,s)}catch{}},items:name=>{
+  if(name==="diff")return[1,2,3].map(d=>({label:DIFF[d].name,hint:["","A GENTLE START. ROOKIE PILOTS.","THE INTENDED INVASION.","SHARP PILOTS. NO MERCY."][d],off:()=>false,act:()=>newRun(d)})).concat([{label:"BACK",hint:"",off:()=>false,act:()=>title.openList("main")}]);
+  if(name==="over")return[{label:"START OVER",hint:"YOUR SAVED INVASION WILL BE LOST",off:()=>false,act:()=>title.openList("diff",opts.difficulty-1)},{label:"KEEP MY SAVE",hint:"",off:()=>false,act:()=>title.openList("main")}];
+  return[{label:"NEW GAME",hint:"START THE INVASION AT EARTH",off:()=>false,act:()=>savedRun()?title.openList("over"):title.openList("diff",opts.difficulty-1)},
+   {label:"CONTINUE",hint:()=>{const r=savedRun();return r?`LEVEL ${r.level+1} ${LEVELS[r.level].name} // ${DIFF[r.difficulty].name} // ${fmt(r.score)}`:"NO INVASION IN PROGRESS"},off:()=>!savedRun(),act:continueRun},
+   {label:"OPTIONS",hint:"SOUND, DIALOGUE, ASSIST, SLOW-MO",off:()=>false,act:fromTitle(optionsScreen())},
+   {label:"CONTROLS",hint:"REMAP YOUR CONTROLLER",off:()=>false,act:fromTitle(controls())},
+   {label:"HOW TO PLAY",hint:"",off:()=>false,act:fromTitle(howTo())},
+   {label:"EXIT GAME",hint:"BACK TO ARCADEGRIDZ",off:()=>false,act:exitGame}]}});
  const rumble=(ms,s)=>{try{if(!demo)window.ArcadeGridzPad?.rumble?.(ms,s)}catch{}};
  const live=()=>!demo&&g&&g.state==="play"&&!paused;
  function resetHolds(){shiftHold.l=shiftHold.r=false;sel.shift=false;for(const k in sel.dirs)sel.dirs[k]=0}
@@ -70,33 +82,48 @@ export function mountOota(root,{onExit}={}){
   if(best){sel.anchor=best.id;sel.ax=best.x;sel.ay=best.y;audio.sfx("pick")}}
  function nextIdle(){const a=ensureAnchor(),idle=idleAliens(g).filter(o=>o.y>-4);if(!idle.length){audio.sfx("deny");return}
   idle.sort((p,q)=>Math.hypot(p.x-(a?.x??CX),p.y-(a?.y??20))-Math.hypot(q.x-(a?.x??CX),q.y-(a?.y??20)));const n=idle.find(o=>o.id!==sel.anchor)||idle[0];sel.anchor=n.id;sel.scope=0;audio.sfx("pick")}
- function orderItems(){const a=anchorAlien(),items=ORDER.map(c=>({cmd:c,label:CMD_NAMES[c],off:lockedCmd(g,c),hint:lockedCmd(g,c)?"LOCKED: GRAB POWER-UPS":ORDER_HINT[c]}));
-  if(sel.scope===0&&a&&a.sparkle>0&&a.species===1)items.push({merge:true,label:"MERGE",hint:"PICK A PARTNER TO FUSE WITH"});return items}
- function openOrders(){if(!live()||!ensureAnchor())return;const items=orderItems();let idx=Math.max(0,items.findIndex(i=>i.cmd===sel.last&&!i.off));if(items[idx].off)idx=0;sel.menu={idx,items};audio.sfx("pick")}
- function confirmOrder(){const m=sel.menu;if(!m)return;const it=m.items[m.idx];if(it.off){audio.sfx("deny");return}sel.menu=null;
-  if(it.merge){sel.pick={src:sel.anchor};banner("PICK A PARTNER","HOP TO ANOTHER ALIEN, THEN PRESS "+L("order"));return}
-  inpQ.command={cmd:it.cmd,ids:selIds()};sel.last=it.cmd}
+// ring order menu (controller/keyboard): icons around the selected alien, d-pad aims, tooltip explains
+ const RING=[CMD.RANDOM,CMD.BUGS,CMD.ATTACK,CMD.DIVE,CMD.TENTACLES];
+ const canMerge=()=>{const a=anchorAlien();return sel.scope===0&&a&&a.sparkle>0&&a.species===1};
+ const ringSlot=i=>i===CMD.RANDOM&&canMerge()?"merge":i;
+ function openOrders(){if(!live()||!ensureAnchor())return;let idx=sel.last!=null&&!lockedCmd(g,sel.last)?sel.last:CMD.ATTACK;if(canMerge())idx=CMD.RANDOM;sel.menu={idx};audio.sfx("pick")}
+ function aimRing(){const dx=sel.dirs.right-sel.dirs.left,dy=sel.dirs.down-sel.dirs.up;if(!dx&&!dy)return;const n=Math.hypot(dx,dy);let bi=sel.menu.idx,bs=-2;
+  for(const i of RING){const[ox,oy]=CMD_POS[i],m=Math.hypot(ox,oy),sc=(ox*dx+oy*dy)/(m*n);if(sc>bs){bs=sc;bi=i}}if(bi!==sel.menu.idx){sel.menu.idx=bi;audio.sfx("pick")}}
+ function confirmOrder(){const m=sel.menu;if(!m)return;const slot=ringSlot(m.idx);if(slot!=="merge"&&lockedCmd(g,slot)){audio.sfx("deny");return}sel.menu=null;
+  if(slot==="merge"){sel.pick={src:sel.anchor};banner("PICK A PARTNER","HOP TO ANOTHER ALIEN, THEN PRESS "+L("order"));return}
+  inpQ.command={cmd:slot,ids:selIds()};sel.last=slot}
  function repeatOrder(){if(sel.last==null){openOrders();return}if(lockedCmd(g,sel.last)){audio.sfx("deny");return}const ids=selIds();if(ids.length)inpQ.command={cmd:sel.last,ids}}
  function action(name,down,e){sel.on=true;
-  if(name==="shift"){sel.shift=down;if(!down)shiftHold.l=shiftHold.r=false;return}
+  if(name==="left"||name==="right"){shiftHold[name==="left"?"l":"r"]=down;if(down&&live())tutor("move");return}
   if(name==="dir"){const d=e;sel.dirs[d]=down?1:0;
-   if(sel.shift&&(d==="left"||d==="right")){shiftHold[d==="left"?"l":"r"]=down;return}
    if(!down||!live())return;
-   if(sel.menu){const n=sel.menu.items.length;if(d==="up")sel.menu.idx=(sel.menu.idx-1+n)%n;else if(d==="down")sel.menu.idx=(sel.menu.idx+1)%n;audio.sfx("pick");return}
-   hop(d==="left"?-1:d==="right"?1:0,d==="up"?-1:d==="down"?1:0);return}
+   if(sel.menu){aimRing();return}
+   hop(d==="left"?-1:d==="right"?1:0,d==="up"?-1:d==="down"?1:0);tutor("hop");return}
   if(!down)return;
   if(name==="pause"){openPause();return}
   if(!live())return;audio.unlock();
-  if(sel.menu){if(name==="order"||name==="repeat")confirmOrder();else if(name==="rush"){sel.menu=null;audio.sfx("deny")}return}
+  if(sel.menu){if(name==="order"||name==="repeat"){confirmOrder();tutor("order")}else if(name==="rush"){sel.menu=null;audio.sfx("deny")}return}
   if(sel.pick){if(name==="order"){if(sel.anchor!==sel.pick.src)inpQ.merge={src:sel.pick.src,dst:sel.anchor};else audio.sfx("deny");sel.pick=null}else if(name==="rush"){sel.pick=null;audio.sfx("deny")}return}
-  if(name==="order")openOrders();else if(name==="repeat")repeatOrder();else if(name==="snatch")inpQ.snatch=true;else if(name==="rush")inpQ.rush=true;
-  else if(name==="scope"){sel.scope=(sel.scope+1)%3;audio.sfx("pick")}else if(name==="idle")nextIdle()}
+  if(name==="order")openOrders();else if(name==="repeat")repeatOrder();else if(name==="snatch"){inpQ.snatch=true;tutor("snatch")}else if(name==="rush"){inpQ.rush=true;tutor("rush")}
+  else if(name==="scope"){sel.scope=(sel.scope+1)%3;audio.sfx("pick");banner(`ORDERS GO TO: ${["ONE ALIEN","THE WHOLE ROW","THE WHOLE SWARM"][sel.scope]}`,"");tutor("scope")}else if(name==="idle")nextIdle()}
+ // first-invasion tutorial: one tip at a time, each cleared by doing it
+ const TUT=[["hop","PICK AN ALIEN","D-PAD","ARROWS"],["order","GIVE IT AN ORDER","order","Z"],["move","MOVE THE WHOLE SWARM","left+right","Q / E"],["snatch","SNATCH THE GREEN POWER-UPS","snatch","X"],["scope","ORDER A ROW OR EVERYONE","scope","TAB"],["rush","RUSH THE SHIP (RECHARGES)","rush","SPACE"]];
+ let tut=store.get("tut",0);
+ function tutor(k){if(tut<TUT.length&&TUT[tut][0]===k){tut++;store.set("tut",tut);audio.sfx("powerup")}}
+ function drawTutorial(){if(demo||tut>=TUT.length||!g||g.level!==0||paused)return;const[k,msg,pad,kb]=TUT[tut],btn=sel.on?(pad==="D-PAD"?"D-PAD":pad.split("+").map(id=>L(id)).join(" / ")):kb,
+  w=640,h=74,x=(CW-w)/2,y=CH*.44;ctx.globalAlpha=.88+.12*Math.sin(tick*.15);ctx.fillStyle="rgba(5,4,10,.86)";ctx.fillRect(x,y,w,h);ctx.strokeStyle="#5fd456";ctx.lineWidth=3;ctx.strokeRect(x+1.5,y+1.5,w-3,h-3);
+  ctx.textAlign="center";ctx.font='900 15px "Courier New",monospace';ctx.fillStyle="#9fe9ff";ctx.fillText(`TIP ${tut+1}/${TUT.length}`,CW/2,y+22);
+  ctx.font='900 26px "Courier New",monospace';const t=`${btn}  ${msg}`,tw=ctx.measureText(t).width;ctx.fillStyle="#05040a";ctx.fillText(t,CW/2+2,y+56);ctx.fillStyle="#c8ff9a";ctx.fillText(t,CW/2,y+54);
+  const bw=ctx.measureText(btn).width;ctx.fillStyle="#ffd93a";ctx.textAlign="left";ctx.fillText(btn,CW/2-tw/2,y+54);ctx.globalAlpha=1}
  // ---------- input ----------
  const KB={ArrowUp:["dir","up"],ArrowDown:["dir","down"],ArrowLeft:["dir","left"],ArrowRight:["dir","right"],KeyW:["dir","up"],KeyS:["dir","down"],KeyA:["dir","left"],KeyD:["dir","right"],
-  KeyZ:["order"],Enter:["order"],KeyC:["repeat"],KeyX:["snatch"],Space:["rush"],KeyQ:["scope"],Tab:["idle"],ShiftLeft:["shift"],ShiftRight:["shift"],KeyP:["pause"],Escape:["pause"]};
+  KeyZ:["order"],Enter:["order"],KeyC:["repeat"],KeyX:["snatch"],Space:["rush"],KeyQ:["left"],KeyE:["right"],Tab:["scope"],KeyP:["pause"],Escape:["pause"]};
  const onKey=e=>{if(e.target.closest?.("input,textarea,select"))return;
   if(menu.handleKey(e)){if(isPad(e))sel.on=true;e.preventDefault();return}
   const down=e.type==="keydown";
+  if(titleOn&&demo){e.preventDefault();if(!down||e.repeat&&!/Arrow|Key[WS]/.test(e.code))return;sel.on=isPad(e)||sel.on;const pad=isPad(e),d=pad?padDir(e):({ArrowUp:"up",ArrowDown:"down",ArrowLeft:"left",ArrowRight:"right",KeyW:"up",KeyS:"down"})[e.code];
+   const name=d||(pad?(e.code==="Escape"||e.code==="Enter"?"ok":e.code==="Space"?"back":e.code==="KeyP"?"start":null):(e.code==="Enter"||e.code==="Space"||e.code==="KeyZ"?"ok":e.code==="Escape"||e.code==="Backspace"?"back":e.code==="KeyP"?"start":null));
+   if(name){audio.unlock();title.input(name)}return}
   if(isPad(e)){e.preventDefault();const d=padDir(e);if(d){action("dir",down,d);return}if(e.code==="KeyP"){action("pause",down);return}const a=binds.actionFor(e.code);if(a)action(a,down);return}
   if(down&&e.code==="KeyM"){toggleAudio();e.preventDefault();return}
   if(down&&KEYCMD[e.code]!=null&&live()){const ids=selIds();inpQ.command=ids.length&&sel.on?{cmd:KEYCMD[e.code],ids}:{cmd:KEYCMD[e.code],near:hoverX};sel.last=KEYCMD[e.code];e.preventDefault();return}
@@ -105,8 +132,9 @@ export function mountOota(root,{onExit}={}){
  const view=()=>g?.z||1;
  const world=e=>{const r=canvas.getBoundingClientRect(),sx=(e.clientX-r.left)/r.width*W,sy=(e.clientY-r.top)/r.height*H,z=view();return{x:CX+(sx-CX)/z,y:sy/z}};
  let arrowPtr=null;
- canvas.addEventListener("pointermove",e=>{hoverX=world(e).x;if(e.pointerType==="mouse"&&(e.movementX||e.movementY))sel.on=false});
- canvas.addEventListener("pointerdown",e=>{if(!live())return;const p=world(e);e.preventDefault();canvas.focus?.({preventScroll:true});audio.unlock();sel.on=false;sel.menu=null;sel.pick=null;
+ const cpx=e=>{const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*CW,y:(e.clientY-r.top)/r.height*CH}};
+ canvas.addEventListener("pointermove",e=>{if(titleOn&&demo){const p=cpx(e);title.hover(p.x,p.y)}const wp=world(e);hoverX=wp.x;hoverY=wp.y;if(e.pointerType==="mouse"&&(e.movementX||e.movementY))sel.on=false});
+ canvas.addEventListener("pointerdown",e=>{if(titleOn&&demo&&!menu.isOpen()){e.preventDefault();audio.unlock();const p=cpx(e);title.click(p.x,p.y);return}if(!live())return;const p=world(e);e.preventDefault();canvas.focus?.({preventScroll:true});audio.unlock();sel.on=false;sel.menu=null;sel.pick=null;
   const r=canvas.getBoundingClientRect(),sx=(e.clientX-r.left)/r.width*W,sy=(e.clientY-r.top)/r.height*H;
   for(const a of ARROWS)if(Math.abs(sx-a.x)<14&&Math.abs(sy-a.y)<26){arrowPtr={id:e.pointerId,dir:a.dir};return}
   taps.push(p)});
@@ -125,8 +153,8 @@ export function mountOota(root,{onExit}={}){
   if(e.type==="sfx"){if(!demo)audio.sfx(e.name)}
   else if(e.type==="pop")pops.push({x:e.x,y:e.y,t:40,txt:e.txt,c:e.c});
   else if(e.type==="alienDie")burst(e.x,e.y,e.species===2?"#3fd4bd":"#5fd456",10);
-  else if(e.type==="manDie"){burst(e.x,e.y,"#ffd93a",18,1.8);burst(e.x,e.y,"#ff5468",10);burst(e.x,e.y,"#b9c1cf",8,1.4,.06);kick(4);hitstop=3;rumble(180,.6)}
-  else if(e.type==="shipDie"){burst(e.x,e.y,"#ffd93a",e.kind==="carrier"?34:16,1.8);burst(e.x,e.y,"#94a0b8",10,1.6,.06);kick(e.kind==="carrier"?8:4);hitstop=e.kind==="carrier"?5:2;rumble(200,.7)}
+  else if(e.type==="manDie"){burst(e.x,e.y,"#ffd93a",18,1.8);burst(e.x,e.y,"#ff5468",10);burst(e.x,e.y,"#b9c1cf",8,1.4,.06);kick(4);rumble(180,.6)}
+  else if(e.type==="shipDie"){burst(e.x,e.y,"#ffd93a",e.kind==="carrier"?34:16,1.8);burst(e.x,e.y,"#94a0b8",10,1.6,.06);kick(e.kind==="carrier"?8:4);if(e.kind==="carrier")hitstop=3;rumble(200,.7)}
   else if(e.type==="spark")burst(e.x,e.y,"#ffe08a",3,.8);
   else if(e.type==="iceBreak"){burst(e.x,e.y,"#d2fbff",14,1.6,.05);burst(e.x,e.y,"#5ee7ff",6,1)}
   else if(e.type==="snatch")fx.push({k:"snatch",x0:e.x0,y0:e.y0,x1:e.x1,y1:e.y1,t:10});
@@ -136,7 +164,7 @@ export function mountOota(root,{onExit}={}){
   else if(e.type==="hazard"&&!demo&&HAZARD_TEXT[e.kind])banner(...HAZARD_TEXT[e.kind]);
   else if(e.type==="merged"){burst(e.x,e.y,"#ff6fb5",16,1.5);if(!demo){banner("MERGED!","A NEW SPECIES");rumble(120,.4)}}
   else if(e.type==="buff"&&!demo){if(e.side==="me")pops.push({x:CX,y:60,t:46,txt:`SWARM +${BUFF_NAMES[e.kind]}`,c:"#5fd456"});else pops.push({x:CX,y:120,t:46,txt:`SHIP +${BUFF_NAMES[e.kind]}`,c:"#ff9a2e"})}
-  else if(e.type==="planetDestroyed"){flash=16;kick(10);hitstop=6;rumble(500,1);audio.hyper?.(true);if(!demo){banner(`${g.L.name} DESTROYED!`,g.L.final?"THE ADMIRAL ATTACKS":"HERE COMES THE BOSS");say(BOSS_LINES[g.L.id])}}
+  else if(e.type==="planetDestroyed"){flash=16;kick(10);hitstop=4;rumble(500,1);audio.hyper?.(true);if(!demo){banner(`${g.L.name} DESTROYED!`,g.L.final?"THE ADMIRAL ATTACKS":"HERE COMES THE BOSS");say(BOSS_LINES[g.L.id])}}
   else if(e.type==="boss"){burst(e.x,e.y,"#ffd93a",40,2.5);burst(e.x,e.y,"#ffffff",20,2);burst(e.x,e.y,"#94a0b8",14,2,.06);flash=22;kick(12);hitstop=8;rumble(600,1)}
   else if(e.type==="stage"&&!demo)banner(`STAGE ${e.stage}`,"THE SHIP GETS UPGRADES");
   else if(e.type==="descend"&&!demo&&g.aliens.some(a=>a.mey>bot(g)*.42))pops.push({x:CX,y:bot(g)*.55,t:30,txt:"THE SWARM DESCENDS",c:"#ff6fb5"});
@@ -206,12 +234,23 @@ export function mountOota(root,{onExit}={}){
  // where a world point lands on screen (for overlays drawn without the camera transform)
  const scr=(x,y)=>({x:CW/2+(x-CX)*S*g.z,y:y*S*g.z});
  function win(x,y,w,h){ctx.fillStyle="rgba(0,0,0,.45)";ctx.fillRect(x+6,y+6,w,h);const gr=ctx.createLinearGradient(0,y,0,y+h);gr.addColorStop(0,"#3a5cd8");gr.addColorStop(1,"#0c1660");ctx.fillStyle=gr;ctx.fillRect(x,y,w,h);ctx.strokeStyle="#ffffff";ctx.lineWidth=4;ctx.strokeRect(x+2,y+2,w-4,h-4);ctx.strokeStyle="#9aa6c8";ctx.lineWidth=2;ctx.strokeRect(x+7,y+7,w-14,h-14)}
- function drawOrderMenu(){const m=sel.menu,a=anchorAlien();if(!m||!a)return;const p=scr(a.x,a.y),w=330,rowH=34,h=26+m.items.length*rowH+40;
-  let x=p.x+46,y=p.y-20;if(x+w>FX1px())x=p.x-46-w;x=Math.max(FX0px()+6,x);y=Math.max(8,Math.min(CH-h-8,y));win(x,y,w,h);
-  ctx.font='800 15px "Courier New",monospace';ctx.textAlign="left";ctx.fillStyle="#ffd93a";ctx.fillText(`ORDER: ${SCOPES[sel.scope]}${sel.scope?` (${selIds().length})`:""}`,x+18,y+26);
-  m.items.forEach((it,i)=>{const yy=y+30+i*rowH+22,on=i===m.idx;if(on){ctx.fillStyle="rgba(255,255,255,.12)";ctx.fillRect(x+10,yy-20,w-20,rowH-4);ctx.fillStyle="#ffffff";ctx.beginPath();const bx=x+20+(Math.floor(tick/8)%2)*3;ctx.moveTo(bx,yy-14);ctx.lineTo(bx+14,yy-7);ctx.lineTo(bx,yy);ctx.fill()}
-   ctx.font='900 22px "Courier New",monospace';ctx.fillStyle=it.off?"#6a74a0":on?"#ffffff":"#c8d0f0";ctx.fillText(it.label,x+44,yy)});
-  const it=m.items[m.idx];ctx.font='700 13px "Courier New",monospace';ctx.fillStyle="#9fe9ff";ctx.fillText(it.hint||"",x+18,y+h-16)}
+ const TIP={merge:["MERGE","FUSE WITH A PARTNER INTO A BIGGER SPECIES"]};
+ function tooltip(px,py,name,hint,locked){ctx.font='900 24px "Courier New",monospace';const w1=ctx.measureText(name).width;ctx.font='700 14px "Courier New",monospace';const w2=ctx.measureText(hint).width;
+  const w=Math.max(w1,w2)+36,h=62;let x=px+56,y=py-h/2;if(x+w>253*S)x=px-56-w;x=Math.max(57*S+6,x);y=Math.max(6,Math.min(CH-h-6,y));
+  ctx.fillStyle="rgba(5,4,10,.9)";ctx.fillRect(x,y,w,h);ctx.strokeStyle=locked?"#6a6a8a":"#5fd456";ctx.lineWidth=3;ctx.strokeRect(x+1.5,y+1.5,w-3,h-3);ctx.fillStyle=locked?"#3c3c55":"#145a24";ctx.fillRect(x+3,y+3,6,h-6);
+  ctx.textAlign="left";ctx.font='900 24px "Courier New",monospace';ctx.fillStyle="#05040a";ctx.fillText(name,x+20,y+28);ctx.fillStyle=locked?"#8d95ad":"#c8ff9a";ctx.fillText(name,x+18,y+26);
+  ctx.font='700 14px "Courier New",monospace';ctx.fillStyle=locked?"#8d95ad":"#9fe9ff";ctx.fillText(hint,x+18,y+48)}
+ function ringInfo(slot){if(slot==="merge")return[...TIP.merge,false];const lk=lockedCmd(g,slot);return[CMD_NAMES[slot],lk?"LOCKED: SNATCH GREEN POWER-UPS":ORDER_HINT[slot],lk]}
+ function drawRing(a,active){ctx.save();ctx.translate(CW/2,0);ctx.scale(g.z,g.z);ctx.translate(-CW/2,0);
+  ctx.fillStyle="rgba(5,4,10,.62)";ctx.beginPath();ctx.arc(a.x*S,a.y*S,27*S,0,6.283);ctx.fill();ctx.strokeStyle="rgba(95,212,86,.5)";ctx.lineWidth=3;ctx.stroke();
+  for(const i of RING){const[ox,oy]=CMD_POS[i],slot=ringSlot(i),on=active===i;if(slot==="merge"){ctx.fillStyle=`hsl(${tick*8%360},90%,65%)`;ctx.beginPath();ctx.arc((a.x+ox)*S,(a.y+oy)*S,6.2*S,0,6.283);ctx.fill();text("M",a.x+ox,a.y+oy+2.4,22,"#05040a","center",null)}
+   else spr((lockedCmd(g,slot)?atlas.iconLocked:atlas.icon)[slot],a.x+ox,a.y+oy,1,on?1.25:1);
+   if(on){ring(a.x+ox,a.y+oy,8.2+Math.sin(tick*.5)*.5,"#05040a",8);ring(a.x+ox,a.y+oy,8.2+Math.sin(tick*.5)*.5,"#ffd93a",4)}}
+  ctx.restore()}
+ function drawOrderMenu(){const m=sel.menu,a=anchorAlien();
+  if(m&&a){drawRing(a,m.idx);const[ox,oy]=CMD_POS[m.idx],p=scr(a.x+ox,a.y+oy),[n,h,lk]=ringInfo(ringSlot(m.idx));tooltip(p.x,p.y,sel.scope?`${n} x${selIds().length}`:n,h,lk);return}
+  // mouse radial: tooltip for the icon under the pointer
+  if(g.menu){const b=g.aliens.find(o=>o.id===g.menu.id);if(!b)return;for(const i of RING){const[ox,oy]=CMD_POS[i];if(Math.hypot(hoverX-(b.x+ox),hoverY-(b.y+oy))<8){const p=scr(b.x+ox,b.y+oy),[n,h,lk]=ringInfo(i);tooltip(p.x,p.y,n,h,lk)}}}}
  const FX0px=()=>57*S,FX1px=()=>253*S;
  function drawHud(){const s=snapshot(g);
   ctx.fillStyle="rgba(5,4,14,.78)";ctx.fillRect(0,0,57*S,CH);ctx.fillRect(253*S,0,CW-253*S,CH);
@@ -223,8 +262,9 @@ export function mountOota(root,{onExit}={}){
   if(g.phase==="bonus"){text("TIME",306,14,14,"#9488ad","right");text(String(s.timer),306,30,26,s.timer<=10?"#ff5468":"#ffffff","right");text("BONUS",306,48,14,"#9488ad","right");text(fmt(g.bonusPts),306,60,18,"#ffd93a","right")}
   else{const R=[["STAGE",g.stage],["KILLS",g.kills],["LOST",g.deaths],["TIME",s.time]];R.forEach(([k,v],i)=>{text(k,306,12+i*22,14,"#9488ad","right");text(String(v),306,22+i*22,18,"#ffffff","right")})}
   if(!demo){text(s.rush?"RUSH READY":"RUSH...",306,96,12,s.rush?"#5fd456":"#6a74a0","right");if(!s.rush){ctx.fillStyle="#252536";ctx.fillRect(262*S,98*S,44*S,2*S);ctx.fillStyle="#5fd456";ctx.fillRect(262*S,98*S,44*S*(1-g.rushCD/300),2*S)}
-   if(sel.on){const y0=108;[[`${L("order")} ORDER`,`${L("repeat")} AGAIN`],[`${L("snatch")} SNATCH`,`${L("rush")} RUSH`],[`${L("scope")} ${SCOPES[sel.scope]}`,`${L("idle")} IDLE`],[`${L("shift")}+◀▶ SHIFT`,""]].forEach(([a,b],i)=>text(`${a}  ${b}`.trim(),306,y0+i*8,10,i===2?"#ffd93a":"#5ee7ff","right"));text(`${padLabel("KeyP")} = MENU`,306,y0+34,10,"#9488ad","right")}
-   else{text("CLICK GO ALIENS",306,110,10,"#5ee7ff","right");text("1-5 ORDER  X SNATCH",306,118,10,"#5ee7ff","right");text("SPACE RUSH  ← → SHIFT",306,126,10,"#5ee7ff","right");text("ARROWS SELECT  Z MENU",306,134,10,"#5ee7ff","right");text("P / ESC = MENU",306,142,10,"#9488ad","right")}}
+   const rows=sel.on?[["D-PAD","PICK ALIEN"],[`${L("order")}`,"ORDER"],[`${L("repeat")}`,"SAME AGAIN"],[`${L("snatch")}`,"SNATCH LOOT"],[`${L("rush")}`,"RUSH"],[`${L("left")}/${L("right")}`,"MOVE SWARM"],[`${L("scope")}`,`GROUP: ${SCOPES[sel.scope]}`],[padLabel("KeyP"),"MENU"]]
+    :[["ARROWS","PICK ALIEN"],["Z","ORDER"],["C","SAME AGAIN"],["X","SNATCH LOOT"],["SPACE","RUSH"],["Q / E","MOVE SWARM"],["TAB",`GROUP: ${SCOPES[sel.scope]}`],["P","MENU"]];
+   rows.forEach(([b,t],i)=>{const y=106+i*8.4;text(t,306,y,11,i===6?"#ffd93a":"#d6dbe8","right");text(b,262,y,11,"#5ee7ff","left")});if(!sel.on)text("OR CLICK A GO ALIEN",306,106+8*8.4,9,"#9488ad","right")}
   // objective bar
   if(g.phase!=="bonus"){const hp=Math.max(0,g.health)/100;ctx.fillStyle="#05040a";ctx.fillRect(59*S,170*S,192*S,4*S);ctx.fillStyle=g.phase==="boss"?"#ff5468":"#5fd456";ctx.fillRect(59*S+2,170*S+2,(192*S-4)*hp,4*S-4);
    text(g.phase==="boss"?(g.L.final?"THE ADMIRAL":"BOSS"):`${g.L.name}${g.ships.length?`  +${g.ships.length} SHIPS`:""}`,155,168,12,"#d6cbe8","center")}
@@ -234,8 +274,10 @@ export function mountOota(root,{onExit}={}){
    ctx.fillStyle="rgba(5,4,10,.92)";ctx.fillRect(2*S,156*S,53*S,22*S);ctx.strokeStyle=c;ctx.lineWidth=3;ctx.strokeRect(2*S+1,156*S+1,53*S-2,22*S-2);
    text(who,4,162,11,c,"left",null);const words=say.split(" ");let line="",y=169;ctx.font='900 11px "Courier New",monospace';
    for(const w of words){const t=line?line+" "+w:w;if(ctx.measureText(t).width>49*S&&line){text(line,4,y,11,"#ffffff","left",null);line=w;y+=7}else line=t}if(line&&y<180)text(line,4,y,11,"#ffffff","left",null)}}
- function draw(){tick++;const sx=shake>0&&!reduceMotion?(Math.random()-.5)*shake*S:0,sy=shake>0&&!reduceMotion?(Math.random()-.5)*shake*S:0;shake=Math.max(0,shake-.5);
-  ctx.save();ctx.translate(sx,sy);drawWorld();ctx.restore();drawHud();if(!demo)drawOrderMenu();
+ function draw(){tick++;
+  if(titleOn&&demo){title.draw(title.phase!=="intro");return}
+  const sx=shake>0&&!reduceMotion?(Math.random()-.5)*shake*S:0,sy=shake>0&&!reduceMotion?(Math.random()-.5)*shake*S:0;shake=Math.max(0,shake-.5);
+  ctx.save();ctx.translate(sx,sy);drawWorld();ctx.restore();drawHud();if(!demo){drawOrderMenu();drawTutorial()}
   if(flash>0){ctx.fillStyle=`rgba(255,246,184,${flash/30})`;ctx.fillRect(0,0,CW,CH);flash--}
   if(paused){ctx.fillStyle="rgba(4,2,9,.6)";ctx.fillRect(0,0,CW,CH)}}
  function simFx(){for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.vy+=p.grav;p.vx*=.93;if(!p.grav)p.vy*=.93;p.life--}particles=particles.filter(p=>p.life>0);if(particles.length>360)particles.splice(0,particles.length-360);for(const p of pops)p.t--;pops=pops.filter(p=>p.t>0);for(const e of fx)e.t--;fx=fx.filter(e=>e.t>0);
@@ -265,7 +307,7 @@ export function mountOota(root,{onExit}={}){
  function controls(){return controlsScreen(binds,{menu,extra:[{label:"KEYBOARD + MOUSE",act:()=>menu.push(kbScreen())}]})}
  function kbScreen(){return{title:"KEYBOARD + MOUSE",body:`<b>MOUSE</b> Click an alien that says GO, then a command icon. Click loot, missiles, satellites, or the ship (rush).<br><b>ARROWS</b> select an alien // <b>Z / ENTER</b> order menu // <b>C</b> repeat order // <b>1-5</b> attack, dive, bugs, tentacles, random<br><b>X</b> snatch loot // <b>SPACE</b> rush // <b>Q</b> one / row / all // <b>TAB</b> next idle alien // <b>SHIFT + ← →</b> shift the swarm<br><b>P / ESC</b> pause menu // <b>M</b> sound`,items:[{label:"BACK",act:()=>menu.pop()}]}}
  function howTo(){return{title:"HOW TO PLAY",body:()=>`You are the <b>swarm</b>. Wreck each planet, beat its defender, and don't let the humans wipe you out. Ten levels from Earth to Planet X, with bonus stages between.<br>
-  <b>SELECT</b> The d-pad hops between your aliens. ${L("scope")} switches between ONE alien, its ROW, or ALL of them. ${L("idle")} jumps to an alien waiting for orders.<br>
+  <b>SELECT</b> The d-pad hops between your aliens. ${L("scope")} switches between ordering ONE alien, its whole ROW, or ALL of them. ${L("left")} / ${L("right")} move the whole swarm left and right.<br>
   <b>ORDER</b> ${L("order")} opens the order menu: ATTACK shoots, DIVE divebombs, BUGS and TENTACLES unlock with power-ups. Aliens keep following their order. ${L("repeat")} gives the same order again.<br>
   <b>LOOT</b> ${L("snatch")} snatches the nearest power-up: green upgrades the swarm, red ones are the ship's (block them). <b>RUSH</b> ${L("rush")} sends everyone at the ship (it needs to recharge).<br>
   <b>FLEETS</b> Later planets bring wingmen, carriers, repair ships and shield frigates. Shields stop shots, not dives.<br>Hold <b>${padLabel("KeyM")} + ${padLabel("KeyP")}</b> to leave for the ArcadeGridz launcher.`,items:[{label:"BACK",act:()=>menu.pop()}]}}
@@ -294,10 +336,10 @@ export function mountOota(root,{onExit}={}){
  function nextLevel(){const next=g.level+1;saveRun(next);startLevel(next)}
  function attract(){g=createGame({difficulty:1,level:[0,1,4,6][Math.floor(Math.random()*4)],seed:(Math.random()*2**32)>>>0,assist:true});demo=true}
  function demoInput(){const inp={};if(g.frame%20===0&&idleAliens(g).length)inp.command={cmd:[CMD.ATTACK,CMD.ATTACK,CMD.DIVE][g.frame/20%3]};if(g.frame%12===0)inp.snatch=true;return inp}
- function showMenu(){clearTimeout(endT);if(!demo){attract();audio.song("menu");audio.hyper?.(false);publish(true,true)}paused=false;focusPaused=false;dial=null;sel.menu=null;sel.pick=null;resetHolds();menu.open(titleScreen())}
+ function showMenu(){clearTimeout(endT);if(!demo){attract();audio.song("menu");audio.hyper?.(false);publish(true,true)}paused=false;focusPaused=false;dial=null;sel.menu=null;sel.pick=null;resetHolds();menu.close();titleOn=true;title.openList("main");title.setPhase("menu")}
  function startLevel(level){clearTimeout(endT);audio.unlock();const L0=LEVELS[level];
   g=createGame({difficulty:run.difficulty,level,seed:(Math.random()*2**32)>>>0,assist:opts.assist,carry:{me:run.me,score:run.score}});
-  demo=false;paused=false;focusPaused=false;submitted=false;result=null;dial=null;particles=[];pops=[];fx=[];taps=[];inpQ={};resetHolds();menu.close();
+  titleOn=false;demo=false;paused=false;focusPaused=false;submitted=false;result=null;dial=null;particles=[];pops=[];fx=[];taps=[];inpQ={};resetHolds();menu.close();
   sel.anchor=0;sel.scope=0;sel.menu=null;sel.pick=null;sel.ax=CX;sel.ay=20;
   audio.song(SONG[level]||"earth");audio.hyper?.(false);audio.music(true);
   banner(`LEVEL ${level+1}: ${L0.name}`,L0.kind==="bonus"?`BONUS STAGE // ${L0.brief}`:L0.brief);say(DIALOGUE[L0.id]);publish(true);canvas.focus?.({preventScroll:true})}
@@ -320,7 +362,7 @@ export function mountOota(root,{onExit}={}){
  function shutdown(){if(destroyed)return;destroyed=true;cancelAnimationFrame(raf);menu.close();removeEventListener("keydown",onKey);removeEventListener("keyup",onKey);removeEventListener("resize",onResize);ro.disconnect();clearTimeout(bannerTimer);clearTimeout(endT);audio.close();document.body.classList.remove("oa-playing");window.dispatchEvent(new CustomEvent("oota:state",{detail:{active:false}}))}
  root.querySelector(".oa-controls").addEventListener("click",e=>{const a=e.target.closest("button")?.dataset.oa;if(a==="pause")togglePause();else if(a==="audio")toggleAudio();else if(a==="menu"){if(!demo&&g.state==="play")openPause();else showMenu()}else if(a==="exit")exitGame()});
  const onResize=()=>fit(stage);addEventListener("resize",onResize);const ro=new ResizeObserver(onResize);ro.observe(root.querySelector(".oa-shell"));fit(stage);setTimeout(onResize,500);
- attract();menu.open(titleScreen());raf=requestAnimationFrame(frame);
+ attract();audio.song("menu");raf=requestAnimationFrame(frame);
  return{destroy:shutdown,
   // the arcade shell shows no overlay of its own: losing focus opens this game's pause menu (like 2DISO)
   ownsFocusPause:true,

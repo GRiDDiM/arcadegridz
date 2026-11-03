@@ -22,8 +22,10 @@ function boss(type){const P=painter(32,32),hull=[R.white,R.red,R.orange,R.purple
  P.box(3,18,6,10,trim,{bevel:1});P.box(23,18,6,10,trim,{bevel:1});P.box(12,24,8,6,R.orange,{bevel:1});if(type===3){P.ellipse(16,18,4,4,R.lava,{amb:.5})}if(type===2){P.line(8,12,24,12,R.yellow[3])}
  if(type===4){P.ellipse(16,18,5,4,R.gold,{amb:.5});P.set(16,17,"#ffffff");P.line(6,10,1,4,R.gold[3]);P.line(26,10,31,4,R.gold[3]);P.set(1,4,"#ff5468");P.set(31,4,"#ff5468")}return P.outline("#05040a")}
 function sat(ufo){const P=painter(16,16);if(ufo){P.ellipse(8,9,7.5,3.5,R.steel,{amb:.3});P.ellipse(8,6,4,3,R.cyan,{amb:.5});for(const x of[3,8,13])P.set(x,10,"#ffd93a")}else{P.box(6,5,4,6,R.gold,{bevel:1});P.box(0,6,5,4,R.blue,{bevel:0});P.box(11,6,5,4,R.blue,{bevel:0});P.line(8,5,8,1,R.steel[3]);P.set(8,0,"#ff5468")}return P.outline("#05040a")}
-function loot(good,frame){const P=painter(16,16),ramp=good?R.green:R.red,g=frame%2;P.ellipse(8,8,7,7,ramp,{amb:.35});P.ellipse(8,8,4.5,4.5,R.white,{amb:.7});
- if(good){P.line(8,5,8,11,ramp[2]);P.line(5,8,11,8,ramp[2])}else{P.line(5,5,11,11,ramp[2]);P.line(11,5,5,11,ramp[2])}if(g)P.set(5,4,"#ffffff");return P.outline("#05040a")}
+// loot: green = alien goo power-up (grab it: the swarm upgrades); red = a human supply pod falling to the ship (snatch it to BLOCK the ship's upgrade)
+function loot(good,frame){const P=painter(16,16),g=frame%2;
+ if(good){P.ellipse(8,8,7,7,R.green,{amb:.35});P.ellipse(8,8,4.5,4.5,R.white,{amb:.7});P.line(8,5,8,11,R.green[2]);P.line(5,8,11,8,R.green[2]);if(g)P.set(5,4,"#ffffff");return P.outline("#05040a")}
+ P.line(4,0,7,4,R.white[3]);P.line(12,0,9,4,R.white[3]);P.box(3,4,10,10,R.steel,{bevel:1});P.box(3,8,10,2,R.red,{bevel:0});P.poly([[8,5],[10,9],[8,8],[6,9]],R.white);P.set(8,12,g?"#ff5468":"#7d0c1f");return P.outline("#05040a")}
 function orb(frame){const P=painter(12,12);P.ellipse(6,6,5,5,R.yellow,{amb:.4});P.ellipse(6,6,2.5,2.5,R.white,{amb:.8});if(frame)P.set(3,3,"#ffffff");return P.outline("#3a1204")}
 function bug(f){const P=painter(8,8);P.ellipse(4,4,3,2.5,R.lava,{amb:.4});P.set(f?1:0,2,"#d2fbff");P.set(f?6:7,2,"#d2fbff");P.set(3,3,"#05040a");P.set(5,3,"#05040a");return P.outline("#05040a")}
 function glob(f){const P=painter(12,12);P.ellipse(6,6,5,5-f*.6,R.teal,{amb:.5});P.disc(4,4,1.2,"#ffffff");return P.outline("#032420")}
