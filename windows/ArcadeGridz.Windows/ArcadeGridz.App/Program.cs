@@ -15,6 +15,8 @@ public static class Program
         {
             StartupLog.Write("main", "Initializing COM wrappers");
             ComWrappersSupport.InitializeComWrappers();
+            // logo overlay pops up immediately, over whatever is on screen, while WinUI + the launcher load
+            SplashWindow.Show();
             StartupLog.Write("main", "Entering WinUI Application.Start");
             Application.Start(initialization =>
             {

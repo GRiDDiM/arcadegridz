@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- ArcadeGridz Windows v0.1.12: back/Escape never leaves a game (only the game's EXIT GAME item or SELECT+START). v0.1.11: SNES/Nintendo button layout (right button confirms, bottom goes back) to match the web games; console lock lets pad input through. -->
+  <!-- ArcadeGridz Windows v0.1.13: logo-only overlay splash over the desktop (launcher loads cloaked behind it); sign-in is a centered panel over the dimmed launcher. v0.1.12: back/Escape never leaves a game (only the game's EXIT GAME item or SELECT+START). v0.1.11: SNES/Nintendo button layout (right button confirms, bottom goes back) to match the web games; console lock lets pad input through. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
@@ -22,9 +22,9 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>portable</DebugType>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
-    <Version>0.1.12</Version>
-    <AssemblyVersion>0.1.12.0</AssemblyVersion>
-    <FileVersion>0.1.12.0</FileVersion>
+    <Version>0.1.13</Version>
+    <AssemblyVersion>0.1.13.0</AssemblyVersion>
+    <FileVersion>0.1.13.0</FileVersion>
     <SelfContained>true</SelfContained>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -34,6 +34,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250205002" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <!-- GDI+ draws the per-pixel-alpha startup splash (SplashWindow.cs) -->
+    <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
     <!-- All launcher art, brand images and bundled OFL fonts ship next to the exe (ms-appx:///Assets/...). -->
     <Content Remove="Assets\**" />
     <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

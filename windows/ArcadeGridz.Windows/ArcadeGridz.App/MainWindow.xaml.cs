@@ -41,6 +41,11 @@ public sealed partial class MainWindow : Window
     bool initializingSettings;
     Microsoft.UI.Dispatching.DispatcherQueueTimer? clockTimer;
     Microsoft.UI.Dispatching.DispatcherQueueTimer? splashTimer;
+    Microsoft.UI.Dispatching.DispatcherQueueTimer? revealFailsafe;
+    bool cloaked, revealed;
+    bool signInPanelOpen, signInFromWelcome;
+    static readonly System.Diagnostics.Stopwatch SinceLaunch = System.Diagnostics.Stopwatch.StartNew();
+    static readonly TimeSpan MinimumSplash = TimeSpan.FromMilliseconds(1200);
     CancellationTokenSource? heroLoad;
     // live catalog: re-checked after a game, when the window regains focus and every few minutes (ETag, so cheap)
     enum CatalogRefresh { Changed, Same, Offline, Failed }
@@ -56,6 +61,14 @@ public sealed partial class MainWindow : Window
         {
             InitializeComponent();
             StartupLog.Write("window", "InitializeComponent completed (WebView2 deferred)");
+            // Load fullscreen but cloaked (invisible) behind the overlay splash; Reveal() uncloaks it once the
+            // launcher or sign-in panel is ready, so there is never a full-screen loading screen.
+            SetCloaked(true);
+            revealFailsafe = DispatcherQueue.CreateTimer();
+            revealFailsafe.Interval = TimeSpan.FromSeconds(12);
+            revealFailsafe.IsRepeating = false;
+            revealFailsafe.Tick += (_, _) => { StartupLog.Write("window", "Reveal failsafe fired"); Reveal(); };
+            revealFailsafe.Start();
             GameGrid.ItemsSource = visible;
             native.Exited += (_, _) => DispatcherQueue.TryEnqueue(ReturnToLauncher);
             Activated += OnActivated;
@@ -127,7 +140,6 @@ public sealed partial class MainWindow : Window
         StartupLog.Write("window", "Root loaded");
         try
         {
-            BeginStoryboard("SplashPulse");
             try
             {
                 pads = new GamepadService(DispatcherQueue);
@@ -153,8 +165,10 @@ public sealed partial class MainWindow : Window
             catalogTimer.Tick += (_, _) => QueueCatalogCheck();
             catalogTimer.Start();
             var hasPersistedSession = await EnsureWebRuntime().HasPersistedSessionAsync();
+            // keep the logo up for at least ~1.2s so it reads as a splash, not a flicker
+            var wait = MinimumSplash - SinceLaunch.Elapsed;
             splashTimer = DispatcherQueue.CreateTimer();
-            splashTimer.Interval = TimeSpan.FromMilliseconds(1350);
+            splashTimer.Interval = wait > TimeSpan.FromMilliseconds(1) ? wait : TimeSpan.FromMilliseconds(1);
             splashTimer.IsRepeating = false;
             splashTimer.Tick += (_, _) =>
             {
@@ -164,6 +178,7 @@ public sealed partial class MainWindow : Window
                     EnterLauncher(false);
                 }
                 else ShowWelcome();
+                Reveal();
             };
             splashTimer.Start();
             StartupLog.Write("window", hasPersistedSession
@@ -173,6 +188,7 @@ public sealed partial class MainWindow : Window
         catch (Exception ex)
         {
             StartupLog.Exception("MainWindow.OnLoaded", ex);
+            Reveal();
             ShowMessage("STARTUP ERROR", $"The launcher could not finish loading. Details were saved to {StartupLog.LogFile}");
         }
     }
@@ -373,11 +389,13 @@ public sealed partial class MainWindow : Window
         gameOpen = false;
         active = null;
         GameLayer.Visibility = Visibility.Collapsed;
+        SetSignInPanel(false);
         StopStoryboard("CoverPulse");
         GameCover.Visibility = Visibility.Visible;
         Launcher.Visibility = Visibility.Visible;
         Panel.Visibility = Visibility.Collapsed;
-        SetLauncherFocus(LauncherFocus.GameGrid);
+        if (startupOpen && WelcomePanel.Visibility == Visibility.Visible) SetStartupFocus(startupFocus);
+        else SetLauncherFocus(LauncherFocus.GameGrid);
         QueueCatalogCheck();
     }
 
@@ -390,6 +408,7 @@ public sealed partial class MainWindow : Window
             HandleStartupAction(action);
             return;
         }
+        if (signInPanelOpen && action is PadAction.B or PadAction.ExitCombo) { await CancelSignIn(); return; }
         if (action == PadAction.ExitCombo && gameOpen) { await ExitGame(); return; }
         if (gameOpen) return;
         if (Panel.Visibility == Visibility.Visible) { await HandlePanelAction(action); return; }
@@ -401,9 +420,10 @@ public sealed partial class MainWindow : Window
 
     void ShowWelcome()
     {
-        SplashPanel.Visibility = Visibility.Collapsed;
-        StopStoryboard("SplashPulse");
-        WelcomeShowcase.ItemsSource = all.Where(g => g.Potato && g.Playable).Take(4).ToList();
+        // centered sign-in card over the (dimmed, inert) launcher, like Steam / Battle.net
+        startupOpen = true;
+        Launcher.Visibility = Visibility.Visible;
+        StartupLayer.Visibility = Visibility.Visible;
         WelcomePanel.Visibility = Visibility.Visible;
         BeginStoryboard("InsertCoinBlink");
         SetStartupFocus(StartupFocus.Email);
@@ -413,7 +433,6 @@ public sealed partial class MainWindow : Window
     void EnterLauncher(bool guest)
     {
         startupOpen = false;
-        StopStoryboard("SplashPulse");
         StopStoryboard("InsertCoinBlink");
         StartupLayer.Visibility = Visibility.Collapsed;
         WelcomePanel.Visibility = Visibility.Collapsed;
@@ -460,7 +479,7 @@ public sealed partial class MainWindow : Window
     {
         startupOpen = false;
         StartupLayer.Visibility = Visibility.Collapsed;
-        await BeginSignInAsync();
+        await BeginSignInAsync(fromWelcome: true);
     }
 
     async void StartupGoogle_Click(object sender, RoutedEventArgs e)
@@ -709,16 +728,19 @@ public sealed partial class MainWindow : Window
 
     async void SignIn_Click(object sender, RoutedEventArgs e) => await BeginSignInAsync();
 
-    async Task BeginSignInAsync()
+    async Task BeginSignInAsync(bool fromWelcome = false)
     {
         try
         {
             var webRuntime = EnsureWebRuntime();
             active = webRuntime;
             gameOpen = true;
+            signInFromWelcome = fromWelcome;
             GameCover.Visibility = Visibility.Collapsed;
+            // the Network sign-in page shows in a centered card; the launcher stays visible (dimmed) behind it
+            SetSignInPanel(true);
             GameLayer.Visibility = Visibility.Visible;
-            Launcher.Visibility = Visibility.Collapsed;
+            Launcher.Visibility = Visibility.Visible;
             Panel.Visibility = Visibility.Collapsed;
             await webRuntime.NavigateAsync("https://arcadegridz.com/?host=winapp&mode=signin");
         }
@@ -900,4 +922,83 @@ public sealed partial class MainWindow : Window
         try { if (Root.Resources[key] is Microsoft.UI.Xaml.Media.Animation.Storyboard sb) sb.Stop(); }
         catch { }
     }
+
+    void SetSignInPanel(bool open)
+    {
+        signInPanelOpen = open;
+        SignInChrome.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        GameLayer.Background = open
+            ? new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0xCC, 0x05, 0x03, 0x12))
+            : new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Black);
+        if (open)
+        {
+            var h = Root.ActualHeight > 0 ? Root.ActualHeight : 900;
+            // card = 84px header + page + 20px; the page is offset 64px so it sits under the header
+            var pageHeight = Math.Clamp(h - 220, 420, 700);
+            SignInCard.Height = pageHeight + 104;
+            WebViewFrame.Width = 520;
+            WebViewFrame.Height = pageHeight;
+            WebViewFrame.HorizontalAlignment = HorizontalAlignment.Center;
+            WebViewFrame.VerticalAlignment = VerticalAlignment.Center;
+            WebViewFrame.Margin = new Thickness(0, 64, 0, 0);
+        }
+        else
+        {
+            WebViewFrame.Width = double.NaN;
+            WebViewFrame.Height = double.NaN;
+            WebViewFrame.HorizontalAlignment = HorizontalAlignment.Stretch;
+            WebViewFrame.VerticalAlignment = VerticalAlignment.Stretch;
+            WebViewFrame.Margin = new Thickness(0);
+        }
+    }
+
+    async Task CancelSignIn()
+    {
+        if (!signInPanelOpen) return;
+        StartupLog.Write("auth", "Sign-in panel cancelled");
+        var backToWelcome = signInFromWelcome;
+        var runtime = active;
+        active = null;
+        gameOpen = false;
+        if (backToWelcome) { startupOpen = true; StartupLayer.Visibility = Visibility.Visible; WelcomePanel.Visibility = Visibility.Visible; }
+        if (runtime is not null) await runtime.ExitAsync();
+        ReturnToLauncher();
+    }
+
+    async void SignInCancel_Click(object sender, RoutedEventArgs e) => await CancelSignIn();
+
+    // DWM cloak: the window exists, lays out and runs WebView2 normally, but is not drawn on screen
+    void SetCloaked(bool value)
+    {
+        try
+        {
+            var hwnd = WindowNative.GetWindowHandle(this);
+            int flag = value ? 1 : 0;
+            var hr = DwmSetWindowAttribute(hwnd, 13 /* DWMWA_CLOAK */, ref flag, sizeof(int));
+            cloaked = value && hr == 0;
+            StartupLog.Write("window", value ? $"Cloaked behind splash (hr={hr})" : "Uncloaked");
+        }
+        catch (Exception ex) { StartupLog.Exception("DWM cloak", ex); cloaked = false; }
+    }
+
+    void Reveal()
+    {
+        if (revealed) return;
+        revealed = true;
+        revealFailsafe?.Stop();
+        // give XAML one frame to lay out the launcher / sign-in card before it appears
+        var t = DispatcherQueue.CreateTimer();
+        t.Interval = TimeSpan.FromMilliseconds(60);
+        t.IsRepeating = false;
+        t.Tick += (_, _) =>
+        {
+            if (cloaked) SetCloaked(false);
+            Activate();
+            SplashWindow.FadeOutAndClose(DispatcherQueue);
+        };
+        t.Start();
+    }
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 }
