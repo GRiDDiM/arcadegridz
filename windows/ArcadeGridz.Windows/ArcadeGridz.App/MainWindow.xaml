@@ -242,23 +242,43 @@
    <ScrollViewer VerticalScrollBarVisibility="Auto">
     <Grid MaxWidth="880" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40">
      <Border Margin="-8" CornerRadius="32" BorderThickness="8" BorderBrush="#1F5EE7FF"/>
-     <Border x:Name="PanelCard" Background="{StaticResource AgCard}" BorderBrush="#665EE7FF" BorderThickness="2" CornerRadius="26" Padding="44,40">
+     <Border x:Name="PanelCard" Background="{StaticResource AgCard}" BorderBrush="#665EE7FF" BorderThickness="2" CornerRadius="26" Padding="44,30">
       <StackPanel>
-       <Rectangle Height="4" RadiusX="2" RadiusY="2" Width="120" HorizontalAlignment="Center" Fill="{StaticResource AgNeonGradient}" Margin="0,0,0,22"/>
+       <Rectangle Height="4" RadiusX="2" RadiusY="2" Width="120" HorizontalAlignment="Center" Fill="{StaticResource AgNeonGradient}" Margin="0,0,0,16"/>
        <TextBlock x:Name="PanelTitle" FontFamily="{StaticResource AgDisplay}" FontSize="46" Foreground="{StaticResource AgNeonGradient}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
-       <TextBlock x:Name="PanelBody" FontSize="17" FontFamily="{StaticResource AgBody}" LineHeight="26" Foreground="#FFC9D2E2" TextWrapping="Wrap" TextAlignment="Center" Margin="0,18,0,26"/>
+       <TextBlock x:Name="PanelBody" FontSize="17" FontFamily="{StaticResource AgBody}" LineHeight="26" Foreground="#FFC9D2E2" TextWrapping="Wrap" TextAlignment="Center" Margin="0,12,0,18"/>
        <StackPanel x:Name="OptionControls" Spacing="12" Visibility="Collapsed">
-        <Border Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="1" CornerRadius="14" Padding="22,14">
-         <ToggleSwitch x:Name="ShowAllToggle" Header="SHOW UNSUPPORTED GAMES (THEY WON'T LAUNCH)" Toggled="ShowAllToggle_Toggled"/>
-        </Border>
-        <Border Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="1" CornerRadius="14" Padding="22,14">
-         <ToggleSwitch x:Name="StartWithWindowsToggle" Header="START ARCADEGRIDZ WITH WINDOWS" Toggled="StartWithWindowsToggle_Toggled"/>
-        </Border>
-        <Button x:Name="RefreshCatalogButton" Content="REFRESH GAME LIST" Click="RefreshCatalog_Click" HorizontalAlignment="Stretch" Margin="0,4,0,0"/>
-        <Button x:Name="ConsoleModeButton" Content="ENABLE CONSOLE MODE UNTIL RESTART" Click="ConsoleMode_Click" HorizontalAlignment="Stretch" Margin="0,4,0,0"/>
-        <TextBlock x:Name="ConsoleModeStatus" Text="Controller-only mode hides Exit ArcadeGridz and disables keyboard and pointer input until the app restarts." Foreground="{StaticResource AgMuted}" FontFamily="{StaticResource AgBody}" FontSize="14" TextWrapping="Wrap" TextAlignment="Center"/>
+        <!-- tabs: click one, LB/RB anywhere, or d-pad left/right while the tab row is selected -->
+        <Grid HorizontalAlignment="Center" Margin="0,0,0,10">
+         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+         <Border Style="{StaticResource PadChip}" VerticalAlignment="Center" Margin="0,0,12,0"><TextBlock Text="LB" Style="{StaticResource PadChipText}"/></Border>
+         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+          <Button x:Name="OptionsTabGames" Tag="0" Content="GAMES" FontSize="11" Padding="18,10" MinWidth="120" Click="OptionsTab_Click"/>
+          <Button x:Name="OptionsTabSystem" Tag="1" Content="SYSTEM" FontSize="11" Padding="18,10" MinWidth="120" Click="OptionsTab_Click"/>
+          <Button x:Name="OptionsTabUpdates" Tag="2" Content="UPDATES" FontSize="11" Padding="18,10" MinWidth="120" Click="OptionsTab_Click"/>
+          <Button x:Name="OptionsTabAbout" Tag="3" Content="ABOUT" FontSize="11" Padding="18,10" MinWidth="120" Click="OptionsTab_Click"/>
+         </StackPanel>
+         <Border Grid.Column="2" Style="{StaticResource PadChip}" VerticalAlignment="Center" Margin="12,0,0,0"><TextBlock Text="RB" Style="{StaticResource PadChipText}"/></Border>
+        </Grid>
+        <StackPanel x:Name="OptionsGamesTab" Spacing="12">
+         <Border x:Name="ShowAllRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,14">
+          <ToggleSwitch x:Name="ShowAllToggle" Header="SHOW UNSUPPORTED GAMES (THEY WON'T LAUNCH)" Toggled="ShowAllToggle_Toggled"/>
+         </Border>
+         <Button x:Name="RefreshCatalogButton" Content="REFRESH GAME LIST" Click="RefreshCatalog_Click" HorizontalAlignment="Stretch" Margin="0,4,0,0"/>
+        </StackPanel>
+        <StackPanel x:Name="OptionsSystemTab" Spacing="12" Visibility="Collapsed">
+         <Border x:Name="StartWithWindowsRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,14">
+          <ToggleSwitch x:Name="StartWithWindowsToggle" Header="START ARCADEGRIDZ WITH WINDOWS" Toggled="StartWithWindowsToggle_Toggled"/>
+         </Border>
+         <Button x:Name="ConsoleModeButton" Content="ENABLE CONSOLE MODE UNTIL RESTART" Click="ConsoleMode_Click" HorizontalAlignment="Stretch" Margin="0,4,0,0"/>
+         <TextBlock x:Name="ConsoleModeStatus" Text="Controller-only mode hides Exit ArcadeGridz and disables keyboard and pointer input until the app restarts." Foreground="{StaticResource AgMuted}" FontFamily="{StaticResource AgBody}" FontSize="14" TextWrapping="Wrap" TextAlignment="Center"/>
+        </StackPanel>
+        <StackPanel x:Name="OptionsAboutTab" Spacing="10" Visibility="Collapsed">
+         <TextBlock x:Name="AboutVersionText" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgViolet}" HorizontalAlignment="Center"/>
+         <TextBlock Text="ArcadeGridz for Windows is part of the GRiDDiM Network. Games and the game list stream from arcadegridz.com, so new games show up without an app update." Foreground="{StaticResource AgMuted}" FontFamily="{StaticResource AgBody}" FontSize="14" TextWrapping="Wrap" TextAlignment="Center"/>
+        </StackPanel>
        </StackPanel>
-       <Border x:Name="UpdateCard" Visibility="Collapsed" Margin="0,22,0,6" Background="#990C0A26" BorderBrush="#339F7CFF" BorderThickness="1" CornerRadius="14" Padding="22,18">
+       <Border x:Name="UpdateCard" Visibility="Collapsed" Margin="0,0,0,6" Background="#990C0A26" BorderBrush="#339F7CFF" BorderThickness="1" CornerRadius="14" Padding="22,18">
         <StackPanel>
          <TextBlock x:Name="VersionText" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgViolet}" HorizontalAlignment="Center" Visibility="Collapsed"/>
          <TextBlock x:Name="UpdateStatus" Foreground="{StaticResource AgText}" FontFamily="{StaticResource AgBody}" FontSize="15" TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,8" Visibility="Collapsed"/>

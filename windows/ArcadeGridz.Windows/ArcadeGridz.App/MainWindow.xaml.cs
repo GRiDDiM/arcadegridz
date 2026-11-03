@@ -35,6 +35,7 @@ public sealed partial class MainWindow : Window
     UpdateInfo? availableUpdate;
     LauncherFocus launcherFocus = LauncherFocus.GameGrid;
     int panelFocus;
+    int optionsTab; // 0 GAMES, 1 SYSTEM, 2 UPDATES, 3 ABOUT
     StartupFocus startupFocus = StartupFocus.Email;
     bool startupOpen = true;
     bool consoleMode;
@@ -649,25 +650,38 @@ public sealed partial class MainWindow : Window
         control.Focus(FocusState.Programmatic);
     }
 
+    Button[] OptionsTabButtons => [OptionsTabGames, OptionsTabSystem, OptionsTabUpdates, OptionsTabAbout];
+
     List<Control> PanelControls()
     {
         var controls = new List<Control>();
         if (OptionControls.Visibility == Visibility.Visible)
         {
-            controls.Add(ShowAllToggle);
-            controls.Add(StartWithWindowsToggle);
-            controls.Add(RefreshCatalogButton);
-            if (ConsoleModeButton.IsEnabled) controls.Add(ConsoleModeButton);
+            controls.Add(OptionsTabButtons[optionsTab]); // the tab row is one stop; left/right changes tab
+            switch (optionsTab)
+            {
+                case 0:
+                    controls.Add(ShowAllToggle);
+                    controls.Add(RefreshCatalogButton);
+                    break;
+                case 1:
+                    controls.Add(StartWithWindowsToggle);
+                    if (ConsoleModeButton.IsEnabled) controls.Add(ConsoleModeButton);
+                    break;
+                case 2:
+                    if (CheckUpdateButton.IsEnabled) controls.Add(CheckUpdateButton);
+                    if (InstallUpdateButton.IsEnabled) controls.Add(InstallUpdateButton);
+                    break;
+                case 3:
+                    controls.Add(OptionsTermsButton);
+                    controls.Add(OptionsPrivacyButton);
+                    break;
+            }
         }
-        if (UpdateActions.Visibility == Visibility.Visible)
+        else if (UpdateActions.Visibility == Visibility.Visible)
         {
             controls.Add(CheckUpdateButton);
             if (InstallUpdateButton.IsEnabled) controls.Add(InstallUpdateButton);
-        }
-        if (OptionsLegal.Visibility == Visibility.Visible)
-        {
-            controls.Add(OptionsTermsButton);
-            controls.Add(OptionsPrivacyButton);
         }
         controls.Add(BackButton);
         return controls;
@@ -676,14 +690,24 @@ public sealed partial class MainWindow : Window
     async Task HandlePanelAction(PadAction action)
     {
         if (action == PadAction.B) { ReturnToLauncher(); return; }
+        var options = OptionControls.Visibility == Visibility.Visible;
         var controls = PanelControls();
-        if (action is PadAction.Up or PadAction.Left) panelFocus = Math.Max(0, panelFocus - 1);
-        else if (action is PadAction.Down or PadAction.Right) panelFocus = Math.Min(controls.Count - 1, panelFocus + 1);
+        var current = controls[Math.Clamp(panelFocus, 0, controls.Count - 1)];
+        var onTabs = options && current is Button b && OptionsTabButtons.Contains(b);
+        if (options && (action is PadAction.LB or PadAction.RB || (onTabs && action is PadAction.Left or PadAction.Right)))
+        {
+            var delta = action is PadAction.LB or PadAction.Left ? -1 : 1;
+            SelectOptionsTab((optionsTab + delta + 4) % 4, keepFocusOnTabs: onTabs || action is PadAction.Left or PadAction.Right);
+            return;
+        }
+        if (action is PadAction.Up || (!options && action is PadAction.Left)) panelFocus = Math.Max(0, panelFocus - 1);
+        else if (action is PadAction.Down || (!options && action is PadAction.Right)) panelFocus = Math.Min(controls.Count - 1, panelFocus + 1);
         else if (action == PadAction.A)
         {
-            var control = controls[Math.Clamp(panelFocus, 0, controls.Count - 1)];
+            var control = current;
             if (control == BackButton) { ReturnToLauncher(); return; }
-            if (control == ShowAllToggle) ShowAllToggle.IsOn = !ShowAllToggle.IsOn;
+            if (onTabs) { panelFocus = Math.Min(1, controls.Count - 1); }
+            else if (control == ShowAllToggle) ShowAllToggle.IsOn = !ShowAllToggle.IsOn;
             else if (control == StartWithWindowsToggle) StartWithWindowsToggle.IsOn = !StartWithWindowsToggle.IsOn;
             else if (control == RefreshCatalogButton) { if (RefreshCatalogButton.IsEnabled) RefreshCatalog_Click(this, new RoutedEventArgs()); return; }
             else if (control == ConsoleModeButton) ConsoleMode_Click(this, new RoutedEventArgs());
@@ -694,8 +718,45 @@ public sealed partial class MainWindow : Window
             controls = PanelControls();
             panelFocus = Math.Min(panelFocus, controls.Count - 1);
         }
-        controls[Math.Clamp(panelFocus, 0, controls.Count - 1)].Focus(FocusState.Programmatic);
+        FocusPanelControl(controls[Math.Clamp(panelFocus, 0, controls.Count - 1)]);
         await Task.CompletedTask;
+    }
+
+    void FocusPanelControl(Control control)
+    {
+        control.Focus(FocusState.Keyboard);
+        control.StartBringIntoView();
+        // ToggleSwitch has no visible focus state in this theme: light up its row instead
+        var cyan = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgCyan"];
+        var line = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgLine"];
+        ShowAllRow.BorderBrush = control == ShowAllToggle ? cyan : line;
+        StartWithWindowsRow.BorderBrush = control == StartWithWindowsToggle ? cyan : line;
+    }
+
+    void SelectOptionsTab(int tab, bool keepFocusOnTabs = true)
+    {
+        optionsTab = Math.Clamp(tab, 0, 3);
+        OptionsGamesTab.Visibility = optionsTab == 0 ? Visibility.Visible : Visibility.Collapsed;
+        OptionsSystemTab.Visibility = optionsTab == 1 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateCard.Visibility = optionsTab == 2 ? Visibility.Visible : Visibility.Collapsed;
+        OptionsAboutTab.Visibility = optionsTab == 3 ? Visibility.Visible : Visibility.Collapsed;
+        OptionsLegal.Visibility = optionsTab == 3 ? Visibility.Visible : Visibility.Collapsed;
+        var pink = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
+        var selectedFill = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x44, 0xFF, 0x3A, 0xA7));
+        var buttons = OptionsTabButtons;
+        for (int i = 0; i < buttons.Length; i++)
+        {
+            if (i == optionsTab) { buttons[i].Background = selectedFill; buttons[i].BorderBrush = pink; }
+            else { buttons[i].ClearValue(Control.BackgroundProperty); buttons[i].ClearValue(Control.BorderBrushProperty); }
+        }
+        var controls = PanelControls();
+        panelFocus = keepFocusOnTabs ? 0 : Math.Min(1, controls.Count - 1);
+        FocusPanelControl(controls[panelFocus]);
+    }
+
+    void OptionsTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string tag } && int.TryParse(tag, out var tab)) SelectOptionsTab(tab);
     }
 
     void ChangeCategory(int delta)
@@ -724,6 +785,8 @@ public sealed partial class MainWindow : Window
                 VirtualKey.Left => PadAction.Left,
                 VirtualKey.Right => PadAction.Right,
                 VirtualKey.Enter or VirtualKey.Space => PadAction.A,
+                VirtualKey.PageUp or VirtualKey.Q => PadAction.LB,
+                VirtualKey.PageDown or VirtualKey.E => PadAction.RB,
                 _ => (PadAction?)null
             };
             if (action is not null)
@@ -770,24 +833,23 @@ public sealed partial class MainWindow : Window
     void Options_Click(object sender, RoutedEventArgs e)
     {
         PanelTitle.Text = "OPTIONS";
-        PanelBody.Text = "Tune your arcade: pick which games show up, launch with Windows, refresh the game list, lock it to controller-only console mode, or grab the latest update.";
+        PanelTitle.FontSize = 36;
+        PanelBody.Text = "LB / RB or click a tab to switch sections.";
         OptionControls.Visibility = Visibility.Visible;
         initializingSettings = true;
         StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
         initializingSettings = false;
         VersionText.Text = $"INSTALLED VERSION  {UpdateService.InstalledVersion}";
+        AboutVersionText.Text = $"ARCADEGRIDZ FOR WINDOWS  ·  V{UpdateService.InstalledVersion}";
         VersionText.Visibility = Visibility.Visible;
         UpdateStatus.Text = "Updates are optional. ArcadeGridz never installs one without confirmation.";
         UpdateStatus.Visibility = Visibility.Visible;
         UpdateActions.Visibility = Visibility.Visible;
-        UpdateCard.Visibility = Visibility.Visible;
-        OptionsLegal.Visibility = Visibility.Visible;
         UpdateProgress.Visibility = Visibility.Collapsed;
         InstallUpdateButton.IsEnabled = availableUpdate is not null;
         Panel.Visibility = Visibility.Visible;
         Launcher.Visibility = Visibility.Collapsed;
-        panelFocus = 0;
-        ShowAllToggle.Focus(FocusState.Programmatic);
+        SelectOptionsTab(optionsTab, keepFocusOnTabs: true);
     }
     void Games_Click(object sender, RoutedEventArgs e) => ReturnToLauncher();
     void Back_Click(object sender, RoutedEventArgs e) => ReturnToLauncher();
@@ -795,6 +857,7 @@ public sealed partial class MainWindow : Window
     void ShowMessage(string title, string body)
     {
         PanelTitle.Text = title;
+        PanelTitle.FontSize = 46;
         PanelBody.Text = body;
         OptionControls.Visibility = Visibility.Collapsed;
         VersionText.Visibility = Visibility.Collapsed;
