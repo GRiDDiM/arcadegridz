@@ -424,7 +424,12 @@ public sealed partial class MainWindow : Window
             return;
         }
         if (signInPanelOpen && action is PadAction.B or PadAction.ExitCombo) { await CancelSignIn(); return; }
-        if (action == PadAction.ExitCombo && gameOpen) { await ExitGame(); return; }
+        if (action == PadAction.ExitCombo && gameOpen)
+        {
+            // web games show the site's SYSTEM MENU (resume / reload / exit ...); EXIT GAME there tells us via "exited"
+            if (active == webRuntime) webRuntime.OpenSystemMenu(); else await ExitGame();
+            return;
+        }
         if (gameOpen) return;
         if (Panel.Visibility == Visibility.Visible) { await HandlePanelAction(action); return; }
         if (action == PadAction.LB) ChangeCategory(-1);

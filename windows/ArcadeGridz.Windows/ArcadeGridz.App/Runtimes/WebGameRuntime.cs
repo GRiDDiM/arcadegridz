@@ -192,6 +192,14 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
         }
     }
 
+    /// <summary>Opens the site's SYSTEM MENU over the running game (same as holding SELECT+START in the page).</summary>
+    public void OpenSystemMenu()
+    {
+        if (!ready) return;
+        try { _ = view.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new CustomEvent('arcadegridz:system',{detail:{source:'app'}}))"); }
+        catch (Exception ex) { StartupLog.Exception("Open system menu", ex); }
+    }
+
     public async Task ExitAsync()
     {
         if (!ready) { Exited?.Invoke(this, EventArgs.Empty); return; }

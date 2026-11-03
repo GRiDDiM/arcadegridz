@@ -133,7 +133,7 @@ public sealed class GamepadService : IDisposable
         EmitRawButton(0, PadAction.B);
         EmitRawButton(4, PadAction.LB);
         EmitRawButton(5, PadAction.RB);
-        UpdateExitCombo(IsPressed(rawButtons, 6) && IsPressed(rawButtons, 7));
+        UpdateExitCombo((IsPressed(rawButtons, 6) && IsPressed(rawButtons, 7)) || (IsPressed(rawButtons, 8) && IsPressed(rawButtons, 9)));
 
         for (var i = 0; i < rawButtons.Length; i++)
         {
