@@ -6,8 +6,14 @@ using Microsoft.Web.WebView2.Core;
 
 namespace ArcadeGridz.App.Runtimes;
 
+/// <summary>The signed-in Network account as the site reports it (name, @username, avatar URL).</summary>
+public sealed record NetworkAccount(string Id, string Name, string Username, string Avatar);
+
 public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
 {
+    TaskCompletionSource? signedOut;
+    /// <summary>Raised with the account after sign-in / session check, or null after sign-out.</summary>
+    public event Action<NetworkAccount?>? AccountChanged;
     bool ready;
     bool consoleMode;
     TaskCompletionSource? desktopReady;
@@ -66,6 +72,16 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
         {
             using var document = JsonDocument.Parse(e.WebMessageAsJson);
             var type = document.RootElement.GetProperty("type").GetString() ?? "";
+            if (type is "hello" or "auth" && document.RootElement.TryGetProperty("account", out var acct) && acct.ValueKind == JsonValueKind.Object)
+            {
+                string Str(string name) => acct.TryGetProperty(name, out var v) && v.ValueKind != JsonValueKind.Null ? v.ToString() : "";
+                AccountChanged?.Invoke(new NetworkAccount(Str("id"), Str("name"), Str("username"), Str("avatar")));
+            }
+            else if (type == "signedout")
+            {
+                AccountChanged?.Invoke(null);
+                signedOut?.TrySetResult();
+            }
             Status?.Invoke(type);
             if (type == "hello")
             {
@@ -155,6 +171,25 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
         consoleMode = enabled;
         if (ready && enabled) _ = InstallConsoleInputLockAsync();
         StartupLog.Write("runtime", $"Console mode={enabled}");
+    }
+
+    /// <summary>Signs this app's web profile out of the Network, without showing any page.</summary>
+    public async Task SignOutAsync()
+    {
+        await EnsureAsync();
+        signedOut = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            StartupLog.Write("auth", "Signing out");
+            view.Source = new Uri("https://arcadegridz.com/?host=winapp&mode=signout");
+            await signedOut.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (TimeoutException) { StartupLog.Write("auth", "Sign-out confirmation timed out"); AccountChanged?.Invoke(null); }
+        finally
+        {
+            signedOut = null;
+            try { view.CoreWebView2.Navigate("about:blank"); } catch { }
+        }
     }
 
     public async Task ExitAsync()

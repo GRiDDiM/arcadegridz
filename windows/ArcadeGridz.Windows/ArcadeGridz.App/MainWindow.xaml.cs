@@ -36,6 +36,7 @@ public sealed partial class MainWindow : Window
     LauncherFocus launcherFocus = LauncherFocus.GameGrid;
     int panelFocus;
     int optionsTab; // 0 GAMES, 1 SYSTEM, 2 UPDATES, 3 ABOUT
+    NetworkAccount? account;
     StartupFocus startupFocus = StartupFocus.Email;
     bool startupOpen = true;
     bool consoleMode;
@@ -102,6 +103,7 @@ public sealed partial class MainWindow : Window
         web = new WebGameRuntime(view);
         web.SetConsoleMode(consoleMode);
         web.Exited += (_, _) => DispatcherQueue.TryEnqueue(ReturnToLauncher);
+        web.AccountChanged += a => DispatcherQueue.TryEnqueue(() => SetAccount(a));
         web.Status += status => DispatcherQueue.TryEnqueue(() =>
         {
             GameStatus.Text = status.ToUpperInvariant();
@@ -542,7 +544,10 @@ public sealed partial class MainWindow : Window
                 case LauncherFocus.Scores: Scores_Click(this, new RoutedEventArgs()); break;
                 case LauncherFocus.Options: Options_Click(this, new RoutedEventArgs()); break;
                 case LauncherFocus.Exit: Close(); break;
-                case LauncherFocus.SignIn: SignIn_Click(this, new RoutedEventArgs()); break;
+                case LauncherFocus.SignIn:
+                    if (account is not null) Account_Click(this, new RoutedEventArgs());
+                    else SignIn_Click(this, new RoutedEventArgs());
+                    break;
                 case LauncherFocus.GameGrid:
                 case LauncherFocus.Play:
                     if (GameGrid.SelectedItem is GameEntry game) await Launch(game);
@@ -644,7 +649,7 @@ public sealed partial class MainWindow : Window
             LauncherFocus.Options => OptionsButton,
             LauncherFocus.Exit => ExitButton,
             LauncherFocus.Play => PlayButton,
-            LauncherFocus.SignIn => SignInButton,
+            LauncherFocus.SignIn => account is not null ? AccountButton : SignInButton,
             _ => GameGrid
         };
         control.Focus(FocusState.Programmatic);
@@ -677,6 +682,10 @@ public sealed partial class MainWindow : Window
                     controls.Add(OptionsPrivacyButton);
                     break;
             }
+        }
+        else if (AccountControls.Visibility == Visibility.Visible)
+        {
+            if (SignOutButton.IsEnabled) controls.Add(SignOutButton);
         }
         else if (UpdateActions.Visibility == Visibility.Visible)
         {
@@ -715,6 +724,7 @@ public sealed partial class MainWindow : Window
             else if (control == InstallUpdateButton) InstallUpdate_Click(this, new RoutedEventArgs());
             else if (control == OptionsTermsButton) OpenExternal(TermsUrl);
             else if (control == OptionsPrivacyButton) OpenExternal(PrivacyUrl);
+            else if (control == SignOutButton) { SignOut_Click(this, new RoutedEventArgs()); return; }
             controls = PanelControls();
             panelFocus = Math.Min(panelFocus, controls.Count - 1);
         }
@@ -835,7 +845,9 @@ public sealed partial class MainWindow : Window
         PanelTitle.Text = "OPTIONS";
         PanelTitle.FontSize = 36;
         PanelBody.Text = "LB / RB or click a tab to switch sections.";
+        PanelBody.Visibility = Visibility.Visible;
         OptionControls.Visibility = Visibility.Visible;
+        AccountControls.Visibility = Visibility.Collapsed;
         initializingSettings = true;
         StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
         initializingSettings = false;
@@ -859,7 +871,9 @@ public sealed partial class MainWindow : Window
         PanelTitle.Text = title;
         PanelTitle.FontSize = 46;
         PanelBody.Text = body;
+        PanelBody.Visibility = Visibility.Visible;
         OptionControls.Visibility = Visibility.Collapsed;
+        AccountControls.Visibility = Visibility.Collapsed;
         VersionText.Visibility = Visibility.Collapsed;
         UpdateStatus.Visibility = Visibility.Collapsed;
         UpdateActions.Visibility = Visibility.Collapsed;
@@ -1077,4 +1091,64 @@ public sealed partial class MainWindow : Window
 
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
     static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    // ---- signed-in account (header chip + in-app account panel) ----
+    void SetAccount(NetworkAccount? a)
+    {
+        account = a is null || string.IsNullOrWhiteSpace(a.Name) && string.IsNullOrWhiteSpace(a.Username) ? null : a;
+        var signedIn = account is not null;
+        SignInButton.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
+        AccountButton.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
+        if (signedIn)
+        {
+            var name = (string.IsNullOrWhiteSpace(account!.Name) ? account.Username : account.Name).Trim();
+            AccountName.Text = name.ToUpperInvariant();
+            AccountInitial.Text = AccountPanelInitial.Text = name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+            AccountPanelName.Text = name;
+            AccountPanelUsername.Text = string.IsNullOrWhiteSpace(account.Username) ? "" : "@" + account.Username.ToUpperInvariant();
+            if (Uri.TryCreate(account.Avatar, UriKind.Absolute, out var avatar) && avatar.Scheme == Uri.UriSchemeHttps)
+            {
+                var image = new BitmapImage(avatar);
+                image.ImageFailed += (_, _) => { AccountAvatar.Visibility = AccountPanelAvatar.Visibility = Visibility.Collapsed; };
+                AccountAvatarBrush.ImageSource = AccountPanelAvatarBrush.ImageSource = image;
+                AccountAvatar.Visibility = AccountPanelAvatar.Visibility = Visibility.Visible;
+            }
+            else AccountAvatar.Visibility = AccountPanelAvatar.Visibility = Visibility.Collapsed;
+            if (!NetworkState.Text.StartsWith("OFFLINE", StringComparison.OrdinalIgnoreCase)) NetworkState.Text = "GRID ONLINE";
+        }
+        else if (NetworkState.Text.StartsWith("SIGNED IN", StringComparison.OrdinalIgnoreCase)) NetworkState.Text = "GRID ONLINE";
+        if (launcherFocus == LauncherFocus.SignIn && Launcher.Visibility == Visibility.Visible && Panel.Visibility != Visibility.Visible && !startupOpen)
+            SetLauncherFocus(LauncherFocus.SignIn);
+        StartupLog.Write("auth", signedIn ? "Account chip shown" : "Signed out; SIGN IN shown");
+    }
+
+    void Account_Click(object sender, RoutedEventArgs e)
+    {
+        if (account is null) { SignIn_Click(sender, e); return; }
+        PanelTitle.Text = "ACCOUNT";
+        PanelTitle.FontSize = 36;
+        PanelBody.Text = "";
+        PanelBody.Visibility = Visibility.Collapsed;
+        OptionControls.Visibility = Visibility.Collapsed;
+        UpdateCard.Visibility = Visibility.Collapsed;
+        OptionsLegal.Visibility = Visibility.Collapsed;
+        AccountControls.Visibility = Visibility.Visible;
+        SignOutButton.IsEnabled = true;
+        SignOutButton.Content = "SIGN OUT";
+        Panel.Visibility = Visibility.Visible;
+        Launcher.Visibility = Visibility.Collapsed;
+        panelFocus = 0;
+        FocusPanelControl(PanelControls()[0]);
+    }
+
+    async void SignOut_Click(object sender, RoutedEventArgs e)
+    {
+        SignOutButton.IsEnabled = false;
+        SignOutButton.Content = "SIGNING OUT...";
+        try { await EnsureWebRuntime().SignOutAsync(); }
+        catch (Exception ex) { StartupLog.Exception("Sign out", ex); }
+        SetAccount(null);
+        ReturnToLauncher();
+        SetLauncherFocus(LauncherFocus.SignIn);
+    }
 }

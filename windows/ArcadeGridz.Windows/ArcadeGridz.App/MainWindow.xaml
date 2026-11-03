@@ -123,6 +123,17 @@
       <Ellipse Width="9" Height="9" Fill="{StaticResource AgGreen}" VerticalAlignment="Center" Margin="0,0,8,0"/>
       <TextBlock x:Name="NetworkState" Text="SYNCING GRID..." Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgViolet}" Margin="0,0,6,0"/>
       <Button x:Name="SignInButton" Content="SIGN IN" FontSize="10" Padding="14,9" Click="SignIn_Click"/>
+      <!-- signed in: avatar + name; opens the in-app account panel -->
+      <Button x:Name="AccountButton" Visibility="Collapsed" Padding="6,5,16,5" CornerRadius="22" Click="Account_Click">
+       <StackPanel Orientation="Horizontal" Spacing="10">
+        <Grid Width="32" Height="32">
+         <Ellipse Fill="{StaticResource AgNeonGradient}"/>
+         <TextBlock x:Name="AccountInitial" Text="?" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource AgInk}" FontFamily="{StaticResource AgDisplay}" FontSize="15"/>
+         <Ellipse x:Name="AccountAvatar" Visibility="Collapsed"><Ellipse.Fill><ImageBrush x:Name="AccountAvatarBrush" Stretch="UniformToFill"/></Ellipse.Fill></Ellipse>
+        </Grid>
+        <TextBlock x:Name="AccountName" FontSize="11" VerticalAlignment="Center" MaxWidth="200" TextTrimming="CharacterEllipsis"/>
+       </StackPanel>
+      </Button>
      </StackPanel>
     </StackPanel>
    </Grid>
@@ -277,6 +288,19 @@
          <TextBlock x:Name="AboutVersionText" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgViolet}" HorizontalAlignment="Center"/>
          <TextBlock Text="ArcadeGridz for Windows is part of the GRiDDiM Network. Games and the game list stream from arcadegridz.com, so new games show up without an app update." Foreground="{StaticResource AgMuted}" FontFamily="{StaticResource AgBody}" FontSize="14" TextWrapping="Wrap" TextAlignment="Center"/>
         </StackPanel>
+       </StackPanel>
+       <!-- in-app account panel: just who you are + sign out (the big settings stay on the websites) -->
+       <StackPanel x:Name="AccountControls" Spacing="12" Visibility="Collapsed">
+        <Grid Width="128" Height="128" HorizontalAlignment="Center">
+         <Ellipse Margin="-6" Stroke="{StaticResource AgNeonGradient}" StrokeThickness="4"/>
+         <Ellipse Fill="{StaticResource AgNeonGradient}"/>
+         <TextBlock x:Name="AccountPanelInitial" Text="?" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource AgInk}" FontFamily="{StaticResource AgDisplay}" FontSize="56"/>
+         <Ellipse x:Name="AccountPanelAvatar" Visibility="Collapsed"><Ellipse.Fill><ImageBrush x:Name="AccountPanelAvatarBrush" Stretch="UniformToFill"/></Ellipse.Fill></Ellipse>
+        </Grid>
+        <TextBlock x:Name="AccountPanelName" HorizontalAlignment="Center" Foreground="{StaticResource AgText}" FontFamily="{StaticResource AgDisplay}" FontSize="26" TextTrimming="CharacterEllipsis" Margin="0,8,0,0"/>
+        <TextBlock x:Name="AccountPanelUsername" HorizontalAlignment="Center" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgCyan}"/>
+        <TextBlock Text="SIGNED IN TO THE GRiDDiM NETWORK  ·  SCORES POST TO YOUR PROFILE" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Style="{StaticResource PixelLabel}" FontSize="8" Foreground="{StaticResource AgDim}" Margin="0,4,0,8"/>
+        <Button x:Name="SignOutButton" Style="{StaticResource DangerButton}" Content="SIGN OUT" Click="SignOut_Click" HorizontalAlignment="Stretch"/>
        </StackPanel>
        <Border x:Name="UpdateCard" Visibility="Collapsed" Margin="0,0,0,6" Background="#990C0A26" BorderBrush="#339F7CFF" BorderThickness="1" CornerRadius="14" Padding="22,18">
         <StackPanel>
