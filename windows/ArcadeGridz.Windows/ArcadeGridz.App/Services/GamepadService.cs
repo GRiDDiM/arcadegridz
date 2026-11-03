@@ -27,6 +27,7 @@ public sealed class GamepadService : IDisposable
     DateTime comboSince;
     bool comboSent;
     bool loggedNoController;
+    int rawA = 1, rawB = 0;
 
     public event Action<PadAction>? Pressed;
 
@@ -95,8 +96,13 @@ public sealed class GamepadService : IDisposable
             rawSwitches = new GameControllerSwitchPosition[(int)raw.SwitchCount];
             rawAxes = new double[(int)raw.AxisCount];
             ResetDirections();
+            // Generic USB SNES pads ("USB,2-axis 8-button gamepad", iBuffalo/Retrolink 0583:2060 and clones) report raw
+            // button 0 = A (right face) and 1 = B (bottom face). Browsers remap these to the standard layout for the web
+            // games, but Windows.Gaming.Input hands us the raw order, so confirm/back were swapped in the launcher.
+            var snesRaw = raw.HardwareVendorId == 0x0583 || (raw.ButtonCount == 8 && raw.AxisCount == 2 && raw.SwitchCount == 0);
+            rawA = snesRaw ? 0 : 1; rawB = snesRaw ? 1 : 0;
             StartupLog.Write("controller",
-                $"Raw controller connected: name={raw.DisplayName}; buttons={raw.ButtonCount}; switches={raw.SwitchCount}; axes={raw.AxisCount}");
+                $"Raw controller connected: name={raw.DisplayName}; vid=0x{raw.HardwareVendorId:X4}; pid=0x{raw.HardwareProductId:X4}; buttons={raw.ButtonCount}; switches={raw.SwitchCount}; axes={raw.AxisCount}; layout={(snesRaw ? "snes-raw (A=0,B=1)" : "standard (A=1,B=0)")}");
             for (var i = 0; i < (int)raw.ButtonCount; i++)
                 StartupLog.Write("controller", $"button[{i}] label={raw.GetButtonLabel(i)}");
         }
@@ -129,8 +135,8 @@ public sealed class GamepadService : IDisposable
         EmitDirection(3, right, PadAction.Right);
 
         // standard-layout indices: 1 = right face button (confirm), 0 = bottom face button (back)
-        EmitRawButton(1, PadAction.A);
-        EmitRawButton(0, PadAction.B);
+        EmitRawButton(rawA, PadAction.A);
+        EmitRawButton(rawB, PadAction.B);
         EmitRawButton(4, PadAction.LB);
         EmitRawButton(5, PadAction.RB);
         UpdateExitCombo((IsPressed(rawButtons, 6) && IsPressed(rawButtons, 7)) || (IsPressed(rawButtons, 8) && IsPressed(rawButtons, 9)));
