@@ -3,19 +3,13 @@ import assert from "node:assert/strict";
 import * as E from "../public/oota/engine.js";
 
 const run = (g, n, inp = () => ({})) => { for (let i = 0; i < n && g.state === "play"; i++) E.step(g, inp(g, i)); return g; };
-const playLevel = (lv, diff = 1, seed = 1, max = 30 * 60 * 6) => run(E.createGame({ difficulty: diff, level: lv, seed }), max, (g) => {
-  const inp = {};
-  if (g.frame % 25 === 0) { const idle = E.idleAliens(g); if (idle.length) inp.command = { cmd: E.CMD.ATTACK, ids: idle.slice(0, 3).map(a => a.id) }; }
-  if (g.frame % 15 === 0) inp.snatch = true;
-  if (g.frame % 320 === 0) inp.rush = true;
-  if (g.L.bonus === "sun") { const f = g.flares.find(f => f.t > -40 && f.t < 10); if (f) inp.shift = f.dir > 0 ? 1 : -1; }
-  return inp;
-});
+const playLevel = (lv, diff = 1, seed = 1, max = 30 * 60 * 8) => run(E.createGame({ difficulty: diff, level: lv, seed }), max, (g) => E.autoInput(g));
 
 test("the campaign is ten levels: seven planets with bosses plus three bonus stages", () => {
   assert.equal(E.LEVELS.length, 10);
-  assert.equal(E.LEVELS[0].id, "earth");
-  assert.deepEqual(E.LEVELS.filter(l => l.kind === "bonus").map(l => l.bonus), ["sun", "pluto", "nibiru"]);
+  assert.equal(E.LEVELS[0].id, "planetx");
+  assert.equal(E.LEVELS.at(-1).id, "earth");
+  assert.deepEqual(E.LEVELS.filter(l => l.kind === "bonus").map(l => l.bonus), ["nibiru", "pluto", "sun"]);
   assert.ok(E.LEVELS.at(-1).final);
 });
 
@@ -92,8 +86,8 @@ test("the hero pilot dodges incoming shots instead of strafing at random", () =>
 });
 
 test("fleet levels field wingmen; a frigate dome absorbs shots but not dives", () => {
-  const g = E.createGame({ difficulty: 2, level: 7, seed: 8 });
-  assert.deepEqual(g.ships.map(s => s.kind).sort(), ["fighter", "frigate", "repair"]);
+  const g = E.createGame({ difficulty: 2, level: E.LEVELS.findIndex(l => l.id === "venus"), seed: 8 });
+  assert.deepEqual(g.ships.map(s => s.kind).sort(), ["fighter", "frigate", "interceptor"]);
   run(g, 120);
   const f = g.ships.find(s => s.kind === "frigate"); assert.ok(f);
   const hp = f.hp, dome = f.dome;
@@ -102,7 +96,7 @@ test("fleet levels field wingmen; a frigate dome absorbs shots but not dives", (
   assert.equal(f.hp, hp); assert.ok(f.dome < dome);
 });
 
-test("a simple bot finishes most runs of every level on EASY", () => {
+test("the idle autopilot finishes most runs of every level on EASY", () => {
   for (let lv = 0; lv < E.LEVELS.length; lv++) {
     let wins = 0; for (let seed = 1; seed <= 4; seed++) { const g = playLevel(lv, 1, seed); if (g.state === "clear" || g.state === "won") wins++; }
     assert.ok(wins >= 3, `${E.LEVELS[lv].id}: ${wins}/4`);
@@ -122,4 +116,13 @@ test("game over when every alien is gone; the final boss wins the invasion", () 
   assert.equal(g.state, "over");
   const w = playLevel(9, 1, 2);
   assert.equal(w.state, "won");
+});
+
+test("defense mode: the player flies the ship, an alien commander runs the swarm", () => {
+  const g = E.createGame({ difficulty: 1, level: 0, seed: 3, mode: "defense" });
+  const x0 = g.man.x;
+  run(g, 900, (g, i) => ({ fire: true, move: i < 40 ? 1 : 0 }));
+  assert.ok(g.aliens.some(a => a.chosen), "the commander gives orders");
+  assert.ok(g.score > 0 && g.deaths > 0, "the player's shots kill aliens");
+  assert.ok(g.quota > 0 && g.spawned <= g.quota);
 });

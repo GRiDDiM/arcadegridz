@@ -2,7 +2,7 @@
 // SNES-style menus (shared potato kit), campaign flow (NEW GAME / CONTINUE, levels, bonus stages, ending) and input.
 // Controller: the d-pad hops the selection between aliens (no fake cursor), A opens the order menu, Y repeats the last
 // order, X snatches loot, B sends the swarm rushing, L picks ONE / ROW / ALL, hold R + d-pad shifts the formation.
-import{W,H,DT,CX,CMD,CMD_NAMES,CMD_POS,DIFF,LEVELS,CLASSES,SUPER_NAMES,createGame,step,snapshot,idleAliens,commandable,lockedCmd,fx0,fx1,bot,surfaceY}from"./engine.js?v=1102-v2a";
+import{autoInput,W,H,DT,CX,CMD,CMD_NAMES,CMD_POS,DIFF,LEVELS,CLASSES,SUPER_NAMES,createGame,step,snapshot,idleAliens,commandable,lockedCmd,fx0,fx1,bot,surfaceY}from"./engine.js?v=1102-v2a";
 import{buildAtlas,buildPlanet,buildSky,buildStars}from"./sprites.js?v=1102-v2a";
 import{createAudio}from"./audio.js?v=1013-oota1";
 import{createTitle}from"./title.js?v=1102-t1";
@@ -17,10 +17,11 @@ const DIALOGUE={earth:["HUMAN: Halt there!","YOU: AHAH HA. *SLURP!*","HUMAN: I w
  jupiter:["HUMAN: More aliens?!","YOU: *REHHZZZblblblbl*","HUMAN: Not Jupiter station!","HUMAN: You shall not pass!!!","HUMAN: Game over, man!"],
  saturn:["HUMAN: Carrier, launch everything!","YOU: *CLICK CLICK CLICK*","HUMAN: Hold the rings!"],
  neptune:["HUMAN: Medics, keep us flying!","HUMAN: Frigates, shields up!","YOU: *gurgle* *GURGLE*","HUMAN: They're diving under the domes!"],
- planetx:["ADMIRAL: So you found us.","ADMIRAL: Every ship. Every pilot. NOW!","YOU: *THE SWARM SINGS*","ADMIRAL: Planet X will not fall!"]};
-const BOSS_LINES={earth:["HUMAN: Boss! Help me!","BOSS: WHAT THE...","BOSS: Why are you trying...","BOSS: to take on a...","BOSS: SWARM of aliens!","BOSS: ALL ALONE?!!!","HUMAN: It worked in the...","HUMAN: Video Games!!!"],
- mars:["BOSS: I will decimate you!"],jupiter:["BOSS: This is not over!!"],venus:["BOSS: You'll melt like the rest!"],saturn:["BOSS: Ring guard, engage!"],neptune:["BOSS: Down into the deep with you!"],planetx:["ADMIRAL: I'll finish this myself!"]};
-const SONG=["earth","mars","menu","mars","jupiter","menu","jupiter","earth","menu","jupiter"];
+ planetx:["HUMAN: Outpost X, we have contact!","YOU: *bloop*","HUMAN: Call the fleet!"],
+ earth:["ADMIRAL: So you came all this way.","ADMIRAL: Every ship. Every pilot. NOW!","YOU: *THE SWARM SINGS*","ADMIRAL: Earth will not fall!"]};
+const BOSS_LINES={planetx:["HUMAN: Boss! Help me!","BOSS: WHAT THE...","BOSS: Why are you trying...","BOSS: to take on a...","BOSS: SWARM of aliens!","BOSS: ALL ALONE?!!!","HUMAN: It worked in the...","HUMAN: Video Games!!!"],
+ mars:["BOSS: I will decimate you!"],jupiter:["BOSS: This is not over!!"],venus:["BOSS: You'll melt like the rest!"],saturn:["BOSS: Ring guard, engage!"],neptune:["BOSS: Down into the deep with you!"],earth:["ADMIRAL: I'll finish this myself!"]};
+const SONG=["mars","earth","menu","jupiter","jupiter","menu","mars","mars","menu","earth"];
 const KEYCMD={Digit1:CMD.ATTACK,Digit2:CMD.DIVE,Digit3:CMD.BUGS,Digit4:CMD.TENTACLES,Digit5:CMD.RANDOM};
 const ARROWS=[{x:77,y:156,dir:-1},{x:233,y:156,dir:1}];
 const ORDER=[CMD.ATTACK,CMD.DIVE,CMD.BUGS,CMD.TENTACLES,CMD.RANDOM];
@@ -57,13 +58,23 @@ export function mountOota(root,{onExit}={}){
  const sel={on:anyPad(),anchor:0,scope:0,menu:null,pick:null,last:null,shift:false,ax:CX,ay:20,dirs:{up:0,down:0,left:0,right:0}};
  const menu=createMenu(stage,{sfx:n=>{if(n==="move")audio.sfx("pick");else if(n==="ok")audio.sfx("ok");else if(n==="back")audio.sfx("deny")}});
  const L=id=>padLabel(binds.get(id));
- let titleOn=true;
+ const glowC=new Map(),glow=c=>{if(!glowC.has(c)){const k=document.createElement("canvas");k.width=k.height=64;const x=k.getContext("2d"),gr=x.createRadialGradient(32,32,0,32,32,32);gr.addColorStop(0,c);gr.addColorStop(.35,c+"88");gr.addColorStop(1,c+"00");x.fillStyle=gr;x.fillRect(0,0,64,64);glowC.set(c,k)}return glowC.get(c)};
+ const halo=(x,y,r,c,a=1)=>{ctx.globalAlpha=a;ctx.drawImage(glow(c),(x-r)*S,(y-r)*S,r*2*S,r*2*S);ctx.globalAlpha=1};
+ const GC=34,GR=22,grid=[];for(let j=0;j<GR;j++)for(let i=0;i<GC;i++)grid.push({ox:0,oy:0,vx:0,vy:0});
+ function shock(x,y,f){const sx=CW/2+(x-CX)*S*(g?.z||1),sy=y*S*(g?.z||1);for(let j=0;j<GR;j++)for(let i=0;i<GC;i++){const p=grid[j*GC+i],px=i*CW/(GC-1),py=j*CH/(GR-1),dx=px-sx,dy=py-sy,d=Math.hypot(dx,dy)+30;if(d<420){const k=f*900/(d*d)*30;p.vx+=dx/d*k;p.vy+=dy/d*k}}}
+ function drawGrid(){const col=["#5ee7ff","#ff6fb5","#b25bd2","#5fd456"][g.level%4];for(const p of grid){p.vx+=-p.ox*.06;p.vy+=-p.oy*.06;p.vx*=.86;p.vy*=.86;p.ox+=p.vx;p.oy+=p.vy}
+  ctx.save();ctx.globalCompositeOperation="lighter";ctx.strokeStyle=col;ctx.globalAlpha=.3;ctx.lineWidth=2.5;ctx.beginPath();
+  for(let j=0;j<GR;j++)for(let i=0;i<GC;i++){const p=grid[j*GC+i],x=i*CW/(GC-1)+p.ox,y=j*CH/(GR-1)+p.oy;if(i){const q=grid[j*GC+i-1];ctx.moveTo((i-1)*CW/(GC-1)+q.ox,j*CH/(GR-1)+q.oy);ctx.lineTo(x,y)}if(j){const q=grid[(j-1)*GC+i];ctx.moveTo(i*CW/(GC-1)+q.ox,(j-1)*CH/(GR-1)+q.oy);ctx.lineTo(x,y)}}
+  ctx.stroke();ctx.restore()}
+ let titleOn=true,idle=false,fireHeld=false,cut=null;
  const fromTitle=sc=>()=>menu.open({...sc,back:()=>menu.close()});
  const title=createTitle({ctx,CW,CH,atlas,planetOf,skyOf,stars,audio,rumble:(ms,s)=>{try{window.ArcadeGridzPad?.rumble?.(ms,s)}catch{}},items:name=>{
   if(name==="diff")return[1,2,3].map(d=>({label:DIFF[d].name,hint:["","A GENTLE START. ROOKIE PILOTS.","THE INTENDED INVASION.","SHARP PILOTS. NO MERCY."][d],off:()=>false,act:()=>newRun(d)})).concat([{label:"BACK",hint:"",off:()=>false,act:()=>title.openList("main")}]);
+  if(name==="defense")return LEVELS.map((L,i)=>({L,i})).filter(o=>o.L.kind!=="bonus").map(({L,i})=>({label:L.name,hint:`DEFEND ${L.name} // ${DIFF[opts.difficulty].name}`,off:()=>false,act:()=>startDefense(i)})).concat([{label:"BACK",hint:"",off:()=>false,act:()=>title.openList("main")}]);
   if(name==="over")return[{label:"START OVER",hint:"YOUR SAVED INVASION WILL BE LOST",off:()=>false,act:()=>title.openList("diff",opts.difficulty-1)},{label:"KEEP MY SAVE",hint:"",off:()=>false,act:()=>title.openList("main")}];
-  return[{label:"NEW GAME",hint:"START THE INVASION AT EARTH",off:()=>false,act:()=>savedRun()?title.openList("over"):title.openList("diff",opts.difficulty-1)},
+  return[{label:"NEW GAME",hint:"INVADE THE SOLAR SYSTEM, EARTH LAST",off:()=>false,act:()=>savedRun()?title.openList("over"):title.openList("diff",opts.difficulty-1)},
    {label:"CONTINUE",hint:()=>{const r=savedRun();return r?`LEVEL ${r.level+1} ${LEVELS[r.level].name} // ${DIFF[r.difficulty].name} // ${fmt(r.score)}`:"NO INVASION IN PROGRESS"},off:()=>!savedRun(),act:continueRun},
+   {label:"DEFENSE MODE",hint:"FLY THE HUMAN SHIP. HOLD OFF THE SWARM",off:()=>false,act:()=>title.openList("defense")},
    {label:"OPTIONS",hint:"SOUND, DIALOGUE, ASSIST, SLOW-MO",off:()=>false,act:fromTitle(optionsScreen())},
    {label:"CONTROLS",hint:"REMAP YOUR CONTROLLER",off:()=>false,act:fromTitle(controls())},
    {label:"HOW TO PLAY",hint:"",off:()=>false,act:fromTitle(howTo())},
@@ -96,6 +107,10 @@ export function mountOota(root,{onExit}={}){
   inpQ.command={cmd:slot,ids:selIds()};sel.last=slot}
  function repeatOrder(){if(sel.last==null){openOrders();return}if(lockedCmd(g,sel.last)){audio.sfx("deny");return}const ids=selIds();if(ids.length)inpQ.command={cmd:sel.last,ids}}
  function action(name,down,e){sel.on=true;
+  if(idle&&down&&name!=="pause"&&live()){setIdle(false);return}
+  if(g&&g.mode==="defense"&&!demo){if(name==="pause"){if(down)openPause();return}
+   if(name==="dir"&&(e==="left"||e==="right")||name==="left"||name==="right"){shiftHold[(name==="dir"?e:name)==="left"?"l":"r"]=down;return}
+   if(name==="order"||name==="repeat"){fireHeld=down;return}if((name==="rush"||name==="snatch")&&down)inpQ.bomb=true;return}
   if(name==="left"||name==="right"){shiftHold[name==="left"?"l":"r"]=down;if(down&&live())tutor("move");return}
   if(name==="dir"){const d=e;sel.dirs[d]=down?1:0;
    if(!down||!live())return;
@@ -112,7 +127,7 @@ export function mountOota(root,{onExit}={}){
  const TUT=[["hop","PICK AN ALIEN","D-PAD","ARROWS"],["order","GIVE IT AN ORDER","order","Z"],["move","MOVE THE WHOLE SWARM","left+right","Q / E"],["snatch","SNATCH THE GREEN POWER-UPS","snatch","X"],["scope","ORDER A ROW OR EVERYONE","scope","TAB"],["rush","RUSH THE SHIP (RECHARGES)","rush","SPACE"]];
  let tut=store.get("tut",0);
  function tutor(k){if(tut<TUT.length&&TUT[tut][0]===k){tut++;store.set("tut",tut);audio.sfx("powerup")}}
- function drawTutorial(){if(demo||tut>=TUT.length||!g||g.level!==0||paused)return;const[k,msg,pad,kb]=TUT[tut],btn=sel.on?(pad==="D-PAD"?"D-PAD":pad.split("+").map(id=>L(id)).join(" / ")):kb,
+ function drawTutorial(){if(demo||tut>=TUT.length||!g||g.level!==0||paused||g.mode==="defense")return;const[k,msg,pad,kb]=TUT[tut],btn=sel.on?(pad==="D-PAD"?"D-PAD":pad.split("+").map(id=>L(id)).join(" / ")):kb,
   w=640,h=74,x=(CW-w)/2,y=CH*.44;ctx.globalAlpha=.88+.12*Math.sin(tick*.15);ctx.fillStyle="rgba(5,4,10,.86)";ctx.fillRect(x,y,w,h);ctx.strokeStyle="#5fd456";ctx.lineWidth=3;ctx.strokeRect(x+1.5,y+1.5,w-3,h-3);
   ctx.textAlign="center";ctx.font='10px "Press Start 2P",monospace';ctx.fillStyle="#9fe9ff";ctx.fillText(`TIP ${tut+1}/${TUT.length}`,CW/2,y+22);
   ctx.font='17px "Press Start 2P",monospace';const t=`${btn}  ${msg}`,tw=ctx.measureText(t).width;ctx.fillStyle="#05040a";ctx.fillText(t,CW/2+2,y+56);ctx.fillStyle="#c8ff9a";ctx.fillText(t,CW/2,y+54);
@@ -121,6 +136,8 @@ export function mountOota(root,{onExit}={}){
  const KB={ArrowUp:["dir","up"],ArrowDown:["dir","down"],ArrowLeft:["dir","left"],ArrowRight:["dir","right"],KeyW:["dir","up"],KeyS:["dir","down"],KeyA:["dir","left"],KeyD:["dir","right"],
   KeyZ:["order"],Enter:["order"],KeyC:["repeat"],KeyX:["snatch"],Space:["rush"],KeyQ:["left"],KeyE:["right"],Tab:["scope"],KeyP:["pause"],Escape:["pause"]};
  const onKey=e=>{if(e.target.closest?.("input,textarea,select"))return;
+  if(cut&&!demo&&!menu.isOpen()){e.preventDefault();if(e.type==="keydown"&&!e.repeat&&(Date.now()-cut.t0>400))endCut();return}
+  if(e.type==="keydown"&&e.code==="KeyI"&&live()){setIdle(!idle);e.preventDefault();return}
   if(menu.handleKey(e)){if(isPad(e))sel.on=true;e.preventDefault();return}
   const down=e.type==="keydown";
   if(titleOn&&demo){e.preventDefault();if(!down||e.repeat&&!/Arrow|Key[WS]/.test(e.code))return;sel.on=isPad(e)||sel.on;const pad=isPad(e),d=pad?padDir(e):({ArrowUp:"up",ArrowDown:"down",ArrowLeft:"left",ArrowRight:"right",KeyW:"up",KeyS:"down"})[e.code];
@@ -136,13 +153,15 @@ export function mountOota(root,{onExit}={}){
  let arrowPtr=null;
  const cpx=e=>{const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*CW,y:(e.clientY-r.top)/r.height*CH}};
  canvas.addEventListener("pointermove",e=>{if(titleOn&&demo){const p=cpx(e);title.hover(p.x,p.y)}const wp=world(e);hoverX=wp.x;hoverY=wp.y;if(e.pointerType==="mouse"&&(e.movementX||e.movementY))sel.on=false});
- canvas.addEventListener("pointerdown",e=>{if(titleOn&&demo&&!menu.isOpen()){e.preventDefault();audio.unlock();const p=cpx(e);title.click(p.x,p.y);return}if(!live())return;const p=world(e);e.preventDefault();canvas.focus?.({preventScroll:true});audio.unlock();sel.on=false;sel.menu=null;sel.pick=null;
+ canvas.addEventListener("pointerdown",e=>{if(cut&&!demo){endCut();return}if(titleOn&&demo&&!menu.isOpen()){e.preventDefault();audio.unlock();const p=cpx(e);title.click(p.x,p.y);return}if(!live())return;const p=world(e);e.preventDefault();canvas.focus?.({preventScroll:true});audio.unlock();sel.on=false;sel.menu=null;sel.pick=null;
   const r=canvas.getBoundingClientRect(),sx=(e.clientX-r.left)/r.width*W,sy=(e.clientY-r.top)/r.height*H;
   for(const a of ARROWS)if(Math.abs(sx-a.x)<14&&Math.abs(sy-a.y)<26){arrowPtr={id:e.pointerId,dir:a.dir};return}
-  taps.push(p)});
- const up=e=>{if(arrowPtr&&arrowPtr.id===e.pointerId)arrowPtr=null};
+  if(g.mode==="defense"){fireHeld=true;return}taps.push(p)});
+ const up=e=>{if(arrowPtr&&arrowPtr.id===e.pointerId)arrowPtr=null;else if(g?.mode==="defense"&&e.pointerType!=="mouse"||g?.mode==="defense"&&e.type==="pointerup")fireHeld=false};
  canvas.addEventListener("pointerup",up);canvas.addEventListener("pointercancel",up);
- function readInput(){const inp=inpQ;inpQ={};const sh=(shiftHold.r||arrowPtr?.dir===1?1:0)-(shiftHold.l||arrowPtr?.dir===-1?1:0);if(sh)inp.shift=sh*1.4;
+ function readInput(){if(g.mode==="defense"){const inp=idle?defBot():{move:(shiftHold.r?1:0)-(shiftHold.l?1:0),fire:fireHeld||!sel.on&&false};if(inpQ.bomb)inp.bomb=true;inpQ={};if(arrowPtr)inp.move=arrowPtr.dir;return inp}
+  if(idle){inpQ={};return autoInput(g)}
+  const inp=inpQ;inpQ={};const sh=(shiftHold.r||arrowPtr?.dir===1?1:0)-(shiftHold.l||arrowPtr?.dir===-1?1:0);if(sh)inp.shift=sh*1.4;
   const t=taps.shift();if(t)inp.tap=t;return inp}
  // ---------- events / fx ----------
  function burst(x,y,c,n=10,sp=1.2,grav=0){if(reduceMotion)n=Math.min(n,4);for(let i=0;i<n;i++){const a=Math.random()*6.283,v=.3+Math.random()*sp;particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:10+Math.random()*14,c,grav,sz:grav?2:1})}}
@@ -154,9 +173,12 @@ export function mountOota(root,{onExit}={}){
  function handleEvents(){for(const e of g.events){
   if(e.type==="sfx"){if(!demo)audio.sfx(e.name)}
   else if(e.type==="pop")pops.push({x:e.x,y:e.y,t:40,txt:e.txt,c:e.c});
-  else if(e.type==="alienDie")burst(e.x,e.y,e.species===2?"#3fd4bd":"#5fd456",10);
-  else if(e.type==="manDie"){burst(e.x,e.y,"#ffd93a",18,1.8);burst(e.x,e.y,"#ff5468",10);burst(e.x,e.y,"#b9c1cf",8,1.4,.06);kick(4);rumble(180,.6)}
-  else if(e.type==="shipDie"){burst(e.x,e.y,"#ffd93a",e.kind==="carrier"?34:16,1.8);burst(e.x,e.y,"#94a0b8",10,1.6,.06);kick(e.kind==="carrier"?8:4);if(e.kind==="carrier")hitstop=3;rumble(200,.7)}
+  else if(e.type==="alienDie"){shock(e.x,e.y,.6);burst(e.x,e.y,"#ffffff",3,.8)}
+  if(e.type==="alienDie")burst(e.x,e.y,e.species===2?"#3fd4bd":"#5fd456",10);
+  else if(e.type==="manHurt"){burst(e.x,e.y,"#ff9a2e",10,1.4);shock(e.x,e.y,1.4);kick(3)}
+  else if(e.type==="nova"){fx.push({k:"nova",x:e.x,y:e.y,t:40});shock(e.x,e.y,8);flash=18;kick(14);rumble(500,1)}
+  else if(e.type==="manDie"){shock(e.x,e.y,3);burst(e.x,e.y,"#ffd93a",18,1.8);burst(e.x,e.y,"#ff5468",10);burst(e.x,e.y,"#b9c1cf",8,1.4,.06);kick(4);rumble(180,.6)}
+  else if(e.type==="shipDie"){shock(e.x,e.y,e.kind==="carrier"?6:2.5);burst(e.x,e.y,"#ffd93a",e.kind==="carrier"?34:16,1.8);burst(e.x,e.y,"#94a0b8",10,1.6,.06);kick(e.kind==="carrier"?8:4);if(e.kind==="carrier")hitstop=3;rumble(200,.7)}
   else if(e.type==="spark")burst(e.x,e.y,"#ffe08a",3,.8);
   else if(e.type==="iceBreak"){burst(e.x,e.y,"#d2fbff",14,1.6,.05);burst(e.x,e.y,"#5ee7ff",6,1)}
   else if(e.type==="zap")fx.push({k:"zap",pts:e.pts,t:6});
@@ -165,7 +187,7 @@ export function mountOota(root,{onExit}={}){
   else if(e.type==="hatch"){burst(e.x,e.y,"#c8ff9a",8,1);pops.push({x:e.x,y:e.y-8,t:30,txt:"HATCH!",c:"#c8ff9a"})}
   else if(e.type==="super"&&!demo){banner(`SUPER: ${SUPER_NAMES[e.kind]}!`,"THE SWARM GOES BONKERS");flash=10;kick(6);rumble(250,.8);burst(e.x,e.y,"#ffd93a",24,2)}
   else if(e.type==="nukeArmed"&&!demo){banner("NUKE ARMED!","KILL THE SHIP BEFORE IT BLOWS");rumble(300,.8)}
-  else if(e.type==="nukeBoom"){flash=30;kick(16);hitstop=6;rumble(900,1);if(!demo)setTimeout(()=>banner("THE SWARM WAS NUKED",`${e.lost} LOST // CEASEFIRE: REBUILD!`),300)}
+  else if(e.type==="nukeBoom"){shock(CX,90,14);flash=30;kick(16);hitstop=6;rumble(900,1);if(!demo)setTimeout(()=>banner("THE SWARM WAS NUKED",`${e.lost} LOST // CEASEFIRE: REBUILD!`),300)}
   else if(e.type==="defused"&&!demo){banner("NUKE DEFUSED!","+1000");burst(e.x,e.y,"#5fd456",20,2)}
   else if(e.type==="podBoom"){burst(e.x,e.y,"#ffd93a",20,2);burst(e.x,e.y,"#ff5468",10,1.4)}
   else if(e.type==="snatch")fx.push({k:"snatch",x0:e.x0,y0:e.y0,x1:e.x1,y1:e.y1,t:10});
@@ -175,8 +197,8 @@ export function mountOota(root,{onExit}={}){
   else if(e.type==="hazard"&&!demo&&HAZARD_TEXT[e.kind])banner(...HAZARD_TEXT[e.kind]);
   else if(e.type==="merged"){burst(e.x,e.y,"#ff6fb5",16,1.5);if(!demo){banner("MERGED!","A NEW SPECIES");rumble(120,.4)}}
   else if(e.type==="buff"&&!demo){if(e.side==="me")pops.push({x:CX,y:60,t:46,txt:`SWARM +${BUFF_NAMES[e.kind]}`,c:"#5fd456"});else pops.push({x:CX,y:120,t:46,txt:`SHIP +${BUFF_NAMES[e.kind]}`,c:"#ff9a2e"})}
-  else if(e.type==="planetDestroyed"){flash=16;kick(10);hitstop=4;rumble(500,1);audio.hyper?.(true);if(!demo){banner(`${g.L.name} DESTROYED!`,g.L.final?"THE ADMIRAL ATTACKS":"HERE COMES THE BOSS");say(BOSS_LINES[g.L.id])}}
-  else if(e.type==="boss"){burst(e.x,e.y,"#ffd93a",40,2.5);burst(e.x,e.y,"#ffffff",20,2);burst(e.x,e.y,"#94a0b8",14,2,.06);flash=22;kick(12);hitstop=8;rumble(600,1)}
+  else if(e.type==="planetDestroyed"){shock(CX,150,10);flash=16;kick(10);hitstop=4;rumble(500,1);audio.hyper?.(true);if(!demo){banner(`${g.L.name} DESTROYED!`,g.L.final?"THE ADMIRAL ATTACKS":"HERE COMES THE BOSS");say(BOSS_LINES[g.L.id])}}
+  else if(e.type==="boss"){shock(e.x,e.y,10);burst(e.x,e.y,"#ffd93a",40,2.5);burst(e.x,e.y,"#ffffff",20,2);burst(e.x,e.y,"#94a0b8",14,2,.06);flash=22;kick(12);hitstop=8;rumble(600,1)}
   else if(e.type==="stage"&&!demo)banner(`STAGE ${e.stage}`,"THE SHIP GETS UPGRADES");
   else if(e.type==="descend"&&!demo&&g.aliens.some(a=>a.mey>bot(g)*.42))pops.push({x:CX,y:bot(g)*.55,t:30,txt:"THE SWARM DESCENDS",c:"#ff6fb5"});
   else if(e.type==="end")finish()}}
@@ -186,7 +208,7 @@ export function mountOota(root,{onExit}={}){
  const ring=(x,y,r,c,lw=4)=>{ctx.strokeStyle=c;ctx.lineWidth=lw;ctx.beginPath();ctx.arc(x*S,y*S,r*S,0,6.283);ctx.stroke()};
  const SHIPSPR={fighter:"fighter",interceptor:"interceptor",carrier:"carrier",repair:"repair",frigate:"frigate"};
  function drawWorld(){const art=g.L.art,z=g.z,B=bot(g),x0=fx0(g),x1=fx1(g),fw=x1-x0;
-  ctx.drawImage(skyOf(art),0,0,CW,CH);
+  ctx.drawImage(skyOf(art),0,0,CW,CH);ctx.fillStyle="rgba(2,1,10,.5)";ctx.fillRect(0,0,CW,CH);drawGrid();
   for(const[i,img]of stars.entries()){const off=((tick*(i?2:1)*(i?-1:1)/4)%H+H)%H;ctx.globalAlpha=i?.6:1;ctx.drawImage(img,0,off*S-CH,CW,CH);ctx.drawImage(img,0,off*S,CW,CH);ctx.globalAlpha=1}
   ctx.save();ctx.translate(CW/2,0);ctx.scale(z,z);ctx.translate(-CW/2,0);
   // planet / bonus bodies
@@ -200,14 +222,17 @@ export function mountOota(root,{onExit}={}){
   for(const h of g.hazards){if(h.kind==="acid"){ctx.globalAlpha=.75;spr(atlas.cloud,h.x,h.y,1,h.r/16);ctx.globalAlpha=1}else if(h.kind==="rock")spr(atlas.rock[(h.x|0)&1],h.x,h.y)}
   if(g.hazards.some(h=>h.kind==="storm")){const h=g.hazards.find(h=>h.kind==="storm");ctx.fillStyle="rgba(190,230,255,.18)";for(let i=0;i<14;i++){const y=(i*37+tick*1.7)%B,x=((i*91+tick*6*h.dir)%fw+fw)%fw+x0;ctx.fillRect(x*S,y*S,26*S,S)}}
   for(const s of g.sats)spr(s.ufo?atlas.ufo:atlas.sat,s.x,s.y);
-  for(const t of g.tentacles){const len=Math.min(52,(30-t.life)*6+8);ctx.fillStyle="#3fd4bd";ctx.fillRect((t.x-1.5)*S,t.y*S,3*S,len*S);ctx.fillStyle="#b8fff1";ctx.fillRect((t.x-.5)*S,t.y*S,1*S,len*S)}
+  for(const t of g.tentacles){const len=Math.min(56,(30-t.life)*6+8),pts=[];for(let i=0;i<=10;i++){const u=i/10,w=Math.sin((t.ph||0)*1.4+u*6)*3*u,x=(1-u)*(1-u)*t.x+2*(1-u)*u*t.x+u*u*(t.tx??t.x)+w,y=t.y+4+u*len;pts.push([x,y,(1-u)*3.2+.9])}
+   for(const[pass,col]of[[0,"#05040a"],[1,"#b0306a"]]){ctx.strokeStyle=col;ctx.lineCap="round";for(let i=1;i<pts.length;i++){ctx.lineWidth=(pts[i][2]+pts[i-1][2])*S*.5+(pass?0:5);ctx.beginPath();ctx.moveTo(pts[i-1][0]*S,pts[i-1][1]*S);ctx.lineTo(pts[i][0]*S,pts[i][1]*S);ctx.stroke()}}
+   ctx.fillStyle="#ffc0e0";for(let i=1;i<pts.length-1;i+=2){const[x,y,r]=pts[i];ctx.beginPath();ctx.arc((x+r*.3)*S,y*S,r*.35*S,0,6.283);ctx.fill()}ctx.globalCompositeOperation="lighter";halo(pts[10][0],pts[10][1],6,"#ff6fb5",.6);ctx.globalCompositeOperation="source-over"}
   // bonus targets
-  for(const i of g.ice)if(i.hp>0){const k=Math.min(3,Math.floor((1-i.hp/i.max)*4));ctx.drawImage(atlas.ice[k],(i.x-i.w/2)*S,(i.y-5)*S,i.w*S,10*S)}
+  for(const i of g.ice)if(i.hp>0){const k=Math.min(3,Math.floor((1-i.hp/i.max)*4));ctx.save();ctx.translate(i.x*S,i.y*S);ctx.rotate(i.ang||0);ctx.drawImage(atlas.ice[k],-i.w/2*S,-5*S,i.w*S,10*S);ctx.restore()}
   for(const u of g.ufos)if(!u.dead)spr(atlas.ufo,u.x,u.y);
   for(const f of g.flares){if(f.t<0){ctx.strokeStyle=`rgba(255,106,16,${.25+.2*Math.sin(tick*.6)})`;ctx.lineWidth=6;ctx.setLineDash([10,10]);ctx.beginPath();for(let k=0;k<=20;k++){const q=k/20,X=f.dir>0?x0-10+(fw+20)*q:x1+10-(fw+20)*q,Y=B+10-(B+10-f.peak)*Math.sin(q*Math.PI);k?ctx.lineTo(X*S,Y*S):ctx.moveTo(X*S,Y*S)}ctx.stroke();ctx.setLineDash([])}
    else{ctx.fillStyle="rgba(255,106,16,.35)";ctx.beginPath();ctx.arc(f.x*S,f.y*S,15*S,0,6.283);ctx.fill();ctx.fillStyle="#ffd24a";ctx.beginPath();ctx.arc(f.x*S,f.y*S,8*S,0,6.283);ctx.fill();ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(f.x*S,f.y*S,4*S,0,6.283);ctx.fill()}}
   // the swarm
-  const ids=sel.on&&live()?new Set(selIds()):null,anchor=sel.anchor;
+  ctx.globalCompositeOperation="lighter";for(const a of g.aliens)halo(a.x,a.y,a.species===2?18:12,a.kind==="zapper"?"#5ee7ff":a.kind==="tank"?"#ff9a2e":a.kind==="healer"?"#ff6fb5":a.variant?"#b25bd2":"#5fd456",.6);for(const s of g.ships)halo(s.x,s.y,s.kind==="carrier"?28:14,"#5ee7ff",.3);if(g.man)halo(g.man.x,g.man.y,16,"#ffffff",.35);if(g.boss)halo(g.boss.x,g.boss.y,30,"#ff5468",.4);ctx.globalCompositeOperation="source-over";
+  const ids=sel.on&&live()&&g.mode!=="defense"?new Set(selIds()):null,anchor=sel.anchor;
   for(const a of g.aliens){const f=(tick>>3)&1;let img=a.species===2?atlas.big[f]:a.kind==="zapper"?atlas.zapper[f]:a.kind==="tank"?atlas.tank[f]:a.kind==="healer"?atlas.healer[f]:atlas.alien[a.variant][f];
    if(a.chosen&&a.cmd===CMD.SHIELD&&a.dome>0){ctx.globalAlpha=.25+a.dome*.08;ring(a.x,a.y,22,"#5ee7ff",4);ctx.fillStyle="rgba(94,231,255,.1)";ctx.beginPath();ctx.arc(a.x*S,a.y*S,22*S,0,6.283);ctx.fill();ctx.globalAlpha=1}
    if(a.chosen&&a.cmd===CMD.SANCT){ctx.setLineDash([12,10]);ctx.globalAlpha=.6;ring(a.x,a.y,26,"#ffd93a",3);ctx.setLineDash([]);ctx.fillStyle="rgba(255,217,58,.07)";ctx.beginPath();ctx.arc(a.x*S,a.y*S,26*S,0,6.283);ctx.fill();ctx.globalAlpha=1}
@@ -221,7 +246,7 @@ export function mountOota(root,{onExit}={}){
    if(!demo&&a.chosen&&a.cmd>=0&&a.okT<=0)spr(atlas.icon[a.cmd],a.x+7,a.y-8,.8,.55)}
   if(!demo)for(const a of g.aliens){if(a.okT>0)text("OK!",a.x,a.y-10,16,"#ffd93a","center");
    else if(!a.chosen&&!a.kami&&a.dive===0&&Math.abs(a.x-a.mex)<1.5&&Math.abs(a.y-a.mey)<1.5){if(sel.on){ctx.fillStyle="#05040a";ctx.fillRect((a.x-1.5)*S,(a.y-11.5)*S,3*S,3*S);ctx.fillStyle="#ffffff";ctx.fillRect((a.x-1)*S,(a.y-11)*S,2*S,2*S)}else text("GO",a.x,a.y-10,13,"#ffffff","center")}}
-  for(const s of g.shots){ctx.fillStyle="#5fd456";ctx.fillRect((s.x-.5)*S,(s.y-3)*S,1*S,6*S)}
+  ctx.globalCompositeOperation="lighter";for(const s of g.shots){halo(s.x,s.y,8,"#5fd456",1);ctx.fillStyle="#d2ffc0";ctx.fillRect((s.x-.5)*S,(s.y-3)*S,1*S,6*S)}for(const s of g.globs)halo(s.x,s.y,8,"#3fd4bd",.7);for(const b of g.bugs)halo(b.x,b.y,6,"#ff6a10",.7);ctx.globalCompositeOperation="source-over";
   for(const s of g.globs)spr(atlas.glob[(tick>>2)&1],s.x,s.y);
   for(const b of g.bugs)spr(atlas.bug[(tick>>1)&1],b.x,b.y);
   for(const l of g.loots){if(l.done){text(l.done===1?(l.orb?"":l.good?"POWER UP!":"BLOCKED!"):"",l.x,l.y-l.t*.2,13,"#ffffff","center");continue}
@@ -231,25 +256,29 @@ export function mountOota(root,{onExit}={}){
    if(s.kind==="frigate"&&s.dome>0){ctx.globalAlpha=.15+.08*s.dome;ring(s.x,s.y,24,"#5ee7ff",3);ctx.fillStyle="rgba(94,231,255,.08)";ctx.beginPath();ctx.arc(s.x*S,s.y*S,24*S,0,6.283);ctx.fill();ctx.globalAlpha=1}
    if(s.max>1){ctx.fillStyle="#05040a";ctx.fillRect((s.x-8)*S,(s.y+(s.kind==="carrier"?12:9))*S,16*S,S*1.2);ctx.fillStyle="#ff5468";ctx.fillRect((s.x-8)*S,(s.y+(s.kind==="carrier"?12:9))*S,16*S*s.hp/s.max,S*1.2)}}
   for(const b of g.beams){const t=b.hero?g.man:g.ships.find(s=>s.id===b.id);if(!t)continue;ctx.strokeStyle=`rgba(95,212,86,${b.t/20})`;ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(b.x0*S,b.y0*S);ctx.lineTo(t.x*S,t.y*S);ctx.stroke()}
+  if(g.motherX!=null){const bx=g.motherX,w=(14+Math.sin(tick*.7)*3)*S;ctx.globalCompositeOperation="lighter";ctx.fillStyle="rgba(255,111,181,.25)";ctx.fillRect(bx*S-w*1.8,0,w*3.6,B*S);ctx.fillStyle="rgba(255,240,250,.85)";ctx.fillRect(bx*S-w/2,0,w,B*S);ctx.globalCompositeOperation="source-over";spr(atlas.big[(tick>>3)&1],bx,8,1,2)}
+  for(const r of g.rocks){ctx.globalCompositeOperation="lighter";halo(r.x,r.y,10,"#ff6a10",.9);ctx.fillStyle="#ffd24a";ctx.fillRect((r.x-r.vx*3-1)*S,(r.y-r.vy*3-1)*S,2*S,2*S);ctx.globalCompositeOperation="source-over";spr(atlas.rock[0],r.x,r.y)}
   if(g.pod){spr(atlas.pod[(tick>>3)&1],g.pod.x,g.pod.y,1,1.2);text("NUKE",g.pod.x,g.pod.y-12,13,tick%20<10?"#ff5468":"#ffd93a","center")}
   if(g.hole){const h=g.hole;for(let k=0;k<4;k++){ctx.globalAlpha=.25+k*.12;ring(h.x,h.y,30-k*6+Math.sin(tick*.3+k)*2,["#7a2a9a","#b25bd2","#eab3ff","#ffffff"][k],4)}ctx.globalAlpha=1;ctx.fillStyle="#05040a";ctx.beginPath();ctx.arc(h.x*S,h.y*S,9*S,0,6.283);ctx.fill()}
   const m=g.man;if(m&&g.nuke){ctx.globalAlpha=.5+.5*Math.sin(tick*.6);ring(m.x,m.y,14,"#ff5468",5);ctx.globalAlpha=1;text(`NUKE ${Math.ceil(g.nuke.t/30)}`,m.x,m.y-16,16,"#ff5468","center")}
   if(m&&m.stun>0)text("ZZT",m.x,m.y-12,12,"#5ee7ff","center");
+  if(m&&m.max>1){ctx.fillStyle="#05040a";ctx.fillRect((m.x-9)*S,(m.y+10)*S,18*S,1.4*S);ctx.fillStyle=m.hp/m.max>.5?"#5fd456":"#ff5468";ctx.fillRect((m.x-9)*S,(m.y+10)*S,18*S*m.hp/m.max,1.4*S)}
   if(m){spr(m.shields>0?atlas.shipShield:atlas.ship,m.x,m.y,m.inv>0&&tick%4<2?.4:1);if(m.shields>0)ring(m.x,m.y,10,`rgba(94,231,255,${.5+.3*Math.sin(tick*.4)})`)}
   for(const o of g.options)spr(atlas.ship,o.x,o.y,.8,.5);
   if(g.boss){const Bs=g.boss;spr(atlas.boss[Bs.type-1],Bs.x,Bs.y);if(Bs.dome>0){ctx.globalAlpha=.4;ring(Bs.x,Bs.y,30,"#ffd93a",5);ctx.globalAlpha=1}}
-  for(const s of g.manshots){ctx.fillStyle="#ff9a2e";ctx.fillRect((s.x-.5)*S,(s.y-3)*S,1*S,6*S)}
+  ctx.globalCompositeOperation="lighter";for(const s of g.manshots){halo(s.x,s.y,8,"#ff9a2e",1);ctx.fillStyle="#ffe08a";ctx.fillRect((s.x-.5)*S,(s.y-3)*S,1*S,6*S)}for(const s of g.missiles)halo(s.x,s.y,7,"#ff5468",.7);for(const s of g.plazmas)halo(s.x,s.y,7,"#ff6fb5",.8);for(const s of g.bossShots)halo(s.x,s.y,7,"#ffd93a",.7);ctx.globalCompositeOperation="source-over";
   for(const s of g.bossShots){ctx.fillStyle=s.kind==="jup"?"#ffd93a":"#a39aac";ctx.fillRect((s.x-2)*S,(s.y-2)*S,4*S,4*S)}
   for(const s of g.missiles)spr(atlas.missile,s.x,s.y);
   for(const s of g.plazmas){ctx.fillStyle=tick%4<2?"#ff6fb5":"#ffffff";ctx.fillRect((s.x-2)*S,(s.y-2)*S,4*S,4*S)}
-  for(const e of fx){if(e.k==="zap"){ctx.strokeStyle="#ffffff";ctx.lineWidth=5;ctx.beginPath();e.pts.forEach(([x,y],i)=>{const jx=i&&i<e.pts.length?(Math.random()-.5)*6:0;i?ctx.lineTo((x+jx)*S,y*S):ctx.moveTo(x*S,y*S)});ctx.stroke();ctx.strokeStyle="#5ee7ff";ctx.lineWidth=2;ctx.stroke()}
+  for(const e of fx){if(e.k==="nova"){const r=(40-e.t)*7;ctx.globalCompositeOperation="lighter";ctx.globalAlpha=e.t/40;ring(e.x,e.y,r,"#ffffff",12);ring(e.x,e.y,r*.8,"#ffd93a",8);ctx.globalAlpha=1;ctx.globalCompositeOperation="source-over"}
+   else if(e.k==="zap"){ctx.strokeStyle="#ffffff";ctx.lineWidth=5;ctx.beginPath();e.pts.forEach(([x,y],i)=>{const jx=i&&i<e.pts.length?(Math.random()-.5)*6:0;i?ctx.lineTo((x+jx)*S,y*S):ctx.moveTo(x*S,y*S)});ctx.stroke();ctx.strokeStyle="#5ee7ff";ctx.lineWidth=2;ctx.stroke()}
    else if(e.k==="emp"){ctx.globalAlpha=e.t/14;ring(e.x1,e.y1,16-e.t,"#5ee7ff",4);ctx.globalAlpha=1}
    else if(e.k==="snatch"){ctx.strokeStyle="#3fd4bd";ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(e.x0*S,e.y0*S);ctx.lineTo(e.x1*S,e.y1*S);ctx.stroke();ctx.strokeStyle="#b8fff1";ctx.lineWidth=3;ctx.stroke()}
    else if(e.k==="roll"){ctx.globalAlpha=e.t/14;spr(atlas.shipShield,e.x-(14-e.t),e.y,.5);spr(atlas.shipShield,e.x+(14-e.t),e.y,.5);ctx.globalAlpha=1}}
   // mouse command menu (radial)
   if(g.menu){const a=g.aliens.find(a=>a.id===g.menu.id);if(a){ctx.fillStyle="rgba(5,4,10,.55)";ctx.beginPath();ctx.arc(a.x*S,a.y*S,26*S,0,6.283);ctx.fill();
    for(let i=0;i<5;i++){const[ox,oy]=CMD_POS[i],c=ringOf(a)[i];if(c!=null)spr((lockedCmd(g,c)?atlas.iconLocked:atlas.icon)[c],a.x+ox,a.y+oy)}spr(atlas.alien[a.variant][0],a.x,a.y)}}
-  for(const p of particles){ctx.globalAlpha=Math.min(1,p.life/10);ctx.fillStyle=p.c;ctx.fillRect((p.x-.5)*S,(p.y-.5)*S,S*p.sz,S*p.sz)}ctx.globalAlpha=1;
+  ctx.globalCompositeOperation="lighter";for(const p of particles){ctx.globalAlpha=Math.min(1,p.life/10);ctx.fillStyle=p.c;ctx.fillRect((p.x-.5)*S,(p.y-.5)*S,S*p.sz*1.4,S*p.sz*1.4);ctx.fillRect((p.x-p.vx*2-.3)*S,(p.y-p.vy*2-.3)*S,S*.7,S*.7)}ctx.globalAlpha=1;ctx.globalCompositeOperation="source-over";
   for(const p of pops)text(p.txt,p.x,p.y-(46-p.t)*.25,15,p.c,"center");
   ctx.restore()}
  // where a world point lands on screen (for overlays drawn without the camera transform)
@@ -283,12 +312,13 @@ export function mountOota(root,{onExit}={}){
   if(g.phase==="bonus"){text("TIME",306,14,14,"#9488ad","right");text(String(s.timer),306,30,26,s.timer<=10?"#ff5468":"#ffffff","right");text("BONUS",306,48,14,"#9488ad","right");text(fmt(g.bonusPts),306,60,18,"#ffd93a","right")}
   else{const R=[["STAGE",g.stage],["KILLS",g.kills],["LOST",g.deaths],["TIME",s.time]];R.forEach(([k,v],i)=>{text(k,306,12+i*22,14,"#9488ad","right");text(String(v),306,22+i*22,18,"#ffffff","right")})}
   if(!demo){text(s.rush?"RUSH READY":"RUSH...",306,96,12,s.rush?"#5fd456":"#6a74a0","right");if(!s.rush){ctx.fillStyle="#252536";ctx.fillRect(262*S,98*S,44*S,2*S);ctx.fillStyle="#5fd456";ctx.fillRect(262*S,98*S,44*S*(1-g.rushCD/300),2*S)}
-   const rows=sel.on?[["D-PAD","PICK ALIEN"],[`${L("order")}`,"ORDER"],[`${L("repeat")}`,"SAME AGAIN"],[`${L("snatch")}`,"SNATCH LOOT"],[`${L("rush")}`,"RUSH"],[`${L("left")}/${L("right")}`,"MOVE SWARM"],[`${L("scope")}`,`GROUP: ${SCOPES[sel.scope]}`],[padLabel("KeyP"),"MENU"]]
+   const rows=g.mode==="defense"?[[sel.on?"D-PAD":"← →","MOVE"],[sel.on?L("order"):"Z","FIRE (HOLD)"],[sel.on?L("rush"):"SPACE",`BOMB x${g.man?.bombs??0}`],["","GRAB THE NUKE POD"],["","TO NUKE THE SWARM"],[sel.on?padLabel("KeyP"):"P","MENU"]]:sel.on?[["D-PAD","PICK ALIEN"],[`${L("order")}`,"ORDER"],[`${L("repeat")}`,"SAME AGAIN"],[`${L("snatch")}`,"SNATCH LOOT"],[`${L("rush")}`,"RUSH"],[`${L("left")}/${L("right")}`,"MOVE SWARM"],[`${L("scope")}`,`GROUP: ${SCOPES[sel.scope]}`],[padLabel("KeyP"),"MENU"]]
     :[["ARROWS","PICK ALIEN"],["Z","ORDER"],["C","SAME AGAIN"],["X","SNATCH LOOT"],["SPACE","RUSH"],["Q / E","MOVE SWARM"],["TAB",`GROUP: ${SCOPES[sel.scope]}`],["P","MENU"]];
    rows.forEach(([b,t],i)=>{const y=106+i*8.4;text(t,306,y,11,i===6?"#ffd93a":"#d6dbe8","right");text(b,262,y,11,"#5ee7ff","left")});if(!sel.on)text("OR CLICK A GO ALIEN",306,106+8*8.4,9,"#9488ad","right")}
   // objective bar
   if(g.phase!=="bonus"){const hp=Math.max(0,g.health)/100;ctx.fillStyle="#05040a";ctx.fillRect(59*S,170*S,192*S,4*S);ctx.fillStyle=g.phase==="boss"?"#ff5468":"#5fd456";ctx.fillRect(59*S+2,170*S+2,(192*S-4)*hp,4*S-4);
-   text(g.phase==="boss"?(g.L.final?"THE ADMIRAL":"BOSS"):`${g.L.name}${g.ships.length?`  +${g.ships.length} SHIPS`:""}`,155,168,12,"#d6cbe8","center")}
+   text(g.mode==="defense"?`PROTECT ${g.L.name} // ${s.quota} ALIENS LEFT`:g.phase==="boss"?(g.L.final?"THE ADMIRAL":"BOSS"):`${g.L.name}${g.ships.length?`  +${g.ships.length} SHIPS`:""}`,155,168,12,"#d6cbe8","center")}
+  if(idle&&!demo&&tick%60<45)text("IDLE MODE // PRESS ANY BUTTON",155,16,12,"#ffd93a","center");
   if(!demo&&!sel.on)for(const a of ARROWS)spr(a.dir<0?atlas.arrowL:atlas.arrowR,a.x,a.y,arrowPtr?.dir===a.dir||(a.dir<0?shiftHold.l:shiftHold.r)?1:.55);
   if(sel.pick&&!demo)text("PICK A PARTNER",155,16,16,"#ff6fb5","center");
   if(!demo){const sp=Object.entries(g.sup).find(([k,v])=>v>0)||(g.hole?["hole",g.hole.t]:null);if(sp){const nm=SUPER_NAMES[sp[0]]||sp[0];text(nm,155,8,12,`hsl(${tick*6%360},90%,70%)`,"center")}
@@ -337,6 +367,7 @@ export function mountOota(root,{onExit}={}){
  function confirm(title,yes,sub="PROGRESS SINCE THE LEVEL STARTED WILL BE LOST"){menu.push({title,sub,items:[{label:"NO, KEEP PLAYING",act:()=>menu.pop()},{label:"YES",act:yes}]})}
  function pauseScreen(){return{title:"PAUSED",sub:()=>`LEVEL ${g.level+1}: ${g.L.name} // ${DIFF[g.difficulty].name} // SCORE ${fmt(g.score)}`,back:resume,start:resume,items:[
   {label:"RESUME",act:resume},
+  {label:"IDLE MODE",value:()=>idle?"ON":"OFF",hint:"THE GAME PLAYS ITSELF (SCORES COUNT AS ASSISTED)",act:()=>{setIdle(!idle);resume()},left:()=>setIdle(!idle),right:()=>setIdle(!idle)},
   {label:"RESTART LEVEL",act:()=>confirm("RESTART LEVEL?",()=>startLevel(run.level))},
   {label:"OPTIONS",act:()=>menu.push(optionsScreen())},
   {label:"CONTROLS",act:()=>menu.push(controls())},
@@ -353,7 +384,7 @@ export function mountOota(root,{onExit}={}){
   body:`Planet X was the humans' last hideout, and the Admiral's flagship was the last thing standing between the swarm and the stars. Now the whole solar system hums with the sound of very happy aliens. <b>*SLUUURP*</b>${result?.isBest?"<br><b>NEW LOCAL BEST!</b>":""}`,
   items:[{label:"LOOP THE INVASION",hint:"START AGAIN AT EARTH, KEEP YOUR UPGRADES AND SCORE",act:()=>{run={difficulty:g.difficulty,level:0,score:g.score,me:{...g.me},seed:Date.now()>>>0};startLevel(0)}},{label:"TITLE",act:showMenu},{label:"EXIT GAME",act:exitGame}]}}
  // ---------- campaign flow ----------
- function saveRun(level){if(!g)return;run={difficulty:g.difficulty,level,score:g.score,me:{...g.me}};store.set(RUN_KEY,run)}
+ function saveRun(level){if(!g||g.mode==="defense")return;run={difficulty:g.difficulty,level,score:g.score,me:{...g.me}};store.set(RUN_KEY,run)}
  function newRun(d){opts.difficulty=d;store.set("difficulty",d);run={difficulty:d,level:0,score:0,me:null};store.set(RUN_KEY,run);startLevel(0)}
  function continueRun(){const r=savedRun();if(!r)return;run={...r};startLevel(r.level)}
  function nextLevel(){const next=g.level+1;saveRun(next);startLevel(next)}
@@ -361,13 +392,37 @@ export function mountOota(root,{onExit}={}){
  function demoInput(){const inp={};if(g.frame%20===0&&idleAliens(g).length)inp.command={cmd:[CMD.ATTACK,CMD.ATTACK,CMD.DIVE][g.frame/20%3]};if(g.frame%12===0)inp.snatch=true;return inp}
  function showMenu(){clearTimeout(endT);if(!demo){attract();audio.song("menu");audio.hyper?.(false);publish(true,true)}paused=false;focusPaused=false;dial=null;sel.menu=null;sel.pick=null;resetHolds();menu.close();titleOn=true;title.openList("main");title.setPhase("menu")}
  function startLevel(level){clearTimeout(endT);audio.unlock();const L0=LEVELS[level];
-  g=createGame({difficulty:run.difficulty,level,seed:(Math.random()*2**32)>>>0,assist:opts.assist,carry:{me:run.me,score:run.score}});
+  g=createGame({difficulty:run.difficulty,level,seed:(Math.random()*2**32)>>>0,assist:opts.assist,carry:run.mode==="defense"?null:{me:run.me,score:run.score},mode:run.mode||"invade"});if(run.mode==="defense"&&run.score)g.score=run.score;idle=false;fireHeld=false;cut={t0:Date.now()};
   titleOn=false;demo=false;paused=false;focusPaused=false;submitted=false;result=null;dial=null;particles=[];pops=[];fx=[];taps=[];inpQ={};resetHolds();menu.close();
   sel.anchor=0;sel.scope=0;sel.menu=null;sel.pick=null;sel.ax=CX;sel.ay=20;
   audio.song(SONG[level]||"earth");audio.hyper?.(false);audio.music(true);
-  banner(`LEVEL ${level+1}: ${L0.name}`,L0.kind==="bonus"?`BONUS STAGE // ${L0.brief}`:L0.brief);say(DIALOGUE[L0.id]);publish(true);canvas.focus?.({preventScroll:true})}
- function postScore(){window.dispatchEvent(new CustomEvent("arcadegridz:score",{detail:{gameId:GAME_ID,score:g.score}}));let isBest=false;if(g.score>store.get(`best.${g.difficulty}`,-1)){store.set(`best.${g.difficulty}`,g.score);isBest=true}return isBest}
- function finish(){if(submitted||demo)return;submitted=true;audio.music(false);audio.hyper?.(false);resetHolds();sel.menu=null;sel.pick=null;
+  publish(true);canvas.focus?.({preventScroll:true})}
+ function setIdle(v){if(demo||!g)return;idle=v;if(v){run.assisted=true;banner("IDLE MODE","PRESS ANY BUTTON TO TAKE OVER")}else banner("YOU'RE IN CONTROL","");publish(true)}
+ function defBot(){const m=g.man,inp={fire:true};if(!m)return inp;const t=g.pod||g.aliens.filter(a=>a.y>0).sort((a,b)=>Math.abs(a.x-m.x)-Math.abs(b.x-m.x))[0];
+  const danger=[...g.shots,...g.globs].some(s=>Math.abs(s.x-m.x)<8&&s.y<m.y&&s.y>m.y-40);inp.move=danger?(m.x<CX?1:-1):t?Math.sign(t.x-m.x)*(Math.abs(t.x-m.x)>3?1:0):0;if(g.aliens.length>28&&m.bombs>0&&g.frame%240===0)inp.bomb=true;return inp}
+ function startDefense(i){run={mode:"defense",difficulty:opts.difficulty,level:i,score:0,me:null};startLevel(i)}
+ const BOSSN=["","CRUISER","METEOR CANNON","STORM LANCER","THE ADMIRAL"],SKILL=["ROOKIE","CADET","VETERAN","ACE","LEGEND"];
+ function endCut(){cut=null;last=performance.now();acc=0;banner(g.mode==="defense"?`DEFEND ${g.L.name}`:`LEVEL ${g.level+1}: ${g.L.name}`,g.mode==="defense"?"HOLD A TO FIRE // B = SMART BOMB":g.L.kind==="bonus"?`BONUS STAGE // ${g.L.brief}`:g.L.brief);say(DIALOGUE[g.L.id])}
+ function drawCut(){const t=(Date.now()-cut.t0)/1000,L0=g.L,e=k=>1-Math.pow(1-Math.min(1,Math.max(0,k)),3);if(t>4.6){endCut();return}
+  ctx.drawImage(skyOf(L0.art),0,0,CW,CH);for(const[i,img]of stars.entries()){const off=(t*(i?60:30))%CH;ctx.globalAlpha=i?.6:1;ctx.drawImage(img,0,off-CH,CW,CH);ctx.drawImage(img,0,off,CW,CH)}ctx.globalAlpha=1;
+  const z=.35+e(t/2.6)*.9,pw=CW*z,ph=pw*140/196;ctx.drawImage(planetOf(L0.art),(CW-pw)/2,CH-ph*.55*e(t/1.6),pw,ph);
+  ctx.fillStyle="rgba(3,2,12,.55)";ctx.fillRect(0,CH*.05,CW,CH*.25);ctx.textAlign="center";
+  ctx.font='16px "Press Start 2P",monospace';ctx.fillStyle="#9fe9ff";ctx.fillText(g.mode==="defense"?"DEFENSE MODE":L0.kind==="bonus"?"BONUS STAGE":`LEVEL ${g.level+1} OF ${LEVELS.length}`,CW/2,CH*.1+8);
+  const sc=1+(1-e(t/.5))*1.6;ctx.save();ctx.translate(CW/2,CH*.2);ctx.scale(sc,sc);ctx.font='64px Bungee,sans-serif';ctx.fillStyle="#05040a";ctx.fillText(L0.name,4,22);ctx.fillStyle=`hsl(${185+Math.sin(t*3)*20},95%,65%)`;ctx.shadowColor="#5ee7ff";ctx.shadowBlur=24;ctx.fillText(L0.name,0,18);ctx.restore();ctx.shadowBlur=0;
+  // the line-up of what's defending it (or what's coming, in defense mode)
+  let roster;if(g.mode==="defense")roster=[[atlas.alien[0][(Date.now()>>8)&1],`${g.quota} ALIENS`],[atlas.tank[0],"TANKS"],[atlas.healer[0],"HEALERS"],[atlas.zapper[0],"ZAPPERS"]];
+  else if(L0.kind==="bonus")roster=[[L0.bonus==="sun"?atlas.orb[0]:L0.bonus==="pluto"?atlas.ice[0]:atlas.ufo,L0.bonus==="sun"?"ENERGY ORBS":L0.bonus==="pluto"?"ICE":"UFO WAVES"]];
+  else roster=[[atlas.ship,`${SKILL[g.skill]} PILOT`],...L0.fleet.map(k=>[atlas[k],k.toUpperCase()]),[atlas.boss[L0.boss-1],BOSSN[L0.boss]]];
+  const n=roster.length,gap=Math.min(190,CW*.8/n);roster.forEach(([img,lab],i)=>{const k=e((t-.7-i*.22)/.5);if(k<=0)return;const x=CW/2+(i-(n-1)/2)*gap,y=CH*.64+(1-k)*CH*.5,sz=img.width>20?2.4:3.4;
+   ctx.globalCompositeOperation="lighter";ctx.globalAlpha=.6;ctx.drawImage(glow(i===n-1&&L0.kind!=="bonus"?"#ff5468":"#5ee7ff"),x-60,y-60,120,120);ctx.globalAlpha=1;ctx.globalCompositeOperation="source-over";
+   ctx.drawImage(img,x-img.width*sz/2,y-img.height*sz/2,img.width*sz,img.height*sz);ctx.font='11px "Press Start 2P",monospace';ctx.fillStyle="#05040a";ctx.fillText(lab,x+2,y+62);ctx.fillStyle=i===n-1&&L0.kind!=="bonus"&&g.mode!=="defense"?"#ff5468":"#ffffff";ctx.fillText(lab,x,y+60)});
+  ctx.font='12px "Press Start 2P",monospace';ctx.fillStyle="#c8ff9a";ctx.fillText(g.mode==="defense"?"PROTECT THE PLANET":L0.brief.toUpperCase(),CW/2,CH*.9);
+  if(Math.floor(t*2)%2)ctx.fillText("PRESS ANY BUTTON",CW/2,CH*.96)}
+ function postScore(){window.dispatchEvent(new CustomEvent("arcadegridz:score",{detail:{gameId:GAME_ID,score:g.score,mode:run?.assisted?"assisted":"solo"}}));let isBest=false;if(g.score>store.get(`best.${g.difficulty}`,-1)){store.set(`best.${g.difficulty}`,g.score);isBest=true}return isBest}
+ function finish(){if(submitted||demo)return;submitted=true;audio.music(false);audio.hyper?.(false);resetHolds();sel.menu=null;sel.pick=null;idle=false;
+  if(g.mode==="defense"){const won=g.state==="clear";if(!won)result={isBest:postScore()};banner(won?`${g.L.name} SAVED!`:`${g.L.name} HAS FALLEN`,won?"THE SWARM IS BROKEN":"THE HUMANS LOSE THIS ONE");
+   endT=setTimeout(()=>{if(destroyed)return;const nx=LEVELS.findIndex((L,i)=>i>g.level&&L.kind!=="bonus");menu.open({title:won?"PLANET SAVED":"PLANET LOST",sub:`DEFENSE // ${g.L.name} // ${DIFF[g.difficulty].name}`,body:`<div class="oa-result"><b>SCORE ${fmt(g.score)}</b><span>${g.deaths} ALIENS DESTROYED</span></div>`,
+    items:[...(won&&nx>=0?[{label:`DEFEND ${LEVELS[nx].name}`,act:()=>{run={...run,level:nx,score:g.score};startLevel(nx)}}]:[]),...(won&&nx<0?[{label:"POST SCORE + TITLE",act:()=>{postScore();showMenu()}}]:[]),{label:won?"REPLAY":"RETRY",act:()=>{run.score=0;startLevel(g.level)}},{label:"TITLE",act:()=>{if(won)postScore();showMenu()}},{label:"EXIT GAME",act:()=>{if(won)postScore();exitGame()}}]})},2200);publish(true);return}
   if(g.state==="over"){result={isBest:postScore()};banner("GAME OVER","THE SWARM IS GONE");endT=setTimeout(()=>{if(!destroyed)menu.open(overScreen())},2200)}
   else if(g.state==="won"){result={isBest:postScore()};store.del(RUN_KEY);banner("INVASION COMPLETE","THE SOLAR SYSTEM IS YOURS");endT=setTimeout(()=>{if(!destroyed)menu.open(endingScreen())},2600)}
   else{saveRun(g.level+1);banner(g.phase==="bonus"?"BONUS CLEAR":"LEVEL CLEAR",`${g.L.name} IS YOURS`);endT=setTimeout(()=>{if(!destroyed)menu.open(clearScreen())},2200)}
@@ -378,6 +433,7 @@ export function mountOota(root,{onExit}={}){
  // ---------- lifecycle ----------
  function publish(force,inactive){const now=performance.now();if(!force&&now-publishT<200)return;publishT=now;if(demo&&!inactive)return;window.dispatchEvent(new CustomEvent("oota:state",{detail:demo?{active:true,menu:true,paused:false,muted:audio.muted}:{...snapshot(g),paused,muted:audio.muted}}))}
  function frame(now){if(destroyed)return;raf=requestAnimationFrame(frame);const dt=Math.min(.1,(now-last)/1000);last=now;
+  if(cut&&!demo){drawCut();publish();return}
   if(!paused&&!focusPaused){if(hitstop>0){hitstop--}else{acc+=dt*(sel.menu&&opts.slowmo&&!demo?.35:1);let n=0;while(acc>=DT&&n<4){step(g,demo?demoInput():readInput());handleEvents();simFx();acc-=DT;n++;if(demo&&g.state!=="play")attract()}if(n===4)acc=0}}
   draw();publish()}
  function togglePause(){if(paused)resume();else openPause()}
@@ -391,7 +447,7 @@ export function mountOota(root,{onExit}={}){
   ownsFocusPause:true,
   pauseForFocus(){if(destroyed)return;resetHolds();if(!demo&&g.state==="play")openPause();audio.music(false);audio.suspend();publish(true)},
   resumeFromFocus(){if(destroyed)return;last=performance.now();acc=0;audio.resume();if(!demo&&!paused&&g.state==="play")audio.music(true);publish(true)},
-  control(action){if(action==="pause")togglePause();else if(action==="audio")toggleAudio();else if(action==="menu"){if(!demo&&g.state==="play")openPause();else showMenu()}else if(action==="restart"||action==="start"){if(run)startLevel(run.level);else newRun(opts.difficulty)}else if(action==="exit")exitGame()},
+  control(action){if(action==="idle"){if(paused)resume();setIdle(!idle);return}if(action==="pause")togglePause();else if(action==="audio"||action==="sound")toggleAudio();else if(action==="menu"){if(!demo&&g.state==="play")openPause();else showMenu()}else if(action==="restart"||action==="start"){if(run)startLevel(run.level);else newRun(opts.difficulty)}else if(action==="exit")exitGame()},
   getResult:()=>({score:g.score,state:g.state,result:g.result}),
   // test hook: the live game object (scores from this game are always UNVERIFIED)
   _debug:{game:()=>g,startLevel,newRun,opts:()=>opts,sel:()=>sel,selIds,menu:()=>menu,binds,run:()=>run}};
