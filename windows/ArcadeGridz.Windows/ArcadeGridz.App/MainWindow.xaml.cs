@@ -427,7 +427,7 @@ public sealed partial class MainWindow : Window
         if (action == PadAction.ExitCombo && gameOpen)
         {
             // web games show the site's SYSTEM MENU (resume / reload / exit ...); EXIT GAME there tells us via "exited"
-            if (active == webRuntime) webRuntime.OpenSystemMenu(); else await ExitGame();
+            if (web is not null && ReferenceEquals(active, web)) web.OpenSystemMenu(); else await ExitGame();
             return;
         }
         if (gameOpen) return;
