@@ -8,6 +8,15 @@ function alien(variant,frame){const P=painter(16,16),body=variant?R.purple:R.gre
  P.line(5,1,4,0,body[3]);P.line(11,1,12,0,body[3]);P.set(4,0,body[4]);P.set(12,0,body[4]);return P.outline("#05040a")}
 function bigAlien(frame){const P=painter(24,24);P.ellipse(12,11,10,8,R.teal,{amb:.3});P.ellipse(12,8,6,4,R.white,{amb:.5});
  for(const x of[7,12,17])P.eye(x,11,2.2,R.lava);for(let i=0;i<5;i++){const x=4+i*4;P.line(x,17,x+(frame?1:-1),23,R.teal[2])}P.disc(12,3,2,"#ffd93a");P.set(11,2,"#fff6b8");return P.outline("#05040a")}
+// support classes: zapper (offense), tank (armoured defence), healer (support)
+function zapper(f){const P=painter(16,16);P.ellipse(8,8,6.5,5.5,R.cyan,{amb:.3});P.ellipse(8,6,3.5,2.3,R.white,{amb:.6});P.eye(6,8,1.7,R.yellow);P.eye(10,8,1.7,R.yellow);
+ P.line(8,2,8,0,R.yellow[3]);P.set(f?7:9,0,"#ffffff");P.line(4,3,2,1,R.cyan[3]);P.line(12,3,14,1,R.cyan[3]);for(const x of[4,8,12])P.line(x,13,x+(f?1:-1),15,R.cyan[2]);return P.outline("#05040a")}
+function tank(f){const P=painter(20,18);P.box(2,4,16,10,R.orange,{bevel:1});P.box(4,2,12,4,R.steel,{bevel:1});P.box(1,8,4,6,R.steel,{bevel:1});P.box(15,8,4,6,R.steel,{bevel:1});
+ P.eye(7,9,1.8,R.lava);P.eye(13,9,1.8,R.lava);P.box(6,12,8,2,R.dark,{bevel:0});for(const x of[4,8,12,16])P.line(x,14,x+(f?1:-1),17,R.orange[2]);return P.outline("#05040a")}
+function healer(f){const P=painter(16,16);P.ellipse(8,9,6,5,R.pink,{amb:.3});P.ellipse(8,7,3.5,2.3,R.white,{amb:.6});P.eye(6,9,1.6,R.teal);P.eye(10,9,1.6,R.teal);
+ P.ellipse(8,2,4.5,1.4,R.yellow,{amb:.6,gloss:false});P.set(8,2,"#fff6b8");for(const x of[5,8,11])P.line(x,13,x+(f?1:-1),15,R.pink[2]);return P.outline("#05040a")}
+function pod(f){const P=painter(16,16);P.ellipse(8,8,6,7,R.yellow,{amb:.3});P.box(3,6,10,4,R.dark,{bevel:0});P.set(6,8,"#ffd93a");P.set(8,8,"#ffd93a");P.set(10,8,"#ffd93a");P.line(8,0,8,2,R.steel[3]);P.set(8,0,f?"#ff5468":"#7d0c1f");P.line(4,14,12,14,R.red[3]);return P.outline("#05040a")}
+function superLoot(f){const P=painter(16,16),cols=[R.pink,R.yellow,R.cyan,R.green];P.ellipse(8,8,7,7,cols[f%4],{amb:.35});P.ellipse(8,8,4,4,R.white,{amb:.8});P.poly([[8,3],[9.5,6.5],[13,7],[10,9.5],[11,13],[8,11],[5,13],[6,9.5],[3,7],[6.5,6.5]],R.yellow,{flat:true});return P.outline("#05040a")}
 // the humans
 function ship(kind=0){const P=painter(16,16),hull=kind?R.cyan:R.white;P.poly([[8,0],[11,6],[15,12],[11,13],[8,11],[5,13],[1,12],[5,6]],hull);
  P.poly([[7,4],[9,4],[10,8],[6,8]],R.navy);P.set(8,5,"#7f9bff");P.line(2,12,4,10,R.red[3]);P.line(14,12,12,10,R.red[3]);P.box(6,13,4,3,R.orange,{bevel:0});return P.outline("#05040a")}
@@ -39,6 +48,14 @@ function icon(kind,locked){const P=painter(13,13),ramp=locked?R.dark:[R.navy,R.b
  if(kind===2){P.line(6,2,6,10,c);P.line(2,6,10,6,c);P.set(6,6,"#ff5468")}
  if(kind===3){P.line(6,2,6,9,c);P.line(3,7,6,10,c);P.line(9,7,6,10,c)}
  if(kind===4){for(const x of[4,6,8])P.line(x,3,x+(x===6?0:x<6?-1:1),10,c)}
+ if(kind===5){P.line(8,2,4,7,c);P.line(4,7,8,6,c);P.line(8,6,5,11,c)}
+ if(kind===6){P.ellipse(6.5,6.5,4,4,locked?R.dark:R.cyan,{amb:.2,gloss:false});P.ellipse(6.5,6.5,2,2,R.navy,{amb:.2,gloss:false});P.set(6,6,c)}
+ if(kind===7){P.line(2,8,6,3,c);P.line(6,3,10,8,c);P.line(2,8,2,10,c);P.line(10,8,10,10,c)}
+ if(kind===8){P.box(4,2,5,4,locked?R.dark:R.orange,{bevel:0});P.line(6,6,6,10,c);P.line(3,8,6,11,c);P.line(9,8,6,11,c)}
+ if(kind===9){P.line(6,2,6,7,c);P.line(7,2,7,7,c);P.set(6,9,c);P.set(7,9,c);P.set(6,10,c);P.set(7,10,c)}
+ if(kind===10){P.line(6,3,6,10,"#5fd456");P.line(3,6,10,6,"#5fd456");P.line(7,3,7,10,"#5fd456");P.line(3,7,10,7,"#5fd456")}
+ if(kind===11){P.ellipse(6.5,7,3,4,locked?R.dark:R.white,{amb:.5});P.set(5,6,"#5fd456");P.set(7,8,"#5fd456")}
+ if(kind===12){P.ellipse(6.5,4,4,1.5,R.yellow,{amb:.6,gloss:false});P.line(4,7,9,7,c);P.line(4,7,6.5,11,c);P.line(9,7,6.5,11,c)}
  return P.outline("#05040a")}
 function arrow(dir){const P=painter(24,48);P.poly(dir<0?[[2,24],[22,4],[22,44]]:[[22,24],[2,4],[2,44]],R.steel);P.poly(dir<0?[[8,24],[18,14],[18,34]]:[[16,24],[6,14],[6,34]],R.cyan,{flat:true});return P.outline("#05040a")}
 function moon(){const P=painter(36,36);P.ellipse(18,18,17,17,R.stone,{amb:.2});for(let i=0;i<6;i++){const x=7+hash(i,1,7)*22,y=7+hash(i,2,7)*22,r=1.5+hash(i,3,7)*3.5;P.disc(x,y,r,"#4a4452");P.disc(x-.6,y-.6,r-1,"#26222c")}return P.outline("#05040a")}
@@ -71,4 +88,4 @@ export function buildAtlas(){const C=toCanvas;return{
  fighter:C(fighter()),interceptor:C(interceptor()),carrier:C(carrier()),repair:C(repair()),frigate:C(frigate()),
  sat:C(sat(false)),ufo:C(sat(true)),good:[0,1].map(f=>C(loot(true,f))),bad:[0,1].map(f=>C(loot(false,f))),orb:[0,1].map(f=>C(orb(f))),bug:[0,1].map(f=>C(bug(f))),glob:[0,1].map(f=>C(glob(f))),
  missile:C(missile()),rock:[0,1].map(i=>C(rock(i))),ice:[0,1,2,3].map(k=>C(iceBlock(k))),cloud:cloud(),
- icon:[0,1,2,3,4].map(k=>C(icon(k,false))),iconLocked:[0,1,2,3,4].map(k=>C(icon(k,true))),arrowL:C(arrow(-1)),arrowR:C(arrow(1)),moon:C(moon())}}
+ icon:[...Array(13).keys()].map(k=>C(icon(k,false))),iconLocked:[...Array(13).keys()].map(k=>C(icon(k,true))),zapper:[0,1].map(f=>C(zapper(f))),tank:[0,1].map(f=>C(tank(f))),healer:[0,1].map(f=>C(healer(f))),pod:[0,1].map(f=>C(pod(f))),super:[0,1,2,3].map(f=>C(superLoot(f))),arrowL:C(arrow(-1)),arrowR:C(arrow(1)),moon:C(moon())}}

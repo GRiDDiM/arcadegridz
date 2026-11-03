@@ -2,7 +2,7 @@
 // SNES-style menus (shared potato kit), campaign flow (NEW GAME / CONTINUE, levels, bonus stages, ending) and input.
 // Controller: the d-pad hops the selection between aliens (no fake cursor), A opens the order menu, Y repeats the last
 // order, X snatches loot, B sends the swarm rushing, L picks ONE / ROW / ALL, hold R + d-pad shifts the formation.
-import{W,H,DT,CX,CMD,CMD_NAMES,CMD_POS,DIFF,LEVELS,createGame,step,snapshot,idleAliens,commandable,lockedCmd,fx0,fx1,bot,surfaceY}from"./engine.js?v=1102-v2a";
+import{W,H,DT,CX,CMD,CMD_NAMES,CMD_POS,DIFF,LEVELS,CLASSES,SUPER_NAMES,createGame,step,snapshot,idleAliens,commandable,lockedCmd,fx0,fx1,bot,surfaceY}from"./engine.js?v=1102-v2a";
 import{buildAtlas,buildPlanet,buildSky,buildStars}from"./sprites.js?v=1102-v2a";
 import{createAudio}from"./audio.js?v=1013-oota1";
 import{createTitle}from"./title.js?v=1102-t1";
@@ -24,7 +24,7 @@ const SONG=["earth","mars","menu","mars","jupiter","menu","jupiter","earth","men
 const KEYCMD={Digit1:CMD.ATTACK,Digit2:CMD.DIVE,Digit3:CMD.BUGS,Digit4:CMD.TENTACLES,Digit5:CMD.RANDOM};
 const ARROWS=[{x:77,y:156,dir:-1},{x:233,y:156,dir:1}];
 const ORDER=[CMD.ATTACK,CMD.DIVE,CMD.BUGS,CMD.TENTACLES,CMD.RANDOM];
-const ORDER_HINT={[CMD.ATTACK]:"SHOOT STRAIGHT DOWN",[CMD.DIVE]:"DIVEBOMB THE NEAREST SHIP",[CMD.BUGS]:"SPIT HOMING BUGS",[CMD.TENTACLES]:"LASH WHATEVER IS BELOW",[CMD.RANDOM]:"SURPRISE ME"};
+const ORDER_HINT={[CMD.ZAP]:"CHAIN LIGHTNING THROUGH SHIPS AND MISSILES",[CMD.EMP]:"STUN THE NEAREST SHIP",[CMD.SHIELD]:"BUBBLE THAT BLOCKS SHOTS FOR NEARBY ALIENS",[CMD.RAM]:"HEAVY DIVE: BIG DAMAGE, SURVIVES",[CMD.TAUNT]:"THE HUMANS AIM AT ME. I GET TOUGHER",[CMD.MEND]:"REPAIR ARMOUR OF ALIENS NEARBY",[CMD.HATCH]:"LAY EGGS THAT HATCH NEW GRUNTS",[CMD.SANCT]:"SAFE ZONE: NO MISSILES, SURVIVES NUKES",[CMD.ATTACK]:"SHOOT STRAIGHT DOWN",[CMD.DIVE]:"DIVEBOMB THE NEAREST SHIP",[CMD.BUGS]:"SPIT HOMING BUGS",[CMD.TENTACLES]:"LASH WHATEVER IS BELOW",[CMD.RANDOM]:"SURPRISE ME"};
 // controller actions (pad buttons arrive from gamepad.js as synthetic key codes; SNES names shown by default)
 const ACTIONS=[
  {id:"cursor",label:"SELECT ALIEN",def:"D-PAD",fixed:true,hint:"HOPS BETWEEN YOUR ALIENS"},
@@ -48,6 +48,7 @@ export function mountOota(root,{onExit}={}){
  document.body.classList.add("oa-playing");
  const stage=root.querySelector(".oa-stage"),canvas=root.querySelector("canvas"),ctx=canvas.getContext("2d"),bannerEl=root.querySelector("[data-oa-banner]");
  ctx.imageSmoothingEnabled=false;
+ try{document.fonts?.load('16px "Press Start 2P"');document.fonts?.load("16px Bungee")}catch{}
  const atlas=buildAtlas(),planets=[],skies=[],planetOf=k=>planets[k]||(planets[k]=buildPlanet(k)),skyOf=k=>skies[k]||(skies[k]=buildSky(k)),stars=[buildStars(3),buildStars(9)],audio=createAudio(),reduceMotion=matchMedia?.("(prefers-reduced-motion: reduce)").matches;
  let opts={difficulty:store.get("difficulty",2),dial:store.get("dial",true),assist:store.get("assist",false),slowmo:store.get("slowmo",true),shake:store.get("shake",true)};
  let g=null,demo=true,paused=false,focusPaused=false,destroyed=false,raf=0,last=performance.now(),acc=0,publishT=0,submitted=false,endT=0,bannerTimer=0,tick=0,shake=0,flash=0,hitstop=0,result=null,run=null;
@@ -83,13 +84,14 @@ export function mountOota(root,{onExit}={}){
  function nextIdle(){const a=ensureAnchor(),idle=idleAliens(g).filter(o=>o.y>-4);if(!idle.length){audio.sfx("deny");return}
   idle.sort((p,q)=>Math.hypot(p.x-(a?.x??CX),p.y-(a?.y??20))-Math.hypot(q.x-(a?.x??CX),q.y-(a?.y??20)));const n=idle.find(o=>o.id!==sel.anchor)||idle[0];sel.anchor=n.id;sel.scope=0;audio.sfx("pick")}
 // ring order menu (controller/keyboard): icons around the selected alien, d-pad aims, tooltip explains
- const RING=[CMD.RANDOM,CMD.BUGS,CMD.ATTACK,CMD.DIVE,CMD.TENTACLES];
- const canMerge=()=>{const a=anchorAlien();return sel.scope===0&&a&&a.sparkle>0&&a.species===1};
- const ringSlot=i=>i===CMD.RANDOM&&canMerge()?"merge":i;
- function openOrders(){if(!live()||!ensureAnchor())return;let idx=sel.last!=null&&!lockedCmd(g,sel.last)?sel.last:CMD.ATTACK;if(canMerge())idx=CMD.RANDOM;sel.menu={idx};audio.sfx("pick")}
+ const RING=[0,1,2,3,4];
+ const canMerge=()=>{const a=anchorAlien();return sel.scope===0&&a&&a.sparkle>0&&a.species===1&&a.kind==="grunt"};
+ const ringOf=a=>(CLASSES[a?.kind]||CLASSES.grunt).ring;
+ const ringSlot=(i,a=anchorAlien())=>i===0&&canMerge()?"merge":ringOf(a)[i];
+ function openOrders(){const a=ensureAnchor();if(!live()||!a)return;const r=ringOf(a);let idx=sel.last==null?-1:r.indexOf(sel.last);if(idx<0||lockedCmd(g,sel.last))idx=r.findIndex(c=>c!=null&&c!==CMD.RANDOM&&!lockedCmd(g,c));if(canMerge())idx=0;sel.menu={idx:Math.max(0,idx)};audio.sfx("pick")}
  function aimRing(){const dx=sel.dirs.right-sel.dirs.left,dy=sel.dirs.down-sel.dirs.up;if(!dx&&!dy)return;const n=Math.hypot(dx,dy);let bi=sel.menu.idx,bs=-2;
-  for(const i of RING){const[ox,oy]=CMD_POS[i],m=Math.hypot(ox,oy),sc=(ox*dx+oy*dy)/(m*n);if(sc>bs){bs=sc;bi=i}}if(bi!==sel.menu.idx){sel.menu.idx=bi;audio.sfx("pick")}}
- function confirmOrder(){const m=sel.menu;if(!m)return;const slot=ringSlot(m.idx);if(slot!=="merge"&&lockedCmd(g,slot)){audio.sfx("deny");return}sel.menu=null;
+  for(const i of RING){if(ringSlot(i)==null)continue;const[ox,oy]=CMD_POS[i],m=Math.hypot(ox,oy),sc=(ox*dx+oy*dy)/(m*n);if(sc>bs){bs=sc;bi=i}}if(bi!==sel.menu.idx){sel.menu.idx=bi;audio.sfx("pick")}}
+ function confirmOrder(){const m=sel.menu;if(!m)return;const slot=ringSlot(m.idx);if(slot==null)return;if(slot!=="merge"&&lockedCmd(g,slot)){audio.sfx("deny");return}sel.menu=null;
   if(slot==="merge"){sel.pick={src:sel.anchor};banner("PICK A PARTNER","HOP TO ANOTHER ALIEN, THEN PRESS "+L("order"));return}
   inpQ.command={cmd:slot,ids:selIds()};sel.last=slot}
  function repeatOrder(){if(sel.last==null){openOrders();return}if(lockedCmd(g,sel.last)){audio.sfx("deny");return}const ids=selIds();if(ids.length)inpQ.command={cmd:sel.last,ids}}
@@ -112,8 +114,8 @@ export function mountOota(root,{onExit}={}){
  function tutor(k){if(tut<TUT.length&&TUT[tut][0]===k){tut++;store.set("tut",tut);audio.sfx("powerup")}}
  function drawTutorial(){if(demo||tut>=TUT.length||!g||g.level!==0||paused)return;const[k,msg,pad,kb]=TUT[tut],btn=sel.on?(pad==="D-PAD"?"D-PAD":pad.split("+").map(id=>L(id)).join(" / ")):kb,
   w=640,h=74,x=(CW-w)/2,y=CH*.44;ctx.globalAlpha=.88+.12*Math.sin(tick*.15);ctx.fillStyle="rgba(5,4,10,.86)";ctx.fillRect(x,y,w,h);ctx.strokeStyle="#5fd456";ctx.lineWidth=3;ctx.strokeRect(x+1.5,y+1.5,w-3,h-3);
-  ctx.textAlign="center";ctx.font='900 15px "Courier New",monospace';ctx.fillStyle="#9fe9ff";ctx.fillText(`TIP ${tut+1}/${TUT.length}`,CW/2,y+22);
-  ctx.font='900 26px "Courier New",monospace';const t=`${btn}  ${msg}`,tw=ctx.measureText(t).width;ctx.fillStyle="#05040a";ctx.fillText(t,CW/2+2,y+56);ctx.fillStyle="#c8ff9a";ctx.fillText(t,CW/2,y+54);
+  ctx.textAlign="center";ctx.font='10px "Press Start 2P",monospace';ctx.fillStyle="#9fe9ff";ctx.fillText(`TIP ${tut+1}/${TUT.length}`,CW/2,y+22);
+  ctx.font='17px "Press Start 2P",monospace';const t=`${btn}  ${msg}`,tw=ctx.measureText(t).width;ctx.fillStyle="#05040a";ctx.fillText(t,CW/2+2,y+56);ctx.fillStyle="#c8ff9a";ctx.fillText(t,CW/2,y+54);
   const bw=ctx.measureText(btn).width;ctx.fillStyle="#ffd93a";ctx.textAlign="left";ctx.fillText(btn,CW/2-tw/2,y+54);ctx.globalAlpha=1}
  // ---------- input ----------
  const KB={ArrowUp:["dir","up"],ArrowDown:["dir","down"],ArrowLeft:["dir","left"],ArrowRight:["dir","right"],KeyW:["dir","up"],KeyS:["dir","down"],KeyA:["dir","left"],KeyD:["dir","right"],
@@ -148,7 +150,7 @@ export function mountOota(root,{onExit}={}){
  function say(lines){if(!opts.dial||demo||!lines)return;dial={lines,i:0,t:150}}
  const BUFF_NAMES={speed:"SPEED",spit:"FIRE RATE",bugs:"BUGS",spawn:"SPAWN RATE",armor:"ARMOR",tentacles:"TENTACLES",lasers:"LASERS",missiles:"MISSILES",plazma:"PLAZMA",shields:"SHIELDS",option:"DRONE OPTION"};
  const kick=n=>{if(opts.shake)shake=Math.max(shake,n)};
- const HAZARD_TEXT={acid:["ACID CLOUD","IT EATS ALIENS"],moon:["MOON RISING","IT SHIELDS THE SHIP"],storm:["NEPTUNE STORM","THE SWARM DRIFTS"]};
+ const HAZARD_TEXT={nuke:["NUKE POD INCOMING!","SHOOT IT BEFORE THE SHIP GRABS IT"],acid:["ACID CLOUD","IT EATS ALIENS"],moon:["MOON RISING","IT SHIELDS THE SHIP"],storm:["NEPTUNE STORM","THE SWARM DRIFTS"]};
  function handleEvents(){for(const e of g.events){
   if(e.type==="sfx"){if(!demo)audio.sfx(e.name)}
   else if(e.type==="pop")pops.push({x:e.x,y:e.y,t:40,txt:e.txt,c:e.c});
@@ -157,6 +159,15 @@ export function mountOota(root,{onExit}={}){
   else if(e.type==="shipDie"){burst(e.x,e.y,"#ffd93a",e.kind==="carrier"?34:16,1.8);burst(e.x,e.y,"#94a0b8",10,1.6,.06);kick(e.kind==="carrier"?8:4);if(e.kind==="carrier")hitstop=3;rumble(200,.7)}
   else if(e.type==="spark")burst(e.x,e.y,"#ffe08a",3,.8);
   else if(e.type==="iceBreak"){burst(e.x,e.y,"#d2fbff",14,1.6,.05);burst(e.x,e.y,"#5ee7ff",6,1)}
+  else if(e.type==="zap")fx.push({k:"zap",pts:e.pts,t:6});
+  else if(e.type==="emp")fx.push({k:"emp",x1:e.x1,y1:e.y1,t:14});
+  else if(e.type==="mend")burst(e.x,e.y,"#5fd456",6,1);
+  else if(e.type==="hatch"){burst(e.x,e.y,"#c8ff9a",8,1);pops.push({x:e.x,y:e.y-8,t:30,txt:"HATCH!",c:"#c8ff9a"})}
+  else if(e.type==="super"&&!demo){banner(`SUPER: ${SUPER_NAMES[e.kind]}!`,"THE SWARM GOES BONKERS");flash=10;kick(6);rumble(250,.8);burst(e.x,e.y,"#ffd93a",24,2)}
+  else if(e.type==="nukeArmed"&&!demo){banner("NUKE ARMED!","KILL THE SHIP BEFORE IT BLOWS");rumble(300,.8)}
+  else if(e.type==="nukeBoom"){flash=30;kick(16);hitstop=6;rumble(900,1);if(!demo)setTimeout(()=>banner("THE SWARM WAS NUKED",`${e.lost} LOST // CEASEFIRE: REBUILD!`),300)}
+  else if(e.type==="defused"&&!demo){banner("NUKE DEFUSED!","+1000");burst(e.x,e.y,"#5fd456",20,2)}
+  else if(e.type==="podBoom"){burst(e.x,e.y,"#ffd93a",20,2);burst(e.x,e.y,"#ff5468",10,1.4)}
   else if(e.type==="snatch")fx.push({k:"snatch",x0:e.x0,y0:e.y0,x1:e.x1,y1:e.y1,t:10});
   else if(e.type==="roll")fx.push({k:"roll",x:e.x,y:e.y,t:14});
   else if(e.type==="launch")burst(e.x,e.y-6,"#5ee7ff",6,.8);
@@ -170,7 +181,7 @@ export function mountOota(root,{onExit}={}){
   else if(e.type==="descend"&&!demo&&g.aliens.some(a=>a.mey>bot(g)*.42))pops.push({x:CX,y:bot(g)*.55,t:30,txt:"THE SWARM DESCENDS",c:"#ff6fb5"});
   else if(e.type==="end")finish()}}
  // ---------- drawing (world units, scaled by S and the camera zoom) ----------
- function text(t,x,y,size,c,align="left",shadow="#05040a"){ctx.font=`900 ${size}px "Courier New",monospace`;ctx.textAlign=align;if(shadow){ctx.fillStyle=shadow;ctx.fillText(t,x*S+2,y*S+2)}ctx.fillStyle=c;ctx.fillText(t,x*S,y*S)}
+ function text(t,x,y,size,c,align="left",shadow="#05040a"){ctx.font=`${Math.round(size*.78)}px "Press Start 2P",monospace`;ctx.textAlign=align;if(shadow){ctx.fillStyle=shadow;ctx.fillText(t,x*S+2,y*S+2)}ctx.fillStyle=c;ctx.fillText(t,x*S,y*S)}
  function spr(img,x,y,a=1,sc=1){if(!img)return;if(a<1)ctx.globalAlpha=a;const w=img.width*S*sc,h=img.height*S*sc;ctx.drawImage(img,Math.round(x*S-w/2),Math.round(y*S-h/2),w,h);if(a<1)ctx.globalAlpha=1}
  const ring=(x,y,r,c,lw=4)=>{ctx.strokeStyle=c;ctx.lineWidth=lw;ctx.beginPath();ctx.arc(x*S,y*S,r*S,0,6.283);ctx.stroke()};
  const SHIPSPR={fighter:"fighter",interceptor:"interceptor",carrier:"carrier",repair:"repair",frigate:"frigate"};
@@ -197,7 +208,11 @@ export function mountOota(root,{onExit}={}){
    else{ctx.fillStyle="rgba(255,106,16,.35)";ctx.beginPath();ctx.arc(f.x*S,f.y*S,15*S,0,6.283);ctx.fill();ctx.fillStyle="#ffd24a";ctx.beginPath();ctx.arc(f.x*S,f.y*S,8*S,0,6.283);ctx.fill();ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(f.x*S,f.y*S,4*S,0,6.283);ctx.fill()}}
   // the swarm
   const ids=sel.on&&live()?new Set(selIds()):null,anchor=sel.anchor;
-  for(const a of g.aliens){const f=(tick>>3)&1;let img=a.species===2?atlas.big[f]:atlas.alien[a.variant][f];
+  for(const a of g.aliens){const f=(tick>>3)&1;let img=a.species===2?atlas.big[f]:a.kind==="zapper"?atlas.zapper[f]:a.kind==="tank"?atlas.tank[f]:a.kind==="healer"?atlas.healer[f]:atlas.alien[a.variant][f];
+   if(a.chosen&&a.cmd===CMD.SHIELD&&a.dome>0){ctx.globalAlpha=.25+a.dome*.08;ring(a.x,a.y,22,"#5ee7ff",4);ctx.fillStyle="rgba(94,231,255,.1)";ctx.beginPath();ctx.arc(a.x*S,a.y*S,22*S,0,6.283);ctx.fill();ctx.globalAlpha=1}
+   if(a.chosen&&a.cmd===CMD.SANCT){ctx.setLineDash([12,10]);ctx.globalAlpha=.6;ring(a.x,a.y,26,"#ffd93a",3);ctx.setLineDash([]);ctx.fillStyle="rgba(255,217,58,.07)";ctx.beginPath();ctx.arc(a.x*S,a.y*S,26*S,0,6.283);ctx.fill();ctx.globalAlpha=1}
+   if(a.chosen&&a.cmd===CMD.TAUNT&&tick%40<20)text("!",a.x,a.y-12,22,"#ff5468","center");
+   if(g.sup.laser>0&&a.chosen&&a.cmd===CMD.ATTACK&&!a.kami){const w=(3+Math.sin(tick*.8))*S;ctx.fillStyle="rgba(95,212,86,.35)";ctx.fillRect(a.x*S-w*1.6,a.y*S+6*S,w*3.2,(bot(g)-a.y)*S);ctx.fillStyle="#d2ffc0";ctx.fillRect(a.x*S-w/2,a.y*S+6*S,w,(bot(g)-a.y)*S)}
    if(a.sparkle>0){ctx.globalAlpha=.5+.5*Math.sin(tick*.6);ctx.fillStyle=["#ff6fb5","#5ee7ff","#ffd93a"][(tick>>2)%3];ctx.beginPath();ctx.arc(a.x*S,a.y*S,11*S,0,6.283);ctx.fill();ctx.globalAlpha=1}
    if(g.merge?.id===a.id||sel.pick?.src===a.id)ring(a.x,a.y,12,"#ff6fb5");
    if(ids&&ids.has(a.id)){const main=a.id===anchor,r=(a.species===2?13:9.5)+Math.sin(tick*.3)*.6;ring(a.x,a.y,r,"#05040a",8);ring(a.x,a.y,r,main?"#ffd93a":"rgba(94,231,255,.85)",main?4:3)}
@@ -210,24 +225,30 @@ export function mountOota(root,{onExit}={}){
   for(const s of g.globs)spr(atlas.glob[(tick>>2)&1],s.x,s.y);
   for(const b of g.bugs)spr(atlas.bug[(tick>>1)&1],b.x,b.y);
   for(const l of g.loots){if(l.done){text(l.done===1?(l.orb?"":l.good?"POWER UP!":"BLOCKED!"):"",l.x,l.y-l.t*.2,13,"#ffffff","center");continue}
-   if(l.orb)spr(atlas.orb[(tick>>3)&1],l.x,l.y,1,1+.12*Math.sin(tick*.4));else spr((l.good?atlas.good:atlas.bad)[(tick>>3)&1],l.x,l.y,1,1+.1*Math.sin(tick*.4))}
+   if(l.super)spr(atlas.super[(tick>>2)&3],l.x,l.y,1,1.15+.15*Math.sin(tick*.5));else if(l.orb)spr(atlas.orb[(tick>>3)&1],l.x,l.y,1,1+.12*Math.sin(tick*.4));else spr((l.good?atlas.good:atlas.bad)[(tick>>3)&1],l.x,l.y,1,1+.1*Math.sin(tick*.4))}
   // the humans
   for(const s of g.ships){const img=atlas[SHIPSPR[s.kind]];spr(img,s.x,s.y,s.inv>0&&tick%4<2?.5:1);
    if(s.kind==="frigate"&&s.dome>0){ctx.globalAlpha=.15+.08*s.dome;ring(s.x,s.y,24,"#5ee7ff",3);ctx.fillStyle="rgba(94,231,255,.08)";ctx.beginPath();ctx.arc(s.x*S,s.y*S,24*S,0,6.283);ctx.fill();ctx.globalAlpha=1}
    if(s.max>1){ctx.fillStyle="#05040a";ctx.fillRect((s.x-8)*S,(s.y+(s.kind==="carrier"?12:9))*S,16*S,S*1.2);ctx.fillStyle="#ff5468";ctx.fillRect((s.x-8)*S,(s.y+(s.kind==="carrier"?12:9))*S,16*S*s.hp/s.max,S*1.2)}}
   for(const b of g.beams){const t=b.hero?g.man:g.ships.find(s=>s.id===b.id);if(!t)continue;ctx.strokeStyle=`rgba(95,212,86,${b.t/20})`;ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(b.x0*S,b.y0*S);ctx.lineTo(t.x*S,t.y*S);ctx.stroke()}
-  const m=g.man;if(m){spr(m.shields>0?atlas.shipShield:atlas.ship,m.x,m.y,m.inv>0&&tick%4<2?.4:1);if(m.shields>0)ring(m.x,m.y,10,`rgba(94,231,255,${.5+.3*Math.sin(tick*.4)})`)}
+  if(g.pod){spr(atlas.pod[(tick>>3)&1],g.pod.x,g.pod.y,1,1.2);text("NUKE",g.pod.x,g.pod.y-12,13,tick%20<10?"#ff5468":"#ffd93a","center")}
+  if(g.hole){const h=g.hole;for(let k=0;k<4;k++){ctx.globalAlpha=.25+k*.12;ring(h.x,h.y,30-k*6+Math.sin(tick*.3+k)*2,["#7a2a9a","#b25bd2","#eab3ff","#ffffff"][k],4)}ctx.globalAlpha=1;ctx.fillStyle="#05040a";ctx.beginPath();ctx.arc(h.x*S,h.y*S,9*S,0,6.283);ctx.fill()}
+  const m=g.man;if(m&&g.nuke){ctx.globalAlpha=.5+.5*Math.sin(tick*.6);ring(m.x,m.y,14,"#ff5468",5);ctx.globalAlpha=1;text(`NUKE ${Math.ceil(g.nuke.t/30)}`,m.x,m.y-16,16,"#ff5468","center")}
+  if(m&&m.stun>0)text("ZZT",m.x,m.y-12,12,"#5ee7ff","center");
+  if(m){spr(m.shields>0?atlas.shipShield:atlas.ship,m.x,m.y,m.inv>0&&tick%4<2?.4:1);if(m.shields>0)ring(m.x,m.y,10,`rgba(94,231,255,${.5+.3*Math.sin(tick*.4)})`)}
   for(const o of g.options)spr(atlas.ship,o.x,o.y,.8,.5);
   if(g.boss){const Bs=g.boss;spr(atlas.boss[Bs.type-1],Bs.x,Bs.y);if(Bs.dome>0){ctx.globalAlpha=.4;ring(Bs.x,Bs.y,30,"#ffd93a",5);ctx.globalAlpha=1}}
   for(const s of g.manshots){ctx.fillStyle="#ff9a2e";ctx.fillRect((s.x-.5)*S,(s.y-3)*S,1*S,6*S)}
   for(const s of g.bossShots){ctx.fillStyle=s.kind==="jup"?"#ffd93a":"#a39aac";ctx.fillRect((s.x-2)*S,(s.y-2)*S,4*S,4*S)}
   for(const s of g.missiles)spr(atlas.missile,s.x,s.y);
   for(const s of g.plazmas){ctx.fillStyle=tick%4<2?"#ff6fb5":"#ffffff";ctx.fillRect((s.x-2)*S,(s.y-2)*S,4*S,4*S)}
-  for(const e of fx){if(e.k==="snatch"){ctx.strokeStyle="#3fd4bd";ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(e.x0*S,e.y0*S);ctx.lineTo(e.x1*S,e.y1*S);ctx.stroke();ctx.strokeStyle="#b8fff1";ctx.lineWidth=3;ctx.stroke()}
+  for(const e of fx){if(e.k==="zap"){ctx.strokeStyle="#ffffff";ctx.lineWidth=5;ctx.beginPath();e.pts.forEach(([x,y],i)=>{const jx=i&&i<e.pts.length?(Math.random()-.5)*6:0;i?ctx.lineTo((x+jx)*S,y*S):ctx.moveTo(x*S,y*S)});ctx.stroke();ctx.strokeStyle="#5ee7ff";ctx.lineWidth=2;ctx.stroke()}
+   else if(e.k==="emp"){ctx.globalAlpha=e.t/14;ring(e.x1,e.y1,16-e.t,"#5ee7ff",4);ctx.globalAlpha=1}
+   else if(e.k==="snatch"){ctx.strokeStyle="#3fd4bd";ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(e.x0*S,e.y0*S);ctx.lineTo(e.x1*S,e.y1*S);ctx.stroke();ctx.strokeStyle="#b8fff1";ctx.lineWidth=3;ctx.stroke()}
    else if(e.k==="roll"){ctx.globalAlpha=e.t/14;spr(atlas.shipShield,e.x-(14-e.t),e.y,.5);spr(atlas.shipShield,e.x+(14-e.t),e.y,.5);ctx.globalAlpha=1}}
   // mouse command menu (radial)
   if(g.menu){const a=g.aliens.find(a=>a.id===g.menu.id);if(a){ctx.fillStyle="rgba(5,4,10,.55)";ctx.beginPath();ctx.arc(a.x*S,a.y*S,26*S,0,6.283);ctx.fill();
-   for(let i=0;i<5;i++){const[ox,oy]=CMD_POS[i];spr((lockedCmd(g,i)?atlas.iconLocked:atlas.icon)[i],a.x+ox,a.y+oy)}spr(atlas.alien[a.variant][0],a.x,a.y)}}
+   for(let i=0;i<5;i++){const[ox,oy]=CMD_POS[i],c=ringOf(a)[i];if(c!=null)spr((lockedCmd(g,c)?atlas.iconLocked:atlas.icon)[c],a.x+ox,a.y+oy)}spr(atlas.alien[a.variant][0],a.x,a.y)}}
   for(const p of particles){ctx.globalAlpha=Math.min(1,p.life/10);ctx.fillStyle=p.c;ctx.fillRect((p.x-.5)*S,(p.y-.5)*S,S*p.sz,S*p.sz)}ctx.globalAlpha=1;
   for(const p of pops)text(p.txt,p.x,p.y-(46-p.t)*.25,15,p.c,"center");
   ctx.restore()}
@@ -235,22 +256,22 @@ export function mountOota(root,{onExit}={}){
  const scr=(x,y)=>({x:CW/2+(x-CX)*S*g.z,y:y*S*g.z});
  function win(x,y,w,h){ctx.fillStyle="rgba(0,0,0,.45)";ctx.fillRect(x+6,y+6,w,h);const gr=ctx.createLinearGradient(0,y,0,y+h);gr.addColorStop(0,"#3a5cd8");gr.addColorStop(1,"#0c1660");ctx.fillStyle=gr;ctx.fillRect(x,y,w,h);ctx.strokeStyle="#ffffff";ctx.lineWidth=4;ctx.strokeRect(x+2,y+2,w-4,h-4);ctx.strokeStyle="#9aa6c8";ctx.lineWidth=2;ctx.strokeRect(x+7,y+7,w-14,h-14)}
  const TIP={merge:["MERGE","FUSE WITH A PARTNER INTO A BIGGER SPECIES"]};
- function tooltip(px,py,name,hint,locked){ctx.font='900 24px "Courier New",monospace';const w1=ctx.measureText(name).width;ctx.font='700 14px "Courier New",monospace';const w2=ctx.measureText(hint).width;
+ function tooltip(px,py,name,hint,locked){ctx.font='15px "Press Start 2P",monospace';const w1=ctx.measureText(name).width;ctx.font='9px "Press Start 2P",monospace';const w2=ctx.measureText(hint).width;
   const w=Math.max(w1,w2)+36,h=62;let x=px+56,y=py-h/2;if(x+w>253*S)x=px-56-w;x=Math.max(57*S+6,x);y=Math.max(6,Math.min(CH-h-6,y));
   ctx.fillStyle="rgba(5,4,10,.9)";ctx.fillRect(x,y,w,h);ctx.strokeStyle=locked?"#6a6a8a":"#5fd456";ctx.lineWidth=3;ctx.strokeRect(x+1.5,y+1.5,w-3,h-3);ctx.fillStyle=locked?"#3c3c55":"#145a24";ctx.fillRect(x+3,y+3,6,h-6);
-  ctx.textAlign="left";ctx.font='900 24px "Courier New",monospace';ctx.fillStyle="#05040a";ctx.fillText(name,x+20,y+28);ctx.fillStyle=locked?"#8d95ad":"#c8ff9a";ctx.fillText(name,x+18,y+26);
-  ctx.font='700 14px "Courier New",monospace';ctx.fillStyle=locked?"#8d95ad":"#9fe9ff";ctx.fillText(hint,x+18,y+48)}
+  ctx.textAlign="left";ctx.font='15px "Press Start 2P",monospace';ctx.fillStyle="#05040a";ctx.fillText(name,x+20,y+28);ctx.fillStyle=locked?"#8d95ad":"#c8ff9a";ctx.fillText(name,x+18,y+26);
+  ctx.font='9px "Press Start 2P",monospace';ctx.fillStyle=locked?"#8d95ad":"#9fe9ff";ctx.fillText(hint,x+18,y+48)}
  function ringInfo(slot){if(slot==="merge")return[...TIP.merge,false];const lk=lockedCmd(g,slot);return[CMD_NAMES[slot],lk?"LOCKED: SNATCH GREEN POWER-UPS":ORDER_HINT[slot],lk]}
  function drawRing(a,active){ctx.save();ctx.translate(CW/2,0);ctx.scale(g.z,g.z);ctx.translate(-CW/2,0);
   ctx.fillStyle="rgba(5,4,10,.62)";ctx.beginPath();ctx.arc(a.x*S,a.y*S,27*S,0,6.283);ctx.fill();ctx.strokeStyle="rgba(95,212,86,.5)";ctx.lineWidth=3;ctx.stroke();
-  for(const i of RING){const[ox,oy]=CMD_POS[i],slot=ringSlot(i),on=active===i;if(slot==="merge"){ctx.fillStyle=`hsl(${tick*8%360},90%,65%)`;ctx.beginPath();ctx.arc((a.x+ox)*S,(a.y+oy)*S,6.2*S,0,6.283);ctx.fill();text("M",a.x+ox,a.y+oy+2.4,22,"#05040a","center",null)}
+  for(const i of RING){const[ox,oy]=CMD_POS[i],slot=ringSlot(i,a),on=active===i;if(slot==null)continue;if(slot==="merge"){ctx.fillStyle=`hsl(${tick*8%360},90%,65%)`;ctx.beginPath();ctx.arc((a.x+ox)*S,(a.y+oy)*S,6.2*S,0,6.283);ctx.fill();text("M",a.x+ox,a.y+oy+2.4,22,"#05040a","center",null)}
    else spr((lockedCmd(g,slot)?atlas.iconLocked:atlas.icon)[slot],a.x+ox,a.y+oy,1,on?1.25:1);
    if(on){ring(a.x+ox,a.y+oy,8.2+Math.sin(tick*.5)*.5,"#05040a",8);ring(a.x+ox,a.y+oy,8.2+Math.sin(tick*.5)*.5,"#ffd93a",4)}}
   ctx.restore()}
  function drawOrderMenu(){const m=sel.menu,a=anchorAlien();
   if(m&&a){drawRing(a,m.idx);const[ox,oy]=CMD_POS[m.idx],p=scr(a.x+ox,a.y+oy),[n,h,lk]=ringInfo(ringSlot(m.idx));tooltip(p.x,p.y,sel.scope?`${n} x${selIds().length}`:n,h,lk);return}
   // mouse radial: tooltip for the icon under the pointer
-  if(g.menu){const b=g.aliens.find(o=>o.id===g.menu.id);if(!b)return;for(const i of RING){const[ox,oy]=CMD_POS[i];if(Math.hypot(hoverX-(b.x+ox),hoverY-(b.y+oy))<8){const p=scr(b.x+ox,b.y+oy),[n,h,lk]=ringInfo(i);tooltip(p.x,p.y,n,h,lk)}}}}
+  if(g.menu){const b=g.aliens.find(o=>o.id===g.menu.id);if(!b)return;for(const i of RING){const[ox,oy]=CMD_POS[i],c=ringOf(b)[i];if(c==null)continue;if(Math.hypot(hoverX-(b.x+ox),hoverY-(b.y+oy))<8){const p=scr(b.x+ox,b.y+oy),[n,h,lk]=ringInfo(c);tooltip(p.x,p.y,n,h,lk)}}}}
  const FX0px=()=>57*S,FX1px=()=>253*S;
  function drawHud(){const s=snapshot(g);
   ctx.fillStyle="rgba(5,4,14,.78)";ctx.fillRect(0,0,57*S,CH);ctx.fillRect(253*S,0,CW-253*S,CH);
@@ -270,9 +291,11 @@ export function mountOota(root,{onExit}={}){
    text(g.phase==="boss"?(g.L.final?"THE ADMIRAL":"BOSS"):`${g.L.name}${g.ships.length?`  +${g.ships.length} SHIPS`:""}`,155,168,12,"#d6cbe8","center")}
   if(!demo&&!sel.on)for(const a of ARROWS)spr(a.dir<0?atlas.arrowL:atlas.arrowR,a.x,a.y,arrowPtr?.dir===a.dir||(a.dir<0?shiftHold.l:shiftHold.r)?1:.55);
   if(sel.pick&&!demo)text("PICK A PARTNER",155,16,16,"#ff6fb5","center");
+  if(!demo){const sp=Object.entries(g.sup).find(([k,v])=>v>0)||(g.hole?["hole",g.hole.t]:null);if(sp){const nm=SUPER_NAMES[sp[0]]||sp[0];text(nm,155,8,12,`hsl(${tick*6%360},90%,70%)`,"center")}
+   if(g.calm>0&&tick%40<30)text(`CEASEFIRE ${Math.ceil(g.calm/30)} // REBUILD THE SWARM`,155,162,11,"#5fd456","center")}
   if(dial){const l=dial.lines[dial.i],c=l.startsWith("YOU")?"#5fd456":/^(BOSS|ADMIRAL)/.test(l)?"#ff5468":"#ffffff",i=l.indexOf(": "),who=l.slice(0,i),say=l.slice(i+2);
    ctx.fillStyle="rgba(5,4,10,.92)";ctx.fillRect(2*S,156*S,53*S,22*S);ctx.strokeStyle=c;ctx.lineWidth=3;ctx.strokeRect(2*S+1,156*S+1,53*S-2,22*S-2);
-   text(who,4,162,11,c,"left",null);const words=say.split(" ");let line="",y=169;ctx.font='900 11px "Courier New",monospace';
+   text(who,4,162,11,c,"left",null);const words=say.split(" ");let line="",y=169;ctx.font='7px "Press Start 2P",monospace';
    for(const w of words){const t=line?line+" "+w:w;if(ctx.measureText(t).width>49*S&&line){text(line,4,y,11,"#ffffff","left",null);line=w;y+=7}else line=t}if(line&&y<180)text(line,4,y,11,"#ffffff","left",null)}}
  function draw(){tick++;
   if(titleOn&&demo){title.draw(title.phase!=="intro");return}
@@ -310,7 +333,7 @@ export function mountOota(root,{onExit}={}){
   <b>SELECT</b> The d-pad hops between your aliens. ${L("scope")} switches between ordering ONE alien, its whole ROW, or ALL of them. ${L("left")} / ${L("right")} move the whole swarm left and right.<br>
   <b>ORDER</b> ${L("order")} opens the order menu: ATTACK shoots, DIVE divebombs, BUGS and TENTACLES unlock with power-ups. Aliens keep following their order. ${L("repeat")} gives the same order again.<br>
   <b>LOOT</b> ${L("snatch")} snatches the nearest power-up: green upgrades the swarm, red ones are the ship's (block them). <b>RUSH</b> ${L("rush")} sends everyone at the ship (it needs to recharge).<br>
-  <b>FLEETS</b> Later planets bring wingmen, carriers, repair ships and shield frigates. Shields stop shots, not dives.<br>Hold <b>${padLabel("KeyM")} + ${padLabel("KeyP")}</b> to leave for the ArcadeGridz launcher.`,items:[{label:"BACK",act:()=>menu.pop()}]}}
+  <b>CLASSES</b> Grunts attack. Zappers chain-lightning and EMP ships. Tanks shield, taunt and ram. Healers mend, hatch eggs and make a sanctuary.<br><b>SUPERS</b> Rainbow stars set off FRENZY, MEGA LASERS, HIVE STORM, GOO RAIN, CLONE BURST or a BLACK HOLE.<br><b>NUKES</b> Shoot the NUKE pod before the ship grabs it. If it's armed, kill the ship. If it blows, a ceasefire lets you rebuild.<br><b>FLEETS</b> Later planets bring carriers, repair ships and shield frigates. Shields stop shots, not dives.<br>Hold <b>${padLabel("KeyM")} + ${padLabel("KeyP")}</b> to leave for the ArcadeGridz launcher.`,items:[{label:"BACK",act:()=>menu.pop()}]}}
  function confirm(title,yes,sub="PROGRESS SINCE THE LEVEL STARTED WILL BE LOST"){menu.push({title,sub,items:[{label:"NO, KEEP PLAYING",act:()=>menu.pop()},{label:"YES",act:yes}]})}
  function pauseScreen(){return{title:"PAUSED",sub:()=>`LEVEL ${g.level+1}: ${g.L.name} // ${DIFF[g.difficulty].name} // SCORE ${fmt(g.score)}`,back:resume,start:resume,items:[
   {label:"RESUME",act:resume},

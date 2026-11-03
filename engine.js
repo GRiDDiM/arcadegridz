@@ -3,8 +3,13 @@
 // One step = one original 30 fps frame. World units match the original 310x180 screen at zoom 1; as the swarm
 // grows the camera zooms out (to ZMIN) and the field widens/deepens around the top centre.
 export const W=310,H=180,DT=1/30,CX=155,FX0=57,FX1=253,SLOT_Y=26,ZMIN=.62,ZBASE=.92;
-export const CMD={RANDOM:0,BUGS:1,ATTACK:2,DIVE:3,TENTACLES:4};
-export const CMD_NAMES=["RANDOM","BUGS","ATTACK","DIVE","TENTACLES"];
+export const CMD={RANDOM:0,BUGS:1,ATTACK:2,DIVE:3,TENTACLES:4,ZAP:5,EMP:6,SHIELD:7,RAM:8,TAUNT:9,MEND:10,HATCH:11,SANCT:12};
+export const CMD_NAMES=["RANDOM","BUGS","ATTACK","DIVE","TENTACLES","ZAP","EMP","SHIELD","RAM","TAUNT","MEND","HATCH","SANCTUARY"];
+// alien classes: each has its own ring of orders (ring slots: top, left, bottom-left, bottom-right, right)
+export const CLASSES={grunt:{ring:[0,1,2,3,4],armor:0},zapper:{ring:[6,null,5,3,null],armor:0},tank:{ring:[9,7,8,null,null],armor:3},healer:{ring:[12,10,null,null,11],armor:0}};
+export const canDo=(a,c)=>(CLASSES[a.kind]||CLASSES.grunt).ring.includes(c);
+export const SUPERS=["frenzy","laser","hive","goo","clones","hole"];
+export const SUPER_NAMES={frenzy:"FRENZY",laser:"MEGA LASERS",hive:"HIVE STORM",goo:"GOO RAIN",clones:"CLONE BURST",hole:"BLACK HOLE"};
 // command icon offsets around the alien (original: random on top, bugs left, attack/dive below, tentacles right)
 export const CMD_POS=[[0,-17],[-18,0],[-9,15],[9,15],[18,0]];
 export const ME_BUFFS=["speed","spit","bugs","spawn","armor","tentacles"],MAN_BUFFS=["speed","lasers","missiles","plazma","shields","option"];
@@ -40,15 +45,17 @@ export const fx0=g=>CX-98/g.z,fx1=g=>CX+98/g.z,bot=g=>H/g.z,manY=g=>bot(g)-40,ka
 export function createGame({difficulty=2,level=0,seed=Date.now(),assist=false,carry=null}={}){
  const D=DIFF[difficulty],L=LEVELS[level],r=rng(seed);
  const g={difficulty,level,D,L,assist,seed:seed>>>0,rand:r,frame:0,state:"play",phase:L.kind==="bonus"?"bonus":"planet",events:[],uid:1,z:ZBASE,march:{dir:1,last:0},
-  spawner:{x:61,t:60},aliens:[],me:carry?.me?{...carry.me}:{speed:0,spit:0,bugs:0,spawn:0,armor:0,tentacles:0},man:null,manb:{speed:0,lasers:0,missiles:0,plazma:0,shields:0,option:0},manlives:3,
+  spawner:{x:61,t:60},aliens:[],sup:{frenzy:0,laser:0,goo:0},hole:null,pod:null,nuke:null,calm:0,nukeT:0,me:carry?.me?{...carry.me}:{speed:0,spit:0,bugs:0,spawn:0,armor:0,tentacles:0},man:null,manb:{speed:0,lasers:0,missiles:0,plazma:0,shields:0,option:0},manlives:3,
   skill:clamp(L.ai??0+0,0,4),ships:[],options:[],shots:[],manshots:[],missiles:[],plazmas:[],bugs:[],tentacles:[],globs:[],loots:[],sats:[],moons:[],bossShots:[],hazards:[],flares:[],ice:[],ufos:[],beams:[],
   prise:2,health:100,boss:null,menu:null,bigdive:0,rushCD:0,merge:null,timer:(L.time||0)*30,chain:0,chainT:0,bonusPts:0,
   score:carry?.score||0,startScore:carry?.score||0,combo:0,level0:level,lvl:0,stage:0,kills:0,deaths:0,moonT:420,hazT:200,fleetT:1200,result:null};
- g.skill=clamp((L.ai||0)+D.ai,0,4);
+ g.skill=clamp((L.ai||0)+D.ai,0,4);g.nukeT=nukeEvery(g);
  if(g.phase==="bonus")setupBonus(g);
  else{spawnMan(g);g.man.y=bot(g)+70;g.man.inv=60;for(const k of L.fleet)spawnShip(g,k);for(let i=0;i<8;i++){const a=spawnAlien(g,CX-56+i*16);a.y=-20-i*6}g.spawner.x=CX+72}
  return g}
-function spawnAlien(g,mex,mey=SLOT_Y){const a={id:g.uid++,x:mex,y:-32,mex,mey,species:1,cmd:-1,chosen:false,okT:0,dive:0,vx:0,vy:0,kami:false,armor:g.me.armor,
+const nukeEvery=g=>Math.round(Math.max(1100,2600-g.level*160)*(g.difficulty===1?1.4:1));
+function pickKind(g){const r=g.rand(),lv=g.level,z=lv>=1?.12:0,t=.1+lv*.008,h=.1;return r<z?"zapper":r<z+t?"tank":r<z+t+h?"healer":"grunt"}
+function spawnAlien(g,mex,mey=SLOT_Y,kind=pickKind(g)){const a={id:g.uid++,kind,x:mex,y:-32,mex,mey,species:1,cmd:-1,chosen:false,okT:0,dive:0,vx:0,vy:0,kami:false,armor:g.me.armor+CLASSES[kind].armor,
   t0:0,t2:0,t3:0,t4:0,t8:60,evolveT:300,sparkle:0,assistT:300,variant:g.rand()<1/3?1:0,hitMan:false};g.aliens.push(a);sfx(g,"warpin");return a}
 function spawnMan(g){g.man={kind:"hero",x:CX,y:bot(g)+24,gox:CX,think:10,fireT:60,missT:15,plazT:20,shields:g.manb.shields,inv:24,rollCD:0,hp:1};sfx(g,"manwarp")}
 function spawnShip(g,kind,x){const s=SHIP[kind];g.ships.push({id:g.uid++,kind,x:x??fx0(g)+20+g.rand()*(fx1(g)-fx0(g)-40),y:bot(g)+30,gox:CX,think:0,fireT:s.fire||0,hp:s.hp,max:s.hp,launchT:240,healT:120,dome:kind==="frigate"?6:0,domeT:0,inv:20,mine:[]})}
@@ -67,11 +74,11 @@ export const commandable=a=>!a.kami&&!a.mergeInto&&a.okT<=0;
 export function idleAliens(g){return g.aliens.filter(a=>!a.chosen&&a.okT<=0&&!a.kami&&a.dive===0&&!a.mergeInto)}
 export const lockedCmd=(g,c)=>c===CMD.BUGS&&g.me.bugs<=0||c===CMD.TENTACLES&&g.me.tentacles<=0;
 function orders(g,{cmd,ids,near}){if(lockedCmd(g,cmd))return ev(g,{type:"deny",why:"locked"});
- let list;if(ids)list=g.aliens.filter(a=>ids.includes(a.id)&&commandable(a));else{list=idleAliens(g);const nx=near??CX;list.sort((a,b)=>Math.abs(a.x-nx)-Math.abs(b.x-nx));list=list.slice(0,1)}
- if(!list.length)return ev(g,{type:"deny"});for(const a of list)giveCommand(g,a,cmd,list.length>1)}
+ let list;if(ids)list=g.aliens.filter(a=>ids.includes(a.id)&&commandable(a));else{list=idleAliens(g).filter(a=>canDo(a,cmd));const nx=near??CX;list.sort((a,b)=>Math.abs(a.x-nx)-Math.abs(b.x-nx));list=list.slice(0,1)}
+ list=list.filter(a=>cmd===CMD.RANDOM?a.kind==="grunt":canDo(a,cmd));if(!list.length)return ev(g,{type:"deny"});for(const a of list)giveCommand(g,a,cmd,list.length>1)}
 function giveCommand(g,a,cmd,quiet){if(lockedCmd(g,cmd))return ev(g,{type:"deny",why:"locked"});
  if(cmd===CMD.RANDOM){cmd=1+Math.floor(g.rand()*4);if(lockedCmd(g,cmd))cmd=g.rand()<.5?CMD.ATTACK:CMD.DIVE}
- if(a.dive===1||a.dive===3){a.dive=0;a.y=Math.min(a.y,-8)}a.chosen=false;a.cmd=cmd;a.okT=8;g.menu=null;if(!quiet)sfx(g,"ok");ev(g,{type:"command",id:a.id,cmd})}
+ if(!canDo(a,cmd))return;if(a.dive===1||a.dive===3){a.dive=0;a.y=Math.min(a.y,-8)}a.chosen=false;a.cmd=cmd;a.dome=cmd===CMD.SHIELD?6:0;a.ram=false;a.okT=8;g.menu=null;if(!quiet)sfx(g,"ok");ev(g,{type:"command",id:a.id,cmd})}
 function rush(g){if(g.rushCD>0||g.bigdive>0||g.phase==="bonus"&&g.L.bonus!=="pluto")return ev(g,{type:"deny",why:"rush"});
  g.bigdive=45;g.rushCD=300;for(const a of g.aliens)if(!a.kami&&!a.mergeInto){a.dive=2;a.hitMan=false}sfx(g,"dive");ev(g,{type:"bigdive"})}
 function endRush(g){for(const a of g.aliens)if(a.dive===2){a.dive=0;a.vx=a.vy=0}}
@@ -80,12 +87,12 @@ function snatch(g){const pool=[...g.loots.filter(l=>!l.done),...g.ufos.filter(u=
  for(const l of pool)for(const a of g.aliens){if(a.kami)continue;const d=d2(a,l);if(d<74&&d<bd){bd=d;best=l;src=a}}
  if(!best)return ev(g,{type:"deny",why:"snatch"});ev(g,{type:"snatch",x0:src.x,y0:src.y,x1:best.x,y1:best.y});
  if(best.ufo)return popUfo(g,best);grabLoot(g,best)}
-function grabLoot(g,l){l.done=1;l.t=40;g.combo++;if(l.orb){g.score+=100;g.bonusPts+=100;sfx(g,"powerup");pop(g,l.x,l.y,"+100","#ffd93a");return}
+function grabLoot(g,l){l.done=1;l.t=40;g.combo++;if(l.super){g.score+=100;superPower(g,l);comboBonus(g,l);return}if(l.nuke)return;if(l.orb){g.score+=100;g.bonusPts+=100;sfx(g,"powerup");pop(g,l.x,l.y,"+100","#ffd93a");return}
  if(l.good){g.lvl++;g.score+=25;buffSwarm(g);sfx(g,"powerup");pop(g,l.x,l.y,"POWER UP!","#5fd456")}else{g.score+=50;sfx(g,"blocked");pop(g,l.x,l.y,"BLOCKED!","#5ee7ff")}comboBonus(g,l)}
 function mergePair(g,srcId,dstId){const src=g.aliens.find(a=>a.id===srcId),dst=g.aliens.find(a=>a.id===dstId);
- if(!src||!dst||src===dst||src.sparkle<=0||src.species!==1||dst.species!==1||dst.kami)return ev(g,{type:"deny",why:"merge"});dst.mergeInto=src.id;dst.dive=0;g.merge=null;sfx(g,"morph")}
+ if(!src||!dst||src===dst||src.sparkle<=0||src.species!==1||dst.species!==1||dst.kami||src.kind!=="grunt"||dst.kind!=="grunt")return ev(g,{type:"deny",why:"merge"});dst.mergeInto=src.id;dst.dive=0;g.merge=null;sfx(g,"morph")}
 function tap(g,x,y){const p={x,y};
- if(g.menu){const a=g.aliens.find(a=>a.id===g.menu.id);if(a)for(let i=0;i<5;i++){const[ox,oy]=CMD_POS[i];if(Math.hypot(x-(a.x+ox),y-(a.y+oy))<8){if(lockedCmd(g,i))continue;giveCommand(g,a,i);return}}g.menu=null}
+ if(g.menu){const a=g.aliens.find(a=>a.id===g.menu.id);if(a)for(let i=0;i<5;i++){const[ox,oy]=CMD_POS[i],c=CLASSES[a.kind].ring[i];if(c==null)continue;if(Math.hypot(x-(a.x+ox),y-(a.y+oy))<8){if(lockedCmd(g,c))continue;giveCommand(g,a,c);return}}g.menu=null}
  for(const l of g.loots)if(!l.done&&d2(l,p)<12){grabLoot(g,l);return}
  for(const u of g.ufos)if(!u.dead&&d2(u,p)<11){popUfo(g,u);return}
  for(const m of g.missiles)if(d2(m,p)<9){m.dead=true;g.score+=10;sfx(g,"pop");pop(g,m.x,m.y,"+10","#ffd93a");return}
@@ -114,13 +121,14 @@ function danger(T,x,y,horizon){let d=0;for(const t of T){
   if(t.home){const dd=Math.hypot(t.x-x,t.y-y);if(dd<(t.slow?30:60))d+=t.slow?.4:1.4*(1-dd/60);continue}
   if(t.vy<=0)continue;const k=(y-t.y)/t.vy;if(k<0||k>horizon)continue;const px=t.x+(t.vx||0)*k;if(Math.abs(px-x)<t.r+6)d+=1.5-k/horizon}return d}
 function priority(a){return(a.dive>0||a.kami?4:0)+(a.chosen&&a.cmd===CMD.ATTACK?3:0)+(a.species===2?2:0)+(a.sparkle>0||a.mergeInto?2:0)+1}
-function pickTarget(g,u){let best=null,bs=-1;for(const a of g.aliens){if(a.y<0)continue;const s=priority(a)-Math.abs(a.x-u.x)/60;if(s>bs){bs=s;best=a}}return best}
+function pickTarget(g,u){const tn=g.aliens.find(a=>a.chosen&&a.cmd===CMD.TAUNT&&a.y>0);if(tn)return tn;let best=null,bs=-1;for(const a of g.aliens){if(a.y<0)continue;const s=priority(a)-Math.abs(a.x-u.x)/60;if(s>bs){bs=s;best=a}}return best}
 function pilot(g,u,sp,skill,{hunts=false,greedy=true,lane=null}={}){const S=AI[clamp(skill,0,4)],T=threats(g),x0=fx0(g)+10,x1=fx1(g)-10;
  if(u.inv>0)u.inv--;
+ if(u.stun>0){u.stun--;u.fireT=Math.max(u.fireT||0,8);return{aligned:false,tgt:null}}
  const now=danger(T,u.x,u.y,6);
  if(--u.think<=0||now>1.2&&g.rand()<S.dodge*.25){u.think=S.replan;
   const tgt=hunts?g.aliens.find(a=>a.dive>0||a.kami)||pickTarget(g,u):pickTarget(g,u);u.tgt=tgt?.id||0;
-  const bad=greedy?g.loots.find(l=>!l.good&&!l.done&&!l.orb):null;let bx=u.x,bs=1e9;
+  const bad=greedy?(g.pod||g.loots.find(l=>!l.good&&!l.done&&!l.orb)):null;let bx=u.x,bs=1e9;
   for(let x=x0;x<=x1;x+=6){let s=danger(T,x,u.y,S.horizon)*(.3+S.dodge)+Math.abs(x-u.x)*.008;
    if(tgt&&Math.abs(x-tgt.x)<6)s-=1.1;if(bad&&Math.abs(x-bad.x)<10&&bad.y<u.y)s-=1.4*S.greed;if(lane!=null)s+=Math.abs(x-lane)*.012;
    if(s<bs){bs=s;bx=x}}
@@ -138,7 +146,7 @@ function tick(g){const f=g.frame,D=g.D,me=g.me,mb=g.manb,L=g.L;
  if(g.rushCD>0)g.rushCD--;if(g.bigdive>0&&--g.bigdive===0)endRush(g);
  // the hand of god: formation spawner sweeping the top row
  if(--g.spawner.t<=0){const s=g.spawner;if(s.x>fx1(g)-24)s.x=fx0(g)+4;s.x+=16;if(g.aliens.length<56&&!g.aliens.some(a=>Math.abs(a.mey-SLOT_Y)<10&&Math.abs(a.mex-s.x)<12))spawnAlien(g,s.x);
-  s.t=f<300||g.aliens.length<8?14:Math.max(22,80-me.spawn*3);
+  s.t=g.calm>0&&g.aliens.length<18?5:f<300||g.aliens.length<8?14:Math.max(22,80-me.spawn*3);
   if(f>300&&!g.sats.length&&g.rand()<.05){const dir=g.rand()<.5?1:-1;g.sats.push({x:dir>0?fx0(g)+16:fx1(g)-16,y:bot(g)*.45,dir,ufo:g.rand()<.5})}}
  if(D.stages&&f%1800===0){const mins=f/1800;g.stage=mins+1;buffMan(g,1);ev(g,{type:"stage",stage:g.stage})}
  // planet rises / boss
@@ -149,29 +157,38 @@ function tick(g){const f=g.frame,D=g.D,me=g.me,mb=g.manb,L=g.L;
   if(a.mergeInto){const src=g.aliens.find(s=>s.id===a.mergeInto);if(!src){a.mergeInto=0}else if(toward(a,src.x,src.y,6)){a.dead=true;a.noLoot=true;src.species=2;src.armor=me.armor*2+1;src.sparkle=0;src.t8=60;g.score+=50;sfx(g,"morphok");ev(g,{type:"merged",x:src.x,y:src.y})}continue}
   if(a.okT>0&&--a.okT===0){a.chosen=true;a.t0=1;a.t2=1;a.t3=1;a.t4=Math.max(10,90-me.tentacles)}
   if(a.sparkle>0)a.sparkle--;
-  if(--a.evolveT<=0){a.evolveT=300;if(a.species===1&&!a.sparkle&&g.rand()<.012&&!g.aliens.some(o=>o.sparkle>0)){a.sparkle=150;sfx(g,"morphbegin")}}
+  if(--a.evolveT<=0){a.evolveT=300;if(a.species===1&&a.kind==="grunt"&&!a.sparkle&&g.rand()<.012&&!g.aliens.some(o=>o.sparkle>0)){a.sparkle=150;sfx(g,"morphbegin")}}
   if(g.assist&&!a.chosen&&a.okT<=0&&--a.assistT<=0){a.assistT=300;if(g.rand()<.5)giveCommand(g,a,CMD.ATTACK,true)}
-  const spd=1+me.speed,M=g.man||g.boss;
+  const spd=1+me.speed+(g.sup.frenzy>0?1.5:0),M=g.man||g.boss;
   if(a.kami){a.x+=a.vx;a.y+=a.vy;if(a.y>bot(g)+20||a.x<fx0(g)-20||a.x>fx1(g)+20){a.dead=true;a.noLoot=true}}
   else if(a.dive===2&&M){toward(a,M.x,M.y,4+me.speed);if(a.hitMan)a.dive=0}
   else if(a.dive===2){a.dive=0}
   else if(a.dive===3){toward(a,a.tx,a.ty,4);if(--a.diveT<=0)a.dive=0}
   else if(a.dive===1){a.x+=a.vx;a.y+=a.vy;if(a.y>bot(g)+8||a.x<fx0(g)-8||a.x>fx1(g)+8){a.dive=0;a.x=clamp(a.x,fx0(g),fx1(g));a.y=-16}}
   else{toward(a,a.mex,a.mey,spd);if(a.mey>kamiY(g)&&atSlot(a)&&M){a.kami=true;aim(a,M.x,M.y,3+me.speed);sfx(g,"kamikaze")}}
-  if(a.chosen&&!a.kami){const tgt=nearestFoe(g,a);
-   if(a.cmd===CMD.ATTACK&&--a.t2<=0){a.t2=Math.max(8,60-me.spit*3);g.shots.push({x:a.x,y:a.y+6,vy:4});g.score+=1;sfx(g,"shoot")}
-   if(a.cmd===CMD.DIVE&&a.dive===0&&--a.t0<=0&&tgt){a.t0=Math.max(24,90-me.speed*4);a.dive=1;aim(a,tgt.x,tgt.y,2+me.speed);g.score+=1;sfx(g,"dive")}
+  if(a.chosen&&!a.kami){const tgt=nearestFoe(g,a),fr=g.sup.frenzy>0?3:1;
+   if(a.cmd===CMD.ATTACK&&(a.t2-=fr)<=0){a.t2=Math.max(8,60-me.spit*3);const n=me.spit>=6?3:me.spit>=3?2:1;for(let k=0;k<n;k++)g.shots.push({x:a.x,y:a.y+6,vy:4,vx:n===1?0:(k-(n-1)/2)*.7});g.score+=1;sfx(g,"shoot")}
+   if(a.cmd===CMD.ZAP&&(a.t2-=fr)<=0){a.t2=Math.max(28,80-me.spit*3);zap(g,a)}
+   if(a.cmd===CMD.EMP&&--a.t3<=0){a.t3=240;const t=nearestFoe(g,a);if(t){t.stun=75;ev(g,{type:"emp",x:a.x,y:a.y,x1:t.x,y1:t.y});sfx(g,"shield")}}
+   if(a.cmd===CMD.SHIELD&&g.frame%40===0&&a.dome<6)a.dome++;
+   if(a.cmd===CMD.RAM&&a.dive===0&&--a.t0<=0&&tgt){a.t0=150;a.dive=1;a.ram=true;aim(a,tgt.x,tgt.y,1.7+me.speed*.4);sfx(g,"dive")}
+   if(a.cmd===CMD.TAUNT&&g.frame%90===0&&a.armor<6)a.armor++;
+   if(a.cmd===CMD.MEND&&--a.t4<=0){a.t4=90;for(const o of g.aliens)if(o!==a&&Math.hypot(o.x-a.x,o.y-a.y)<34&&o.armor<3+CLASSES[o.kind].armor)o.armor++;ev(g,{type:"mend",x:a.x,y:a.y})}
+   if(a.cmd===CMD.HATCH&&--a.t3<=0){a.t3=300;if(g.aliens.length<56){const e=spawnAlien(g,clamp(a.mex+(g.rand()<.5?-8:8),fx0(g)+20,fx1(g)-20),a.mey,"grunt");e.x=a.x;e.y=a.y;ev(g,{type:"hatch",x:a.x,y:a.y})}}
+   if(a.cmd===CMD.DIVE&&a.dive===0&&(a.t0-=fr)<=0&&tgt){a.t0=Math.max(24,90-me.speed*4);a.dive=1;aim(a,tgt.x,tgt.y,2+me.speed);g.score+=1;sfx(g,"dive")}
    if(a.cmd===CMD.BUGS&&--a.t3<=0){a.t3=Math.max(30,180-me.bugs*10);g.bugs.push({x:a.x,y:a.y,life:240});sfx(g,"bug");g.score+=1}
    if(a.cmd===CMD.TENTACLES&&--a.t4<=0){a.t4=Math.max(15,90-me.tentacles*4);g.tentacles.push({x:a.x-8+g.rand()*16,y:a.y,life:30,src:a.id,hit:new Set()});g.score+=1;sfx(g,"tentacle")}}
-  if(a.species===2&&--a.t8<=0){a.t8=60;g.globs.push({x:a.x,y:a.y+8,hit:false})}}
+  if(a.species===2&&--a.t8<=0){a.t8=60;g.globs.push({x:a.x,y:a.y+8,hit:false})}
+  if(g.sup.goo>0&&(g.frame+a.id)%18===0)g.globs.push({x:a.x,y:a.y+8,hit:false})}
  g.aliens=g.aliens.filter(a=>!a.dead);
+ supers(g);nukes(g);
  if(g.merge&&--g.merge.t<=0)g.merge=null;
  if(g.menu&&!g.aliens.some(a=>a.id===g.menu.id))g.menu=null;
  // the human
  const m=g.man;
  if(m){if(m.y>manY(g))m.y=Math.max(manY(g),m.y-2);else m.y=manY(g);
   const P=pilot(g,m,2+mb.speed,g.skill);
-  if(g.aliens.length&&--m.fireT<=0&&(P.aligned||m.fireT<-45)){m.fireT=Math.max(8,D.badfire-mb.lasers*4);g.manshots.push({x:m.x,y:m.y-6,vy:-4});sfx(g,"manshoot")}
+  if(g.calm<=0&&g.aliens.length&&--m.fireT<=0&&(P.aligned||m.fireT<-45)){m.fireT=Math.max(8,D.badfire-mb.lasers*4);g.manshots.push({x:m.x,y:m.y-6,vy:-4});sfx(g,"manshoot")}
   if(mb.missiles>0&&g.aliens.length&&--m.missT<=0){m.missT=Math.max(30,120-mb.missiles*6);g.missiles.push({x:m.x,y:m.y-6,life:300,tgt:P.tgt?.id||0});sfx(g,"missile")}
   if(mb.plazma>0&&g.aliens.length&&--m.plazT<=0){m.plazT=Math.max(30,120-mb.plazma*6);g.plazmas.push({x:m.x,y:m.y-6,life:150})}}
  for(const o of g.options){if(!m)break;toward(o,m.x+(o===g.options[0]?-14:14),manY(g)+4,2+mb.speed);if(--o.fireT<=0&&g.aliens.length){o.fireT=Math.max(20,90-mb.lasers*4);g.manshots.push({x:o.x,y:o.y-4,vy:-4})}}
@@ -193,12 +210,43 @@ function tick(g){const f=g.frame,D=g.D,me=g.me,mb=g.manb,L=g.L;
   for(const s of g.ships)if(!L.final){s.leaving=true}sfx(g,"planetboom");ev(g,{type:"planetDestroyed"})}
  else if(g.phase==="boss"&&g.health<1&&g.state==="play"){const B=g.boss;g.score+=2000*g.difficulty*(g.level+1);sfx(g,"win");ev(g,{type:"boss",x:B.x,y:B.y});
   g.state=L.final?"won":"clear";g.result="win";g.boss=null;ev(g,{type:"end",result:"win"})}
- if(g.state==="play"&&g.aliens.length===0&&g.frame>60){g.state="over";g.result="lose";sfx(g,"over");ev(g,{type:"end",result:"lose"})}}
+ if(g.state==="play"&&g.aliens.length===0&&g.frame>60&&g.calm<=0){g.state="over";g.result="lose";sfx(g,"over");ev(g,{type:"end",result:"lose"})}}
 // Galaxian / Invaders march: the formation drifts side to side and steps down a notch at the edges
 function march(g){const m=g.march;let lo=1e9,hi=-1e9;for(const a of g.aliens)if(!a.kami&&!a.mergeInto){lo=Math.min(lo,a.mex);hi=Math.max(hi,a.mex)}
  if(lo>hi)return;const sp=.15+g.level*.008,L=fx0(g)+12,R=fx1(g)-12;if(hi-lo>R-L-8)return;
  if(m.dir>0&&hi+sp>R||m.dir<0&&lo-sp<L){m.dir=-m.dir;if(g.frame-m.last>360){m.last=g.frame;for(const a of g.aliens)if(!a.kami)a.mey+=5;ev(g,{type:"descend"})}}
  else for(const a of g.aliens)if(!a.kami&&!a.mergeInto)a.mex+=m.dir*sp}
+const inSanct=(g,o)=>g.aliens.some(h=>h.chosen&&h.cmd===CMD.SANCT&&Math.hypot(h.x-o.x,h.y-o.y)<26);
+// chain lightning: nearest human thing in reach, then up to two more jumps
+function zap(g,a){const hit=new Set(),pts=[[a.x,a.y]];let from=a;
+ for(let j=0;j<3;j++){let best=null,bd=j?60:120;const cand=[...g.ships.filter(s=>!s.dead&&!s.leaving),g.man,g.boss,...g.missiles,g.pod].filter(Boolean);
+  for(const c of cand){if(hit.has(c))continue;const d=Math.hypot(c.x-from.x,c.y-from.y);if(d<bd){bd=d;best=c}}if(!best)break;hit.add(best);pts.push([best.x,best.y]);
+  if(best===g.man)manHit(g);else if(best===g.boss){g.health-=1/(g.L.hp||1);g.score+=10}else if(best===g.pod)podHit(g);else if(g.missiles.includes(best))best.dead=true;else shipHit(g,best,1);from=best}
+ if(pts.length>1){ev(g,{type:"zap",pts});sfx(g,"tentacle")}}
+function superPower(g,l){const k=SUPERS[Math.floor(g.rand()*SUPERS.length)];ev(g,{type:"super",kind:k,x:l.x,y:l.y});sfx(g,"morphok");
+ if(k==="frenzy")g.sup.frenzy=240;else if(k==="laser")g.sup.laser=180;else if(k==="goo")g.sup.goo=180;
+ else if(k==="hive"){for(let i=0;i<24;i++){const a=g.aliens[Math.floor(g.rand()*g.aliens.length)];if(a)g.bugs.push({x:a.x,y:a.y,life:240})}}
+ else if(k==="clones"){for(let i=0;i<6&&g.aliens.length<60;i++){const a=g.aliens[Math.floor(g.rand()*g.aliens.length)];if(!a)break;const c=spawnAlien(g,clamp(a.mex+(i%2?8:-8),fx0(g)+20,fx1(g)-20),a.mey,a.kind);c.x=a.x;c.y=a.y}}
+ else if(k==="hole")g.hole={x:CX,y:bot(g)*.62,t:180}}
+function supers(g){const S=g.sup,HP=g.L.hp||1;for(const k in S)if(S[k]>0)S[k]--;
+ if(S.laser>0&&g.frame%8===0)for(const a of g.aliens)if(a.chosen&&a.cmd===CMD.ATTACK&&!a.kami){
+  for(const s of g.ships)if(!s.dead&&Math.abs(s.x-a.x)<(s.kind==="carrier"?20:8)&&s.y>a.y)shipHit(g,s,1);
+  if(g.man&&Math.abs(g.man.x-a.x)<8)manHit(g);if(g.boss&&Math.abs(g.boss.x-a.x)<16){g.health-=.4/HP;g.score+=5}else if(g.phase==="planet"){g.health-=.15/HP;g.score+=2}}
+ const h=g.hole;if(h){if(--h.t<=0){g.hole=null;return}
+  for(const k of["manshots","missiles","plazmas","bossShots"])for(const o of g[k]){const d=Math.hypot(h.x-o.x,h.y-o.y);if(d<100){toward(o,h.x,h.y,2.5);if(d<8)o.dead=true}}
+  for(const s of[...g.ships,g.man].filter(Boolean)){const d=Math.hypot(h.x-s.x,h.y-s.y);if(d<70)s.x+=Math.sign(h.x-s.x)*.8;if(d<26&&g.frame%30===0){if(s===g.man)manHit(g);else shipHit(g,s,1)}}}}
+// nukes: now and then a bomb pod drifts in; if the ship catches it, kill the ship before it blows or the swarm is wiped
+function nukes(g){if(g.calm>0)g.calm--;
+ if(!g.pod&&!g.nuke&&g.calm<=0&&--g.nukeT<=0){g.nukeT=nukeEvery(g);const dir=g.rand()<.5?1:-1;g.pod={x:dir>0?fx0(g)-10:fx1(g)+10,y:bot(g)-66,vx:.55*dir,hp:6};ev(g,{type:"hazard",kind:"nuke"});sfx(g,"missile")}
+ const p=g.pod;if(p){p.x+=p.vx;const m=g.man;
+  if(m&&Math.abs(p.x-m.x)<12&&Math.abs(p.y-m.y)<30){g.pod=null;g.nuke={t:150};ev(g,{type:"nukeArmed"});sfx(g,"powerupbad")}
+  else if(p.x<fx0(g)-20||p.x>fx1(g)+20)g.pod=null}
+ if(g.nuke&&!g.man)g.nuke=null;
+ if(g.nuke&&--g.nuke.t<=0){g.nuke=null;let lost=0;
+  for(const a of g.aliens){if(inSanct(g,a))continue;if(a.kind==="tank"){a.armor=0;continue}a.dead=true;a.noLoot=true;lost++}
+  g.deaths+=lost;g.aliens=g.aliens.filter(a=>!a.dead);for(const k of["shots","globs","bugs","tentacles"])g[k]=[];
+  g.calm=270;g.spawner.t=1;ev(g,{type:"nukeBoom",lost});sfx(g,"planetboom")}}
+function podHit(g,dmg=1){const p=g.pod;if(!p)return;p.hp-=dmg;ev(g,{type:"spark",x:p.x,y:p.y});if(p.hp<=0){g.pod=null;g.score+=500;pop(g,p.x,p.y-10,"NUKE DESTROYED! +500","#5fd456");ev(g,{type:"podBoom",x:p.x,y:p.y});sfx(g,"satpop")}}
 function nearestFoe(g,a){let best=g.man||g.boss,bd=best?Math.abs(best.x-a.x):1e9;for(const s of g.ships){const d=Math.abs(s.x-a.x);if(d<bd){bd=d;best=s}}return best}
 function hazards(g){const L=g.L;
  if(L.hazard==="moons"&&--g.moonT<=0){g.moonT=420;if(!g.moons.length){g.moons.push({x:fx0(g)+20+g.rand()*(fx1(g)-fx0(g)-40),y:bot(g)+30,r:18,hit:new Set()});ev(g,{type:"hazard",kind:"moon"})}}
@@ -218,7 +266,7 @@ function fleet(g){const mb=g.manb;
   const row=manY(g)+T.dy;if(s.y>row)s.y=Math.max(row,s.y-1.5);else s.y=row;
   const lane=s.kind==="carrier"||s.kind==="repair"?CX+(s.id%2?-40:40):null;
   const P=pilot(g,s,T.sp+mb.speed*.3,Math.max(0,g.skill-1),{hunts:s.kind==="interceptor",greedy:false,lane});
-  if(T.fire&&g.aliens.length&&--s.fireT<=0&&(P.aligned||s.fireT<-40)){s.fireT=T.fire*(g.difficulty===1?1.6:1);g.manshots.push({x:s.x,y:s.y-6,vy:s.kind==="interceptor"?-5:-4});sfx(g,"manshoot")}
+  if(g.calm<=0&&T.fire&&g.aliens.length&&--s.fireT<=0&&(P.aligned||s.fireT<-40)){s.fireT=T.fire*(g.difficulty===1?1.6:1);g.manshots.push({x:s.x,y:s.y-6,vy:s.kind==="interceptor"?-5:-4});sfx(g,"manshoot")}
   if(s.kind==="carrier"&&--s.launchT<=0){s.launchT=360;if(g.ships.filter(o=>o.kind==="fighter").length<4){spawnShip(g,"fighter",s.x);ev(g,{type:"launch",x:s.x,y:s.y})}}
   if(s.kind==="repair"&&--s.healT<=0){s.healT=120;const hurt=g.ships.filter(o=>o!==s&&o.hp<o.max).sort((a,b)=>a.hp/a.max-b.hp/b.max)[0];
    if(hurt){hurt.hp++;g.beams.push({x0:s.x,y0:s.y,id:hurt.id,t:20});sfx(g,"shield")}else if(g.man&&g.man.shields<2){g.man.shields++;g.beams.push({x0:s.x,y0:s.y,hero:true,t:20})}}
@@ -228,7 +276,7 @@ function fleet(g){const mb=g.manb;
 function domeAt(g,x,y){for(const s of g.ships)if(s.kind==="frigate"&&s.dome>0&&Math.hypot(x-s.x,y-s.y)<24)return s;const B=g.boss;if(B&&B.dome>0&&Math.hypot(x-B.x,y-B.y)<30)return B;return null}
 function shipHit(g,s,dmg){if(s.inv>0)return;s.hp-=dmg;s.inv=6;sfx(g,"bosshit");ev(g,{type:"spark",x:s.x,y:s.y});
  if(s.hp<=0){s.dead=true;g.kills++;g.score+=150+(s.kind==="carrier"?350:0);sfx(g,"mandie");ev(g,{type:"shipDie",x:s.x,y:s.y,kind:s.kind});pop(g,s.x,s.y-10,`${s.kind.toUpperCase()} DOWN`,"#ffd93a");
-  if(dice(g,3))g.loots.push({x:s.x,y:s.y-4,good:true,vy:-2,id:g.uid++})}}
+  if(s.kind==="carrier"||g.rand()<.05)g.loots.push({x:s.x,y:s.y-4,good:true,super:true,vy:-1.6,id:g.uid++});else if(dice(g,3))g.loots.push({x:s.x,y:s.y-4,good:true,vy:-2,id:g.uid++})}}
 // ---------------- projectiles and collisions ----------------
 function projectiles(g){const D=g.D,me=g.me,mb=g.manb,m=g.man,B=g.boss;
  const hitMan=(x,y,r)=>{if(!m||m.inv>0)return false;if(Math.abs(x-m.x)<r+6&&Math.abs(y-m.y)<r+6){manHit(g);return true}return false};
@@ -236,11 +284,14 @@ function projectiles(g){const D=g.D,me=g.me,mb=g.manb,m=g.man,B=g.boss;
  const HP=g.L.hp||1;const hitBoss=(x,y,r,dmg)=>{if(!B)return false;if(Math.abs(x-B.x)<r+14&&Math.abs(y-B.y)<r+14){g.health-=dmg/HP;g.score+=10;sfx(g,"bosshit");ev(g,{type:"spark",x,y});return true}return false};
  const hitPlanet=(x,y,dmg)=>{if(g.phase!=="planet"||y<surfaceY(g)+2||y>bot(g))return false;g.health-=dmg/HP;g.score+=10;sfx(g,"planethit");ev(g,{type:"spark",x,y});return true};
  const hitRock=(x,y)=>{for(const h of g.hazards)if(h.kind==="rock"&&Math.abs(x-h.x)<h.r+2&&Math.abs(y-h.y)<h.r+2){if(--h.hp<=0){h.dead=true;g.score+=5;ev(g,{type:"spark",x:h.x,y:h.y})}return true}return false};
+ const hitPod=(x,y)=>{const p=g.pod;if(!p||Math.abs(x-p.x)>9||Math.abs(y-p.y)>9)return false;podHit(g);return true};
+ const guarded=s=>{const sh=g.aliens.find(o=>o.chosen&&o.cmd===CMD.SHIELD&&o.dome>0&&Math.hypot(o.x-s.x,o.y-s.y)<22);if(sh){sh.dome--;ev(g,{type:"dome",x:s.x,y:s.y});return true}return inSanct(g,s)};
  const absorbed=(x,y)=>{for(const o of g.moons)if(Math.hypot(x-o.x,y-o.y)<o.r)return true;const d=domeAt(g,x,y);if(!d)return false;d.dome--;ev(g,{type:"dome",x,y});return true};
- for(const s of g.shots){s.y+=s.vy;if(s.y>bot(g)+6){s.dead=true;continue}
+ for(const s of g.shots){s.y+=s.vy;if(s.vx)s.x+=s.vx;if(s.y>bot(g)+6){s.dead=true;continue}
+  if(hitPod(s.x,s.y)){s.dead=true;continue}
   if(hitRock(s.x,s.y)||absorbed(s.x,s.y)||hitShip(s.x,s.y,1,1)||hitMan(s.x,s.y,1)||hitBoss(s.x,s.y,1,D.bossdmg)||hitPlanet(s.x,s.y,D.planetdmg)){s.dead=true;continue}
   for(const t of g.sats)if(Math.abs(t.x-s.x)<8&&Math.abs(t.y-s.y)<8){t.dead=true;s.dead=true;g.score+=10;g.loots.push({x:t.x,y:t.y,good:true,vy:-2,id:g.uid++});sfx(g,"satpop")}}
- for(const s of g.globs){s.y+=3;if(s.y>bot(g)+8){s.dead=true;continue}if(!s.hit&&(hitRock(s.x,s.y)||absorbed(s.x,s.y)||hitShip(s.x,s.y,5,2)||hitMan(s.x,s.y,5)||hitBoss(s.x,s.y,5,D.bossdmg)||hitPlanet(s.x,s.y,D.planetdmg))){s.hit=true;s.dead=true}}
+ for(const s of g.globs){s.y+=3;if(s.y>bot(g)+8){s.dead=true;continue}if(!s.hit&&(hitPod(s.x,s.y)||hitRock(s.x,s.y)||absorbed(s.x,s.y)||hitShip(s.x,s.y,5,2)||hitMan(s.x,s.y,5)||hitBoss(s.x,s.y,5,D.bossdmg)||hitPlanet(s.x,s.y,D.planetdmg))){s.hit=true;s.dead=true}}
  for(const b of g.bugs){const tgt=B||m;if(tgt)toward(b,tgt.x,tgt.y,1+me.bugs*.3);else b.y+=1;if(--b.life<=0){b.dead=true;continue}
   if(absorbed(b.x,b.y)){b.dead=true;continue}
   if(m&&Math.abs(b.x-m.x)<8&&Math.abs(b.y-m.y)<8){if(m.shields>0){m.shields--;sfx(g,"shield")}else if(g.rand()<.35)manHit(g);b.dead=true;g.score+=1;continue}
@@ -249,21 +300,26 @@ function projectiles(g){const D=g.D,me=g.me,mb=g.manb,m=g.man,B=g.boss;
   if(m&&!t.hit.has("m")&&m.inv<=0&&Math.abs(t.x-m.x)<7&&m.y>t.y&&m.y<t.y+56){t.hit.add("m");manHit(g)}
   for(const s of g.ships)if(!t.hit.has(s.id)&&Math.abs(t.x-s.x)<9&&s.y>t.y&&s.y<t.y+56){t.hit.add(s.id);shipHit(g,s,1)}
   if(B&&!t.hit.has("b")&&Math.abs(t.x-B.x)<16&&B.y>t.y&&B.y-14<t.y+52){t.hit.add("b");hitBoss(B.x,B.y,1,D.bossdmg)}
+  if(g.pod&&!t.hit.has("pod")&&Math.abs(t.x-g.pod.x)<9&&g.pod.y>t.y&&g.pod.y<t.y+56){t.hit.add("pod");podHit(g)}
   if(!t.hit.has("p")&&t.y+52>=surfaceY(g)&&g.phase==="planet"){t.hit.add("p");hitPlanet(t.x,t.y+52,D.planetdmg)}}
  for(const s of g.manshots){s.y+=s.vy;if(s.y<-6){s.dead=true;continue}
+  if(guarded(s)){s.dead=true;continue}
   for(const a of g.aliens)if(!a.dead&&Math.abs(a.x-s.x)<(a.species===2?10:7)&&Math.abs(a.y-s.y)<(a.species===2?10:8)){s.dead=true;alienHit(g,a,1);break}
   if(s.dead)continue;for(const l of g.loots)if(l.good&&!l.done&&!l.orb&&Math.abs(l.x-s.x)<8&&Math.abs(l.y-s.y)<8){l.done=2;l.t=40;g.combo=0;s.dead=true;pop(g,l.x,l.y,"INTERCEPTED!","#ff5468");sfx(g,"intercept")}
   if(s.dead)continue;for(const t of g.sats)if(Math.abs(t.x-s.x)<8&&Math.abs(t.y-s.y)<8){t.dead=true;s.dead=true;g.loots.push({x:t.x,y:t.y,good:false,vy:2,id:g.uid++});sfx(g,"satpop")}}
  for(const s of g.bossShots){s.x+=s.vx;s.y+=s.vy;if(--s.zig<=0){s.zig=16;s.vx=-s.vx}if(s.y<-10||s.x<fx0(g)-20||s.x>fx1(g)+20){s.dead=true;continue}
+  if(guarded(s)){s.dead=true;continue}
   for(const a of g.aliens)if(!a.dead&&Math.abs(a.x-s.x)<9&&Math.abs(a.y-s.y)<9){s.dead=true;alienHit(g,a,1);break}}
- for(const s of g.missiles){if(--s.life<=0){s.dead=true;continue}const tgt=g.aliens.find(a=>a.id===s.tgt)||g.aliens[0];if(tgt){s.tgt=tgt.id;toward(s,tgt.x,tgt.y,.75)}else s.y-=.7;
+ for(const s of g.missiles){if(--s.life<=0||guarded(s)){s.dead=true;continue}const tgt=g.aliens.find(a=>a.id===s.tgt)||g.aliens[0];if(tgt){s.tgt=tgt.id;toward(s,tgt.x,tgt.y,.75)}else s.y-=.7;
   for(const a of g.aliens)if(!a.dead&&Math.abs(a.x-s.x)<8&&Math.abs(a.y-s.y)<8){s.dead=true;alienHit(g,a,99);break}}
- for(const s of g.plazmas){if(--s.life<=0){s.dead=true;continue}const tgt=g.aliens[g.aliens.length-1];if(tgt)toward(s,tgt.x,tgt.y,1+mb.plazma*.15);for(const a of g.aliens)if(!a.dead&&Math.abs(a.x-s.x)<7&&Math.abs(a.y-s.y)<7){s.dead=true;alienHit(g,a,1);break}}
+ for(const s of g.plazmas){if(--s.life<=0||guarded(s)){s.dead=true;continue}const tgt=g.aliens[g.aliens.length-1];if(tgt)toward(s,tgt.x,tgt.y,1+mb.plazma*.15);for(const a of g.aliens)if(!a.dead&&Math.abs(a.x-s.x)<7&&Math.abs(a.y-s.y)<7){s.dead=true;alienHit(g,a,1);break}}
  // dives into ships, satellites, moons, rocks
  for(const a of g.aliens){if(a.dead)continue;const diving=a.dive>0||a.kami;
+  if(diving&&g.pod&&Math.abs(a.x-g.pod.x)<10&&Math.abs(a.y-g.pod.y)<10){podHit(g,3)}
+  if(a.ram&&a.dive===1&&g.phase==="planet"&&a.y>=surfaceY(g)){g.health-=D.planetdmg*4/HP;g.score+=30;sfx(g,"planethit");ev(g,{type:"spark",x:a.x,y:a.y});a.dive=0;a.y=-16;a.ram=false}
   if(m&&m.inv<=0&&diving&&Math.abs(a.x-m.x)<10&&Math.abs(a.y-m.y)<10){if(a.dive===2)a.hitMan=true;if(a.dive===1)a.dive=0,a.y=-16;manHit(g);if(a.kami){a.dead=true;a.noLoot=true}}
-  if(diving)for(const s of g.ships)if(!s.dead&&!s.leaving&&Math.abs(a.x-s.x)<(s.kind==="carrier"?20:10)&&Math.abs(a.y-s.y)<10){shipHit(g,s,2);if(a.kami){a.dead=true;a.noLoot=true}else if(a.dive===2)a.hitMan=true;else{a.dive=0;a.y=-16}break}
-  if(B&&diving&&Math.abs(a.x-B.x)<16&&Math.abs(a.y-B.y)<16){if(B.dome>0){B.dome=Math.max(0,B.dome-20)}g.health-=D.bossdmg*2/HP;g.score+=10;sfx(g,"bosshit");if(a.kami){a.dead=true;a.noLoot=true}else{a.dive=0;a.y=-16;a.hitMan=true}}
+  if(diving)for(const s of g.ships)if(!s.dead&&!s.leaving&&Math.abs(a.x-s.x)<(s.kind==="carrier"?20:10)&&Math.abs(a.y-s.y)<10){shipHit(g,s,a.ram?4:2);if(a.kami){a.dead=true;a.noLoot=true}else if(a.dive===2)a.hitMan=true;else{a.dive=0;a.y=-16}break}
+  if(B&&diving&&Math.abs(a.x-B.x)<16&&Math.abs(a.y-B.y)<16){if(B.dome>0){B.dome=Math.max(0,B.dome-20)}g.health-=D.bossdmg*(a.ram?5:2)/HP;g.score+=10;sfx(g,"bosshit");if(a.kami){a.dead=true;a.noLoot=true}else{a.dive=0;a.y=-16;a.hitMan=true}}
   for(const t of g.sats)if(!t.dead&&a.dive>0&&Math.abs(t.x-a.x)<10&&Math.abs(t.y-a.y)<10){t.dead=true;g.score+=10;g.loots.push({x:t.x,y:t.y,good:true,vy:-2,id:g.uid++});sfx(g,"satpop")}
   for(const o of g.moons)if(!o.hit.has(a.id)&&Math.hypot(o.x-a.x,o.y-a.y)<o.r+6){o.hit.add(a.id);a.noLoot=true;alienHit(g,a,1)}
   for(const h of g.hazards)if(h.kind==="rock"&&!h.dead&&Math.abs(a.x-h.x)<h.r+5&&Math.abs(a.y-h.y)<h.r+5){h.dead=true;if(!diving)alienHit(g,a,1)}}
@@ -279,14 +335,15 @@ function alienHit(g,a,dmg){if(a.dead)return;if(a.armor>0&&dmg<99){a.armor-=dmg;e
  if(g.menu?.id===a.id)g.menu=null;if(g.phase!=="bonus"&&!a.kami&&!a.noLoot&&dice(g,g.D.badloot))g.loots.push({x:a.x,y:a.y,good:false,vy:2,id:g.uid++})}
 function manHit(g){const m=g.man;if(!m||m.inv>0)return;if(m.shields>0){m.shields--;m.inv=12;sfx(g,"shield");return}
  g.kills++;g.score+=100;sfx(g,"mandie");ev(g,{type:"manDie",x:m.x,y:m.y});
- if(dice(g,g.D.goodloot))g.loots.push({x:m.x,y:m.y-4,good:true,vy:-2,id:g.uid++});
+ if(g.nuke){g.nuke=null;g.score+=1000;pop(g,m.x,m.y-16,"NUKE DEFUSED! +1000","#5fd456");ev(g,{type:"defused",x:m.x,y:m.y})}
+ if(g.rand()<.09)g.loots.push({x:m.x,y:m.y-4,good:true,super:true,vy:-1.6,id:g.uid++});else if(dice(g,g.D.goodloot))g.loots.push({x:m.x,y:m.y-4,good:true,vy:-2,id:g.uid++});
  if(g.phase==="planet"){g.health-=3*g.D.planetdmg*2/(g.L.hp||1);g.prise=Math.max(-16,g.prise-2)}
  g.combo+=4-Math.max(0,g.manlives);g.manlives--;
  if(g.manlives<=0){g.manlives=3;ev(g,{type:"manWave"});if(!g.D.stopper){g.stage=0;for(const k of MAN_BUFFS)g.manb[k]=0;g.options=[]}}
  spawnMan(g)}
 // ---------------- bonus stages ----------------
 function setupBonus(g){const b=g.L.bonus,x0=fx0(g)+20,x1=fx1(g)-20;
- for(let r=0;r<3;r++)for(let i=0;i<7;i++){const a=spawnAlien(g,x0+i*(x1-x0)/6,SLOT_Y+r*16);a.y=-20-r*12-i*4}
+ for(let r=0;r<3;r++)for(let i=0;i<7;i++){const a=spawnAlien(g,x0+i*(x1-x0)/6,SLOT_Y+r*16,"grunt");a.y=-20-r*12-i*4}
  if(b==="pluto"){const cols=10,w=(x1-x0+24)/cols;for(let r=0;r<2;r++)for(let c=0;c<cols;c++)g.ice.push({x:x0-12+w*(c+.5),y:bot(g)-30+r*11,w:w-2,hp:g.D.ice,max:g.D.ice})}
  g.flareT=90;g.waveT=40;g.orbT=50}
 function tickBonus(g){const b=g.L.bonus,me=g.me;if(g.rushCD>0)g.rushCD--;if(g.bigdive>0&&--g.bigdive===0)endRush(g);
@@ -333,5 +390,5 @@ function popUfo(g,u){if(u.dead)return;u.dead=true;u.t=20;g.chain++;g.chainT=45;c
 export function snapshot(g){const t=Math.floor(g.frame/30);
  return{active:true,state:g.state,result:g.result,difficulty:DIFF[g.difficulty].name,planet:g.L.name,level:g.level+1,levels:LEVELS.length,kind:g.L.kind,phase:g.phase,health:Math.max(0,Math.round(g.health)),
   aliens:g.aliens.length,idle:idleAliens(g).length,score:g.score,combo:g.combo,lvl:g.lvl,stage:g.stage,kills:g.kills,deaths:g.deaths,manlives:g.manlives,ships:g.ships.length,
-  rush:g.rushCD<=0&&g.bigdive<=0,timer:g.phase==="bonus"?Math.ceil(g.timer/30):null,
+  rush:g.rushCD<=0&&g.bigdive<=0,nuke:g.nuke?Math.ceil(g.nuke.t/30):null,calm:g.calm>0,timer:g.phase==="bonus"?Math.ceil(g.timer/30):null,
   time:`${Math.floor(t/60)}:${String(t%60).padStart(2,"0")}`,buffs:{...g.me},man:{...g.manb}}}
