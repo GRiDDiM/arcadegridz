@@ -171,8 +171,8 @@ function tick(g){const f=g.frame,D=g.D,me=g.me,mb=g.manb,L=g.L;
   if(a.chosen&&!a.kami){const tgt=nearestFoe(g,a),fr=g.sup.frenzy>0?3:1;
    if(a.cmd===CMD.ATTACK&&(a.t2-=fr)<=0){a.t2=Math.max(8,60-me.spit*3);const n=me.spit>=6?3:me.spit>=3?2:1;for(let k=0;k<n;k++)g.shots.push({x:a.x,y:a.y+6,vy:4,vx:n===1?0:(k-(n-1)/2)*.7});g.score+=1;sfx(g,"shoot")}
    if(a.cmd===CMD.ZAP&&(a.t2-=fr)<=0){a.t2=Math.max(28,80-me.spit*3);zap(g,a)}
-   if(a.cmd===CMD.EMP&&--a.t3<=0){a.t3=240;const t=nearestFoe(g,a);if(t){t.stun=75;ev(g,{type:"emp",x:a.x,y:a.y,x1:t.x,y1:t.y});sfx(g,"shield")}}
-   if(a.cmd===CMD.SHIELD&&g.frame%40===0&&a.dome<6)a.dome++;
+   if(a.cmd===CMD.EMP&&!heroBanned(g,CMD.EMP)&&--a.t3<=0){a.t3=240;const t=nearestFoe(g,a);if(t){t.stun=75;ev(g,{type:"emp",x:a.x,y:a.y,x1:t.x,y1:t.y});sfx(g,"shield")}}
+   if(a.cmd===CMD.SHIELD&&heroBanned(g,CMD.SHIELD))a.dome=0;else if(a.cmd===CMD.SHIELD&&g.frame%40===0&&a.dome<6)a.dome++;
    if(a.cmd===CMD.RAM&&a.dive===0&&--a.t0<=0&&tgt){a.t0=150;a.dive=1;a.ram=true;aim(a,tgt.x,tgt.y,1.7+me.speed*.4);sfx(g,"dive")}
    if(a.cmd===CMD.TAUNT&&g.frame%90===0&&a.armor<6)a.armor++;
    if(a.cmd===CMD.MEND&&--a.t4<=0){a.t4=90;for(const o of g.aliens)if(o!==a&&Math.hypot(o.x-a.x,o.y-a.y)<34&&o.armor<3+CLASSES[o.kind].armor)o.armor++;ev(g,{type:"mend",x:a.x,y:a.y})}
@@ -265,7 +265,9 @@ function bomb(g){const m=g.man;if(!m||m.bombs<=0)return ev(g,{type:"deny"});m.bo
  for(const k of["shots","globs","bugs","tentacles"])g[k]=[];for(const a of g.aliens)if(Math.hypot(a.x-m.x,(a.y-m.y)*.6)<110)alienHit(g,a,2)}
 // the alien commander (DEFENSE mode) and the idle autopilot (INVADE mode) share the same playbook
 const PLAY={grunt:[CMD.ATTACK,CMD.ATTACK,CMD.DIVE,CMD.BUGS,CMD.TENTACLES],zapper:[CMD.ZAP,CMD.ZAP,CMD.EMP],tank:[CMD.SHIELD,CMD.TAUNT,CMD.RAM],healer:[CMD.MEND,CMD.SANCT,CMD.HATCH]};
-function playbook(g,a){const L=PLAY[a.kind].filter(c=>!lockedCmd(g,c));return L[Math.floor(g.rand()*L.length)]??CMD.ATTACK}
+// hero mode mercy: no stuns on easy/normal, no tank shields on easy
+const heroBanned=(g,c)=>g.mode==="defense"&&(c===CMD.EMP&&g.difficulty<3||c===CMD.SHIELD&&g.difficulty<2);
+function playbook(g,a){const L=PLAY[a.kind].filter(c=>!lockedCmd(g,c)&&!heroBanned(g,c));return L[Math.floor(g.rand()*L.length)]??CMD.ATTACK}
 function alienCommander(g){if(--g.cmdT>0)return;g.cmdT=Math.max(10,40-g.difficulty*8);const idle=idleAliens(g);for(const a of idle.slice(0,2))giveCommand(g,a,playbook(g,a),true);
  if(g.rand()<.25)snatch(g);if(g.man&&g.rushCD<=0&&g.aliens.length>12&&g.rand()<.04)rush(g);if(g.rand()<.04)for(const a of g.aliens)if(a.sparkle>0&&a.kind==="grunt"){const p=g.aliens.find(o=>o!==a&&o.kind==="grunt"&&o.species===1);if(p)mergePair(g,a.id,p.id);break}}
 export function autoInput(g){const inp={};if(g.frame%14===0){const idle=idleAliens(g);if(idle.length){const a=idle[0],c=playbook(g,a);inp.command={cmd:c,ids:idle.filter(o=>o.kind===a.kind).slice(0,4).map(o=>o.id)}}}
