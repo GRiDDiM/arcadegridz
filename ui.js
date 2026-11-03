@@ -175,9 +175,9 @@ export function mountOota(root,{onExit}={}){
    if(ids&&ids.has(a.id)){const main=a.id===anchor,r=(a.species===2?13:9.5)+Math.sin(tick*.3)*.6;ring(a.x,a.y,r,"#05040a",8);ring(a.x,a.y,r,main?"#ffd93a":"rgba(94,231,255,.85)",main?4:3)}
    spr(img,a.x,a.y,a.kami&&tick%6<3?.6:1);
    if(a.armor>0){ctx.fillStyle="#5ee7ff";ctx.fillRect((a.x-6)*S,(a.y+9)*S,Math.min(12,a.armor*3)*S,S)}
-   if(!demo&&a.okT>0)text("OK!",a.x,a.y-10,16,"#ffd93a","center");
-   else if(!demo&&!a.chosen&&!a.kami&&a.dive===0&&Math.abs(a.x-a.mex)<1.5&&Math.abs(a.y-a.mey)<1.5)text("GO",a.x,a.y-10,13,"#ffffff","center");
-   else if(!demo&&a.chosen&&a.cmd>=1)spr(atlas.icon[a.cmd],a.x+7,a.y-8,.8,.55)}
+   if(!demo&&a.chosen&&a.cmd>=0&&a.okT<=0)spr(atlas.icon[a.cmd],a.x+7,a.y-8,.8,.55)}
+  if(!demo)for(const a of g.aliens){if(a.okT>0)text("OK!",a.x,a.y-10,16,"#ffd93a","center");
+   else if(!a.chosen&&!a.kami&&a.dive===0&&Math.abs(a.x-a.mex)<1.5&&Math.abs(a.y-a.mey)<1.5){if(sel.on){ctx.fillStyle="#05040a";ctx.fillRect((a.x-1.5)*S,(a.y-11.5)*S,3*S,3*S);ctx.fillStyle="#ffffff";ctx.fillRect((a.x-1)*S,(a.y-11)*S,2*S,2*S)}else text("GO",a.x,a.y-10,13,"#ffffff","center")}}
   for(const s of g.shots){ctx.fillStyle="#5fd456";ctx.fillRect((s.x-.5)*S,(s.y-3)*S,1*S,6*S)}
   for(const s of g.globs)spr(atlas.glob[(tick>>2)&1],s.x,s.y);
   for(const b of g.bugs)spr(atlas.bug[(tick>>1)&1],b.x,b.y);
@@ -230,7 +230,10 @@ export function mountOota(root,{onExit}={}){
    text(g.phase==="boss"?(g.L.final?"THE ADMIRAL":"BOSS"):`${g.L.name}${g.ships.length?`  +${g.ships.length} SHIPS`:""}`,155,168,12,"#d6cbe8","center")}
   if(!demo&&!sel.on)for(const a of ARROWS)spr(a.dir<0?atlas.arrowL:atlas.arrowR,a.x,a.y,arrowPtr?.dir===a.dir||(a.dir<0?shiftHold.l:shiftHold.r)?1:.55);
   if(sel.pick&&!demo)text("PICK A PARTNER",155,16,16,"#ff6fb5","center");
-  if(dial){ctx.fillStyle="rgba(255,255,255,.75)";ctx.fillRect(72*S,150*S,166*S,13*S);ctx.fillStyle="rgba(5,4,10,.8)";ctx.fillRect(72*S+3,150*S+3,166*S-6,13*S-6);const l=dial.lines[dial.i];text(l,155,159,14,l.startsWith("YOU")?"#5fd456":/^(BOSS|ADMIRAL)/.test(l)?"#ff5468":"#ffffff","center",null)}}
+  if(dial){const l=dial.lines[dial.i],c=l.startsWith("YOU")?"#5fd456":/^(BOSS|ADMIRAL)/.test(l)?"#ff5468":"#ffffff",i=l.indexOf(": "),who=l.slice(0,i),say=l.slice(i+2);
+   ctx.fillStyle="rgba(5,4,10,.92)";ctx.fillRect(2*S,156*S,53*S,22*S);ctx.strokeStyle=c;ctx.lineWidth=3;ctx.strokeRect(2*S+1,156*S+1,53*S-2,22*S-2);
+   text(who,4,162,11,c,"left",null);const words=say.split(" ");let line="",y=169;ctx.font='900 11px "Courier New",monospace';
+   for(const w of words){const t=line?line+" "+w:w;if(ctx.measureText(t).width>49*S&&line){text(line,4,y,11,"#ffffff","left",null);line=w;y+=7}else line=t}if(line&&y<180)text(line,4,y,11,"#ffffff","left",null)}}
  function draw(){tick++;const sx=shake>0&&!reduceMotion?(Math.random()-.5)*shake*S:0,sy=shake>0&&!reduceMotion?(Math.random()-.5)*shake*S:0;shake=Math.max(0,shake-.5);
   ctx.save();ctx.translate(sx,sy);drawWorld();ctx.restore();drawHud();if(!demo)drawOrderMenu();
   if(flash>0){ctx.fillStyle=`rgba(255,246,184,${flash/30})`;ctx.fillRect(0,0,CW,CH);flash--}
@@ -294,7 +297,7 @@ export function mountOota(root,{onExit}={}){
  function showMenu(){clearTimeout(endT);if(!demo){attract();audio.song("menu");audio.hyper?.(false);publish(true,true)}paused=false;focusPaused=false;dial=null;sel.menu=null;sel.pick=null;resetHolds();menu.open(titleScreen())}
  function startLevel(level){clearTimeout(endT);audio.unlock();const L0=LEVELS[level];
   g=createGame({difficulty:run.difficulty,level,seed:(Math.random()*2**32)>>>0,assist:opts.assist,carry:{me:run.me,score:run.score}});
-  demo=false;paused=false;focusPaused=false;submitted=false;result=null;particles=[];pops=[];fx=[];taps=[];inpQ={};resetHolds();menu.close();
+  demo=false;paused=false;focusPaused=false;submitted=false;result=null;dial=null;particles=[];pops=[];fx=[];taps=[];inpQ={};resetHolds();menu.close();
   sel.anchor=0;sel.scope=0;sel.menu=null;sel.pick=null;sel.ax=CX;sel.ay=20;
   audio.song(SONG[level]||"earth");audio.hyper?.(false);audio.music(true);
   banner(`LEVEL ${level+1}: ${L0.name}`,L0.kind==="bonus"?`BONUS STAGE // ${L0.brief}`:L0.brief);say(DIALOGUE[L0.id]);publish(true);canvas.focus?.({preventScroll:true})}

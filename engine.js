@@ -42,7 +42,7 @@ export function createGame({difficulty=2,level=0,seed=Date.now(),assist=false,ca
  const g={difficulty,level,D,L,assist,seed:seed>>>0,rand:r,frame:0,state:"play",phase:L.kind==="bonus"?"bonus":"planet",events:[],uid:1,z:1,
   spawner:{x:61,t:60},aliens:[],me:carry?.me?{...carry.me}:{speed:0,spit:0,bugs:0,spawn:0,armor:0,tentacles:0},man:null,manb:{speed:0,lasers:0,missiles:0,plazma:0,shields:0,option:0},manlives:3,
   skill:clamp(L.ai??0+0,0,4),ships:[],options:[],shots:[],manshots:[],missiles:[],plazmas:[],bugs:[],tentacles:[],globs:[],loots:[],sats:[],moons:[],bossShots:[],hazards:[],flares:[],ice:[],ufos:[],beams:[],
-  prise:-16,health:100,boss:null,menu:null,bigdive:0,rushCD:0,merge:null,timer:(L.time||0)*30,chain:0,chainT:0,bonusPts:0,
+  prise:2,health:100,boss:null,menu:null,bigdive:0,rushCD:0,merge:null,timer:(L.time||0)*30,chain:0,chainT:0,bonusPts:0,
   score:carry?.score||0,startScore:carry?.score||0,combo:0,level0:level,lvl:0,stage:0,kills:0,deaths:0,moonT:420,hazT:200,fleetT:1200,result:null};
  g.skill=clamp((L.ai||0)+D.ai,0,4);
  if(g.phase==="bonus")setupBonus(g);
