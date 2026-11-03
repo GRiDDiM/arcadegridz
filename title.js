@@ -47,7 +47,7 @@ export function createTitle({ctx,CW,CH,atlas,planetOf,skyOf,stars,audio,rumble,a
  function input(name){const p=T.phase;
   if(p==="intro"){if(name==="ok"||name==="start"||name==="back"){setPhase("press");T.slam=true}return true}
   if(p==="press"){if(name==="ok"||name==="start"){audio.sfx("ok");setPhase("menu");rumble?.(120,.5)}return true}
-  if(name==="up")move(-1);else if(name==="down")move(1);else if(name==="ok"||name==="start")choose();else if(name==="back"){if(T.list!=="main"){const up=T.list==="play"?"main":"play";T.idx=up==="main"?0:T.list==="defense"?2:1;T.list=up;audio.sfx("deny")}else{setPhase("press")}}return true}
+  if(name==="up")move(-1);else if(name==="down")move(1);else if(name==="ok"||name==="start")choose();else if(name==="back"){if(T.list!=="main"){const up=T.list==="play"?"main":"play";T.idx=up==="main"?0:T.list==="hdiff"?2:1;T.list=up;audio.sfx("deny")}else{setPhase("press")}}return true}
  function openList(name,idx=0){T.list=name;T.idx=idx;const L=list();if(L[T.idx]?.off())move(1)}
  // menu row geometry (canvas px) for mouse hit tests
  const rowY=i=>CH*.47+i*58;
