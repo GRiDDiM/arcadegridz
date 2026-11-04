@@ -136,8 +136,12 @@ public sealed partial class MainWindow : Window
                 appWindow.SetIcon(iconPath);
                 StartupLog.Write("window", "ArcadeGridz icon applied");
             }
-            appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
-            StartupLog.Write("window", "Fullscreen presenter active");
+            // the sign-in card floats as its own small window; everything else is fullscreen
+            if (!floating)
+            {
+                appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+                StartupLog.Write("window", "Fullscreen presenter active");
+            }
         }
         catch (Exception ex)
         {
@@ -407,10 +411,20 @@ public sealed partial class MainWindow : Window
         SetSignInPanel(false);
         StopStoryboard("CoverPulse");
         GameCover.Visibility = Visibility.Visible;
-        Launcher.Visibility = Visibility.Visible;
         Panel.Visibility = Visibility.Collapsed;
-        if (startupOpen && WelcomePanel.Visibility == Visibility.Visible) SetStartupFocus(startupFocus);
-        else SetLauncherFocus(LauncherFocus.GameGrid);
+        if (startupOpen && WelcomePanel.Visibility == Visibility.Visible)
+        {
+            // back on the floating sign-in card (e.g. cancelled email sign-in)
+            Launcher.Visibility = Visibility.Collapsed;
+            FloatWelcome();
+            SetStartupFocus(startupFocus);
+        }
+        else
+        {
+            if (floating) SetFloating(false);
+            Launcher.Visibility = Visibility.Visible;
+            SetLauncherFocus(LauncherFocus.GameGrid);
+        }
         QueueCatalogCheck();
     }
 
@@ -443,9 +457,10 @@ public sealed partial class MainWindow : Window
         // centered sign-in card over the (dimmed, inert) launcher, like Steam / Battle.net
         if (startupOpen && WelcomePanel.Visibility == Visibility.Visible) return;
         startupOpen = true;
-        Launcher.Visibility = Visibility.Visible;
+        Launcher.Visibility = Visibility.Collapsed;
         StartupLayer.Visibility = Visibility.Visible;
         WelcomePanel.Visibility = Visibility.Visible;
+        FloatWelcome();
         BeginStoryboard("InsertCoinBlink");
         SetStartupFocus(StartupFocus.Email);
         StartupLog.Write("window", "Welcome screen ready");
@@ -457,6 +472,7 @@ public sealed partial class MainWindow : Window
         StopStoryboard("InsertCoinBlink");
         StartupLayer.Visibility = Visibility.Collapsed;
         WelcomePanel.Visibility = Visibility.Collapsed;
+        if (floating) SetFloating(false);
         Launcher.Visibility = Visibility.Visible;
         if (guest)
             NetworkState.Text = NetworkState.Text.StartsWith("OFFLINE", StringComparison.OrdinalIgnoreCase)
@@ -837,7 +853,7 @@ public sealed partial class MainWindow : Window
             // the Network sign-in page shows in a centered card; the launcher stays visible (dimmed) behind it
             SetSignInPanel(true);
             GameLayer.Visibility = Visibility.Visible;
-            Launcher.Visibility = Visibility.Visible;
+            Launcher.Visibility = floating ? Visibility.Collapsed : Visibility.Visible;
             Panel.Visibility = Visibility.Collapsed;
             await webRuntime.NavigateAsync("https://arcadegridz.com/?host=winapp&mode=signin");
         }
@@ -1029,13 +1045,16 @@ public sealed partial class MainWindow : Window
         signInPanelOpen = open;
         SignInChrome.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         GameLayer.Background = open
-            ? new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0xCC, 0x05, 0x03, 0x12))
+            ? floating
+                ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgCardSolid"]
+                : new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0xCC, 0x05, 0x03, 0x12))
             : new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Black);
         if (open)
         {
             var h = Root.ActualHeight > 0 ? Root.ActualHeight : 900;
             // card = 84px header + page + 20px; the page is offset 64px so it sits under the header
-            var pageHeight = Math.Clamp(h - 220, 420, 700);
+            var pageHeight = floating ? 640 : Math.Clamp(h - 220, 420, 700);
+            if (floating) SetFloating(true, 560, pageHeight + 104);
             SignInCard.Height = pageHeight + 104;
             WebViewFrame.Width = 520;
             WebViewFrame.Height = pageHeight;
@@ -1163,12 +1182,67 @@ public sealed partial class MainWindow : Window
         SetLauncherFocus(LauncherFocus.SignIn);
     }
 
-    // X / B / Esc on the sign-in card: close it and keep browsing the arcade as a guest (SIGN IN stays in the header)
+    // X / B / Esc on the floating sign-in window exits the app (PLAY AS GUEST opens the arcade without an account)
     void CloseWelcome()
     {
-        StartupLog.Write("window", "Sign-in card closed");
-        EnterLauncher(true);
+        StartupLog.Write("window", "Sign-in window closed; exiting");
+        SplashWindow.Close();
+        Close();
     }
+
+    // ---- floating sign-in window: a small borderless window centered on the desktop (no fullscreen launcher) ----
+    bool floating;
+
+    void FloatWelcome()
+    {
+        WelcomeGlow.Visibility = Visibility.Collapsed;
+        WelcomeCard.Measure(new Windows.Foundation.Size(500, double.PositiveInfinity));
+        var height = WelcomeCard.DesiredSize.Height;
+        SetFloating(true, 500, height > 100 ? height : 680);
+    }
+
+    void SetFloating(bool on, double width = 0, double height = 0)
+    {
+        try
+        {
+            var hwnd = WindowNative.GetWindowHandle(this);
+            var appWindow = AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd));
+            floating = on;
+            var chrome = on ? Visibility.Collapsed : Visibility.Visible;
+            WelcomeGlow.Visibility = SignInGlow.Visibility = chrome;
+            WelcomeDim.Visibility = WelcomeScan.Visibility = chrome;
+            WelcomeFace.CornerRadius = SignInFace.CornerRadius = new CornerRadius(on ? 8 : 28);
+            Root.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[on ? "AgCardSolid" : "AgInk"];
+            if (on)
+            {
+                var scale = GetDpiForWindow(hwnd) / 96.0;
+                if (scale <= 0) scale = 1;
+                int w = (int)Math.Ceiling(width * scale), h = (int)Math.Ceiling(height * scale);
+                if (appWindow.Presenter.Kind != AppWindowPresenterKind.Overlapped)
+                {
+                    var presenter = OverlappedPresenter.Create();
+                    presenter.IsResizable = false;
+                    presenter.IsMaximizable = false;
+                    presenter.SetBorderAndTitleBar(false, false);
+                    appWindow.SetPresenter(presenter);
+                }
+                var area = DisplayArea.GetFromWindowId(appWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+                appWindow.MoveAndResize(new Windows.Graphics.RectInt32(area.X + (area.Width - w) / 2, area.Y + (area.Height - h) / 2, w, h));
+                int round = 2; // DWMWCP_ROUND
+                DwmSetWindowAttribute(hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, ref round, sizeof(int));
+                StartupLog.Write("window", $"Floating sign-in window {w}x{h}");
+            }
+            else
+            {
+                appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+                StartupLog.Write("window", "Fullscreen presenter active");
+            }
+        }
+        catch (Exception ex) { StartupLog.Exception("Floating sign-in window", ex); }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern uint GetDpiForWindow(IntPtr hwnd);
 
     void WelcomeClose_Click(object sender, RoutedEventArgs e) => CloseWelcome();
 }

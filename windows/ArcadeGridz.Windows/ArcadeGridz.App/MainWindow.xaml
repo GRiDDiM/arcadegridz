@@ -329,8 +329,8 @@
    <!-- Email sign-in: the Network sign-in page sits in a centered card over the dimmed launcher -->
    <Grid x:Name="SignInChrome" Visibility="Collapsed">
     <Grid x:Name="SignInCard" Width="560" HorizontalAlignment="Center" VerticalAlignment="Center">
-     <Border Margin="-8" CornerRadius="34" BorderThickness="8" BorderBrush="#225EE7FF"/>
-     <Border Background="{StaticResource AgCardSolid}" BorderBrush="#665EE7FF" BorderThickness="2" CornerRadius="28"/>
+     <Border x:Name="SignInGlow" Margin="-8" CornerRadius="34" BorderThickness="8" BorderBrush="#225EE7FF"/>
+     <Border x:Name="SignInFace" Background="{StaticResource AgCardSolid}" BorderBrush="#665EE7FF" BorderThickness="2" CornerRadius="28"/>
      <Rectangle Height="4" Width="110" RadiusX="2" RadiusY="2" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,14,0,0" Fill="{StaticResource AgNeonGradient}"/>
      <Grid VerticalAlignment="Top" Height="84" Margin="26,6,18,0">
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -369,11 +369,11 @@
   <Grid x:Name="StartupLayer" Background="Transparent">
    <!-- Sign-in: one centered card over the dimmed launcher (Steam / Battle.net style), not a full screen -->
    <Grid x:Name="WelcomePanel" Visibility="Collapsed">
-    <Rectangle Fill="#CC050312"/>
-    <Image Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.35" IsHitTestVisible="False"/>
-    <Grid Width="500" HorizontalAlignment="Center" VerticalAlignment="Center">
-     <Border Margin="-8" CornerRadius="34" BorderThickness="8" BorderBrush="#225EE7FF"/>
-     <Border Background="{StaticResource AgCardSolid}" BorderBrush="#665EE7FF" BorderThickness="2" CornerRadius="28" Padding="36,30,36,24">
+    <Rectangle x:Name="WelcomeDim" Fill="#CC050312"/>
+    <Image x:Name="WelcomeScan" Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.35" IsHitTestVisible="False"/>
+    <Grid x:Name="WelcomeCard" Width="500" HorizontalAlignment="Center" VerticalAlignment="Center">
+     <Border x:Name="WelcomeGlow" Margin="-8" CornerRadius="34" BorderThickness="8" BorderBrush="#225EE7FF"/>
+     <Border x:Name="WelcomeFace" Background="{StaticResource AgCardSolid}" BorderBrush="#665EE7FF" BorderThickness="2" CornerRadius="28" Padding="36,30,36,24">
       <StackPanel Spacing="10">
        <Rectangle Height="4" RadiusX="2" RadiusY="2" Width="110" HorizontalAlignment="Center" Fill="{StaticResource AgNeonGradient}" Margin="0,0,0,8"/>
        <Image Source="ms-appx:///Assets/arcadegridz-logo.png" Width="300" HorizontalAlignment="Center" Stretch="Uniform"/>
@@ -399,7 +399,7 @@
        </StackPanel>
       </StackPanel>
      </Border>
-     <Button x:Name="WelcomeCloseButton" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,14,14,0" Width="44" Height="44" Padding="0" CornerRadius="22" Click="WelcomeClose_Click" ToolTipService.ToolTip="Close (B / Esc) - keep playing as a guest">
+     <Button x:Name="WelcomeCloseButton" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,14,14,0" Width="44" Height="44" Padding="0" CornerRadius="22" Click="WelcomeClose_Click" ToolTipService.ToolTip="Exit ArcadeGridz (Esc)">
       <FontIcon Glyph="&#xE711;" FontFamily="{StaticResource AgIcons}" FontSize="16"/>
      </Button>
     </Grid>
