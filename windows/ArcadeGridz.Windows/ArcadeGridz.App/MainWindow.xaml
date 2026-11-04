@@ -336,7 +336,9 @@
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <Image Source="ms-appx:///Assets/arcadegridz-logo.png" Height="40" VerticalAlignment="Center" Stretch="Uniform"/>
       <TextBlock Grid.Column="1" Text="SIGN IN" Margin="16,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource AgNeonGradient}" FontFamily="{StaticResource AgDisplay}" FontSize="24"/>
-      <Button Grid.Column="2" x:Name="SignInCancelButton" Content="B  CANCEL" FontSize="10" Padding="14,9" VerticalAlignment="Center" Click="SignInCancel_Click"/>
+      <Button Grid.Column="2" x:Name="SignInCancelButton" Width="44" Height="44" Padding="0" CornerRadius="22" VerticalAlignment="Center" Click="SignInCancel_Click" ToolTipService.ToolTip="Close (B)">
+       <FontIcon Glyph="&#xE711;" FontFamily="{StaticResource AgIcons}" FontSize="16"/>
+      </Button>
      </Grid>
     </Grid>
    </Grid>
@@ -397,6 +399,9 @@
        </StackPanel>
       </StackPanel>
      </Border>
+     <Button x:Name="WelcomeCloseButton" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,14,14,0" Width="44" Height="44" Padding="0" CornerRadius="22" Click="WelcomeClose_Click" ToolTipService.ToolTip="Close (B / Esc) - keep playing as a guest">
+      <FontIcon Glyph="&#xE711;" FontFamily="{StaticResource AgIcons}" FontSize="16"/>
+     </Button>
     </Grid>
    </Grid>
   </Grid>

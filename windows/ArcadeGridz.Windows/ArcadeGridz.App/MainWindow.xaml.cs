@@ -468,6 +468,7 @@ public sealed partial class MainWindow : Window
 
     void HandleStartupAction(PadAction action)
     {
+        if (action == PadAction.B) { CloseWelcome(); return; }
         if (action is PadAction.Up or PadAction.Left)
             SetStartupFocus((StartupFocus)Math.Max(0, (int)startupFocus - 1));
         else if (action is PadAction.Down or PadAction.Right)
@@ -790,7 +791,12 @@ public sealed partial class MainWindow : Window
         // While a game runs every key belongs to the game: Escape/back opens the game's own pause menu there.
         // Games are left only through their EXIT GAME / QUIT menu items (or the SELECT+START combo).
         if (gameOpen) return;
-        if (e.Key == VirtualKey.Escape) { ReturnToLauncher(); e.Handled = true; }
+        if (e.Key == VirtualKey.Escape)
+        {
+            if (startupOpen && WelcomePanel.Visibility == Visibility.Visible) CloseWelcome();
+            else ReturnToLauncher();
+            e.Handled = true;
+        }
         else if (!gameOpen)
         {
             var action = e.Key switch
@@ -1156,4 +1162,13 @@ public sealed partial class MainWindow : Window
         ReturnToLauncher();
         SetLauncherFocus(LauncherFocus.SignIn);
     }
+
+    // X / B / Esc on the sign-in card: close it and keep browsing the arcade as a guest (SIGN IN stays in the header)
+    void CloseWelcome()
+    {
+        StartupLog.Write("window", "Sign-in card closed");
+        EnterLauncher(true);
+    }
+
+    void WelcomeClose_Click(object sender, RoutedEventArgs e) => CloseWelcome();
 }
