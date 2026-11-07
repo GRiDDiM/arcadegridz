@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using ArcadeGridz.App.Models;
 using ArcadeGridz.App.Runtimes;
 using ArcadeGridz.App.Services;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -23,6 +24,9 @@ public sealed partial class MainWindow : Window
     readonly SettingsService settings = SettingsService.Load();
     readonly UpdateService updates = new();
     readonly DesktopAuthService desktopAuth = new();
+    readonly DailyRewardsService daily = new();
+    DailyState? pendingDaily;
+    Microsoft.UI.Dispatching.DispatcherQueueTimer? launchWatchdog;
     readonly ObservableCollection<GameEntry> visible = [];
     readonly List<GameEntry> all = [];
     readonly List<string> categories = [];
@@ -35,7 +39,8 @@ public sealed partial class MainWindow : Window
     UpdateInfo? availableUpdate;
     LauncherFocus launcherFocus = LauncherFocus.GameGrid;
     int panelFocus;
-    int optionsTab; // 0 GAMES, 1 SYSTEM, 2 UPDATES, 3 ABOUT
+    int optionsTab; // 0 GAMES, 1 DISPLAY, 2 SYSTEM, 3 UPDATES, 4 ABOUT
+    const int OptionsTabCount = 5;
     NetworkAccount? account;
     StartupFocus startupFocus = StartupFocus.Email;
     bool startupOpen = true;
@@ -100,8 +105,10 @@ public sealed partial class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Stretch
         };
         WebViewHost.Children.Insert(0, view);
-        web = new WebGameRuntime(view);
+        web = new WebGameRuntime(view, settings.DisableGpu, settings.Quality);
         web.SetConsoleMode(consoleMode);
+        web.Error += error => DispatcherQueue.TryEnqueue(() => OnPageError(error));
+        web.Navigating += url => DispatcherQueue.TryEnqueue(() => OnGameNavigating(url));
         web.Exited += (_, _) => DispatcherQueue.TryEnqueue(ReturnToLauncher);
         web.AccountChanged += a => DispatcherQueue.TryEnqueue(() => SetAccount(a));
         web.Status += status => DispatcherQueue.TryEnqueue(() =>
@@ -111,12 +118,14 @@ public sealed partial class MainWindow : Window
             {
                 GameCover.Visibility = Visibility.Collapsed;
                 StopStoryboard("CoverPulse");
+                launchWatchdog?.Stop();
             }
             else if (status.Equals("auth", StringComparison.OrdinalIgnoreCase))
             {
                 NetworkState.Text = "SIGNED IN • GRID ONLINE";
                 StartupLog.Write("auth", "Desktop sign-in completed");
                 ReturnToLauncher();
+                CheckDailyRewards(force: true);
             }
         });
         return web;
@@ -124,7 +133,7 @@ public sealed partial class MainWindow : Window
 
     void OnActivated(object sender, WindowActivatedEventArgs e)
     {
-        if (e.WindowActivationState != WindowActivationState.Deactivated) QueueCatalogCheck();
+        if (e.WindowActivationState != WindowActivationState.Deactivated) { QueueCatalogCheck(); CheckDailyRewards(); }
         try
         {
             var hwnd = WindowNative.GetWindowHandle(this);
@@ -136,12 +145,8 @@ public sealed partial class MainWindow : Window
                 appWindow.SetIcon(iconPath);
                 StartupLog.Write("window", "ArcadeGridz icon applied");
             }
-            // the sign-in card floats as its own small window; everything else is fullscreen
-            if (!floating)
-            {
-                appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
-                StartupLog.Write("window", "Fullscreen presenter active");
-            }
+            // the sign-in card floats as its own small window; everything else is fullscreen (or windowed if chosen)
+            if (!floating && !dragging && !presenterApplied) ApplyMainPresenter();
         }
         catch (Exception ex)
         {
@@ -167,7 +172,12 @@ public sealed partial class MainWindow : Window
             initializingSettings = true;
             ShowAllToggle.IsOn = settings.ShowAll;
             StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
+            ScanlinesToggle.IsOn = !settings.HideScanlines;
+            GpuToggle.IsOn = !settings.DisableGpu;
+            DisplayModeCombo.SelectedIndex = settings.Windowed ? 1 : 0;
+            QualityCombo.SelectedIndex = 0; // HD isn't available yet
             initializingSettings = false;
+            ApplyScanlines();
             clockTimer = DispatcherQueue.CreateTimer();
             clockTimer.Interval = TimeSpan.FromSeconds(1);
             clockTimer.Tick += (_, _) => ClockText.Text = DateTime.Now.ToString("h:mm tt");
@@ -383,6 +393,7 @@ public sealed partial class MainWindow : Window
             GameLayer.Visibility = active == web ? Visibility.Visible : Visibility.Collapsed;
             Launcher.Visibility = Visibility.Collapsed;
             Panel.Visibility = Visibility.Collapsed;
+            StartLaunchWatchdog(g);
             await active.LaunchAsync(g);
         }
         catch (Exception ex)
@@ -407,6 +418,7 @@ public sealed partial class MainWindow : Window
     {
         gameOpen = false;
         active = null;
+        launchWatchdog?.Stop();
         GameLayer.Visibility = Visibility.Collapsed;
         SetSignInPanel(false);
         StopStoryboard("CoverPulse");
@@ -426,12 +438,18 @@ public sealed partial class MainWindow : Window
             SetLauncherFocus(LauncherFocus.GameGrid);
         }
         QueueCatalogCheck();
+        if (!TryShowDaily()) CheckDailyRewards();
     }
 
     async void PadPressed(PadAction action)
     {
         // GamepadService is driven by a DispatcherQueueTimer, so this already runs
         // on the UI thread. Handling it directly avoids a second queued UI hop.
+        if (DailyLayer.Visibility == Visibility.Visible)
+        {
+            if (action is PadAction.A or PadAction.B) CloseDaily();
+            return;
+        }
         if (startupOpen && WelcomePanel.Visibility == Visibility.Visible)
         {
             HandleStartupAction(action);
@@ -480,6 +498,7 @@ public sealed partial class MainWindow : Window
                 : "GUEST • " + NetworkState.Text;
         SetLauncherFocus(LauncherFocus.GameGrid);
         StartupLog.Write("window", guest ? "Entered launcher as guest" : "Entered launcher signed in");
+        TryShowDaily();
     }
 
     void HandleStartupAction(PadAction action)
@@ -677,7 +696,7 @@ public sealed partial class MainWindow : Window
         control.Focus(FocusState.Programmatic);
     }
 
-    Button[] OptionsTabButtons => [OptionsTabGames, OptionsTabSystem, OptionsTabUpdates, OptionsTabAbout];
+    Button[] OptionsTabButtons => [OptionsTabGames, OptionsTabDisplay, OptionsTabSystem, OptionsTabUpdates, OptionsTabAbout];
 
     List<Control> PanelControls()
     {
@@ -692,14 +711,21 @@ public sealed partial class MainWindow : Window
                     controls.Add(RefreshCatalogButton);
                     break;
                 case 1:
+                    controls.Add(ScreenCombo);
+                    controls.Add(DisplayModeCombo);
+                    controls.Add(QualityCombo);
+                    controls.Add(ScanlinesToggle);
+                    controls.Add(GpuToggle);
+                    break;
+                case 2:
                     controls.Add(StartWithWindowsToggle);
                     if (ConsoleModeButton.IsEnabled) controls.Add(ConsoleModeButton);
                     break;
-                case 2:
+                case 3:
                     if (CheckUpdateButton.IsEnabled) controls.Add(CheckUpdateButton);
                     if (InstallUpdateButton.IsEnabled) controls.Add(InstallUpdateButton);
                     break;
-                case 3:
+                case 4:
                     controls.Add(OptionsTermsButton);
                     controls.Add(OptionsPrivacyButton);
                     break;
@@ -707,6 +733,7 @@ public sealed partial class MainWindow : Window
         }
         else if (AccountControls.Visibility == Visibility.Visible)
         {
+            if (DailyButton.IsEnabled) controls.Add(DailyButton);
             if (SignOutButton.IsEnabled) controls.Add(SignOutButton);
         }
         else if (UpdateActions.Visibility == Visibility.Visible)
@@ -728,8 +755,18 @@ public sealed partial class MainWindow : Window
         if (options && (action is PadAction.LB or PadAction.RB || (onTabs && action is PadAction.Left or PadAction.Right)))
         {
             var delta = action is PadAction.LB or PadAction.Left ? -1 : 1;
-            SelectOptionsTab((optionsTab + delta + 4) % 4, keepFocusOnTabs: onTabs || action is PadAction.Left or PadAction.Right);
+            SelectOptionsTab((optionsTab + delta + OptionsTabCount) % OptionsTabCount, keepFocusOnTabs: onTabs || action is PadAction.Left or PadAction.Right);
             return;
+        }
+        // dropdowns: left/right flips through the choices (or up/down while the list is open); A opens / closes the list
+        if (current is ComboBox combo)
+        {
+            if (action is PadAction.Left or PadAction.Right || (combo.IsDropDownOpen && action is PadAction.Up or PadAction.Down))
+            {
+                StepCombo(combo, action is PadAction.Right or PadAction.Down ? 1 : -1);
+                return;
+            }
+            if (action == PadAction.A) { combo.IsDropDownOpen = !combo.IsDropDownOpen; return; }
         }
         if (action is PadAction.Up || (!options && action is PadAction.Left)) panelFocus = Math.Max(0, panelFocus - 1);
         else if (action is PadAction.Down || (!options && action is PadAction.Right)) panelFocus = Math.Min(controls.Count - 1, panelFocus + 1);
@@ -740,6 +777,9 @@ public sealed partial class MainWindow : Window
             if (onTabs) { panelFocus = Math.Min(1, controls.Count - 1); }
             else if (control == ShowAllToggle) ShowAllToggle.IsOn = !ShowAllToggle.IsOn;
             else if (control == StartWithWindowsToggle) StartWithWindowsToggle.IsOn = !StartWithWindowsToggle.IsOn;
+            else if (control == ScanlinesToggle) ScanlinesToggle.IsOn = !ScanlinesToggle.IsOn;
+            else if (control == GpuToggle) GpuToggle.IsOn = !GpuToggle.IsOn;
+            else if (control == DailyButton) { Daily_Click(this, new RoutedEventArgs()); return; }
             else if (control == RefreshCatalogButton) { if (RefreshCatalogButton.IsEnabled) RefreshCatalog_Click(this, new RoutedEventArgs()); return; }
             else if (control == ConsoleModeButton) ConsoleMode_Click(this, new RoutedEventArgs());
             else if (control == CheckUpdateButton) CheckUpdate_Click(this, new RoutedEventArgs());
@@ -763,16 +803,23 @@ public sealed partial class MainWindow : Window
         var line = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgLine"];
         ShowAllRow.BorderBrush = control == ShowAllToggle ? cyan : line;
         StartWithWindowsRow.BorderBrush = control == StartWithWindowsToggle ? cyan : line;
+        ScreenRow.BorderBrush = control == ScreenCombo ? cyan : line;
+        DisplayModeRow.BorderBrush = control == DisplayModeCombo ? cyan : line;
+        QualityRow.BorderBrush = control == QualityCombo ? cyan : line;
+        ScanlinesRow.BorderBrush = control == ScanlinesToggle ? cyan : line;
+        GpuRow.BorderBrush = control == GpuToggle ? cyan : line;
     }
 
     void SelectOptionsTab(int tab, bool keepFocusOnTabs = true)
     {
-        optionsTab = Math.Clamp(tab, 0, 3);
+        optionsTab = Math.Clamp(tab, 0, OptionsTabCount - 1);
+        if (optionsTab == 1) RefreshScreens();
         OptionsGamesTab.Visibility = optionsTab == 0 ? Visibility.Visible : Visibility.Collapsed;
-        OptionsSystemTab.Visibility = optionsTab == 1 ? Visibility.Visible : Visibility.Collapsed;
-        UpdateCard.Visibility = optionsTab == 2 ? Visibility.Visible : Visibility.Collapsed;
-        OptionsAboutTab.Visibility = optionsTab == 3 ? Visibility.Visible : Visibility.Collapsed;
-        OptionsLegal.Visibility = optionsTab == 3 ? Visibility.Visible : Visibility.Collapsed;
+        OptionsDisplayTab.Visibility = optionsTab == 1 ? Visibility.Visible : Visibility.Collapsed;
+        OptionsSystemTab.Visibility = optionsTab == 2 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateCard.Visibility = optionsTab == 3 ? Visibility.Visible : Visibility.Collapsed;
+        OptionsAboutTab.Visibility = optionsTab == 4 ? Visibility.Visible : Visibility.Collapsed;
+        OptionsLegal.Visibility = optionsTab == 4 ? Visibility.Visible : Visibility.Collapsed;
         var pink = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
         var selectedFill = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x44, 0xFF, 0x3A, 0xA7));
         var buttons = OptionsTabButtons;
@@ -804,6 +851,20 @@ public sealed partial class MainWindow : Window
     void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (consoleMode) { e.Handled = true; return; }
+        if (DailyLayer.Visibility == Visibility.Visible)
+        {
+            if (e.Key is VirtualKey.Enter or VirtualKey.Space or VirtualKey.Escape) { CloseDaily(); e.Handled = true; }
+            return;
+        }
+        // Ctrl+Shift+Left/Right: hop the arcade to the next screen (handy for the TV)
+        if (!gameOpen && e.Key is VirtualKey.Left or VirtualKey.Right &&
+            Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down) &&
+            Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down))
+        {
+            MoveToNextScreen(e.Key == VirtualKey.Right ? 1 : -1);
+            e.Handled = true;
+            return;
+        }
         // While a game runs every key belongs to the game: Escape/back opens the game's own pause menu there.
         // Games are left only through their EXIT GAME / QUIT menu items (or the SELECT+START combo).
         if (gameOpen) return;
@@ -1145,6 +1206,7 @@ public sealed partial class MainWindow : Window
             }
             else AccountAvatar.Visibility = AccountPanelAvatar.Visibility = Visibility.Collapsed;
             if (!NetworkState.Text.StartsWith("OFFLINE", StringComparison.OrdinalIgnoreCase)) NetworkState.Text = "GRID ONLINE";
+            CheckDailyRewards();
         }
         else if (NetworkState.Text.StartsWith("SIGNED IN", StringComparison.OrdinalIgnoreCase)) NetworkState.Text = "GRID ONLINE";
         if (launcherFocus == LauncherFocus.SignIn && Launcher.Visibility == Visibility.Visible && Panel.Visibility != Visibility.Visible && !startupOpen)
@@ -1165,6 +1227,8 @@ public sealed partial class MainWindow : Window
         AccountControls.Visibility = Visibility.Visible;
         SignOutButton.IsEnabled = true;
         SignOutButton.Content = "SIGN OUT";
+        DailyButton.IsEnabled = true;
+        DailyButton.Content = "DAILY REWARDS";
         Panel.Visibility = Visibility.Visible;
         Launcher.Visibility = Visibility.Collapsed;
         panelFocus = 0;
@@ -1207,6 +1271,7 @@ public sealed partial class MainWindow : Window
         {
             var hwnd = WindowNative.GetWindowHandle(this);
             var appWindow = AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd));
+            var wasFloating = floating && appWindow.Presenter.Kind == AppWindowPresenterKind.Overlapped;
             floating = on;
             var chrome = on ? Visibility.Collapsed : Visibility.Visible;
             WelcomeGlow.Visibility = SignInGlow.Visibility = chrome;
@@ -1215,10 +1280,11 @@ public sealed partial class MainWindow : Window
             Root.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[on ? "AgCardSolid" : "AgInk"];
             if (on)
             {
+                presenterApplied = false;
                 var scale = GetDpiForWindow(hwnd) / 96.0;
                 if (scale <= 0) scale = 1;
                 int w = (int)Math.Ceiling(width * scale), h = (int)Math.Ceiling(height * scale);
-                if (appWindow.Presenter.Kind != AppWindowPresenterKind.Overlapped)
+                if (appWindow.Presenter.Kind != AppWindowPresenterKind.Overlapped || !wasFloating)
                 {
                     var presenter = OverlappedPresenter.Create();
                     presenter.IsResizable = false;
@@ -1226,16 +1292,29 @@ public sealed partial class MainWindow : Window
                     presenter.SetBorderAndTitleBar(false, false);
                     appWindow.SetPresenter(presenter);
                 }
-                var area = DisplayArea.GetFromWindowId(appWindow.Id, DisplayAreaFallback.Primary).WorkArea;
-                appWindow.MoveAndResize(new Windows.Graphics.RectInt32(area.X + (area.Width - w) / 2, area.Y + (area.Height - h) / 2, w, h));
+                // first time: the saved screen (e.g. the TV); after that, stay on whatever screen the card was dragged to
+                var screen = wasFloating ? ScreenOfWindow(appWindow) : SavedScreen() ?? ScreenOfWindow(appWindow);
+                int ax, ay, aw, ah;
+                if (screen is not null) { ax = screen.WorkX; ay = screen.WorkY; aw = screen.WorkWidth; ah = screen.WorkHeight; }
+                else { var area = DisplayArea.GetFromWindowId(appWindow.Id, DisplayAreaFallback.Primary).WorkArea; ax = area.X; ay = area.Y; aw = area.Width; ah = area.Height; }
+                if (wasFloating)
+                {
+                    // keep the card where the player put it, just resized around its center
+                    var cx = appWindow.Position.X + appWindow.Size.Width / 2;
+                    var cy = appWindow.Position.Y + appWindow.Size.Height / 2;
+                    var x = Math.Clamp(cx - w / 2, ax, Math.Max(ax, ax + aw - w));
+                    var y = Math.Clamp(cy - h / 2, ay, Math.Max(ay, ay + ah - h));
+                    appWindow.MoveAndResize(new Windows.Graphics.RectInt32(x, y, w, h));
+                }
+                else appWindow.MoveAndResize(new Windows.Graphics.RectInt32(ax + (aw - w) / 2, ay + (ah - h) / 2, w, h));
                 int round = 2; // DWMWCP_ROUND
                 DwmSetWindowAttribute(hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, ref round, sizeof(int));
-                StartupLog.Write("window", $"Floating sign-in window {w}x{h}");
+                StartupLog.Write("window", $"Floating sign-in window {w}x{h} on {screen?.Label ?? "primary"}");
             }
             else
             {
-                appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
-                StartupLog.Write("window", "Fullscreen presenter active");
+                // the arcade opens on the screen the sign-in card is on (drag it to the TV first, if you like)
+                ApplyMainPresenter(ScreenOfWindow(appWindow));
             }
         }
         catch (Exception ex) { StartupLog.Exception("Floating sign-in window", ex); }
@@ -1245,4 +1324,382 @@ public sealed partial class MainWindow : Window
     static extern uint GetDpiForWindow(IntPtr hwnd);
 
     void WelcomeClose_Click(object sender, RoutedEventArgs e) => CloseWelcome();
+
+    // ======== screens: fullscreen / windowed on the chosen monitor or TV ========
+    bool presenterApplied, dragging, initializingDisplay;
+    List<ScreenInfo> screens = [];
+
+    AppWindow MainAppWindow() =>
+        AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(WindowNative.GetWindowHandle(this)));
+
+    ScreenInfo? SavedScreen()
+    {
+        if (screens.Count == 0) screens = DisplayService.Detect();
+        return DisplayService.Find(screens, settings.Display);
+    }
+
+    ScreenInfo? ScreenOfWindow(AppWindow appWindow)
+    {
+        screens = DisplayService.Detect();
+        int cx = appWindow.Position.X + appWindow.Size.Width / 2, cy = appWindow.Position.Y + appWindow.Size.Height / 2;
+        return screens.FirstOrDefault(s => s.Contains(cx, cy)) ?? screens.FirstOrDefault(s => s.Primary) ?? screens.FirstOrDefault();
+    }
+
+    /// <summary>Puts the arcade fullscreen (or in a normal window) on a screen; null = the saved screen, else where it is now.</summary>
+    void ApplyMainPresenter(ScreenInfo? target = null)
+    {
+        presenterApplied = true; // set first: switching presenters can re-raise Activated
+        try
+        {
+            var appWindow = MainAppWindow();
+            target ??= SavedScreen() ?? ScreenOfWindow(appWindow);
+            if (target is not null)
+            {
+                // move while overlapped: a fullscreen window can't be moved, it takes the screen it is on
+                if (appWindow.Presenter.Kind != AppWindowPresenterKind.Overlapped) appWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
+                int w = settings.Windowed ? target.WorkWidth * 3 / 4 : Math.Min(target.WorkWidth, 1280);
+                int h = settings.Windowed ? target.WorkHeight * 3 / 4 : Math.Min(target.WorkHeight, 720);
+                appWindow.MoveAndResize(new Windows.Graphics.RectInt32(target.WorkX + (target.WorkWidth - w) / 2, target.WorkY + (target.WorkHeight - h) / 2, w, h));
+            }
+            if (settings.Windowed)
+            {
+                var presenter = OverlappedPresenter.Create();
+                presenter.IsResizable = true;
+                presenter.IsMaximizable = true;
+                presenter.IsMinimizable = true;
+                presenter.SetBorderAndTitleBar(true, true);
+                appWindow.SetPresenter(presenter);
+            }
+            else appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+            if (target is not null && settings.Display != target.Key) { settings.Display = target.Key; settings.Save(); }
+            StartupLog.Write("window", $"{(settings.Windowed ? "Windowed" : "Fullscreen")} on {target?.Label ?? "current screen"}");
+            // refresh the dropdown after this event finishes (never swap its items inside its own SelectionChanged)
+            if (OptionsDisplayTab.Visibility == Visibility.Visible) DispatcherQueue.TryEnqueue(RefreshScreens);
+        }
+        catch (Exception ex) { StartupLog.Exception("Apply presenter", ex); }
+    }
+
+    void MoveToNextScreen(int delta)
+    {
+        screens = DisplayService.Detect();
+        if (screens.Count < 2) return;
+        var current = ScreenOfWindow(MainAppWindow());
+        var i = current is null ? 0 : screens.FindIndex(s => s.Key == current.Key);
+        ApplyMainPresenter(screens[((i + delta) % screens.Count + screens.Count) % screens.Count]);
+    }
+
+    void RefreshScreens()
+    {
+        initializingDisplay = true;
+        try
+        {
+            var current = ScreenOfWindow(MainAppWindow()); // also re-detects, so a TV switched on later shows up
+            ScreenCombo.ItemsSource = screens.Select(s => s.Label).ToList();
+            ScreenCombo.SelectedIndex = current is null ? -1 : screens.FindIndex(s => s.Key == current.Key);
+            ScreenCombo.IsEnabled = screens.Count > 1 && !floating;
+            ScreenHint.Text = screens.Count > 1
+                ? $"{screens.Count} screens found. Pick the monitor or TV to play on."
+                : "Only one screen found. Plug in or turn on your TV, then reopen this tab.";
+            DisplayModeCombo.SelectedIndex = settings.Windowed ? 1 : 0;
+        }
+        finally { initializingDisplay = false; }
+    }
+
+    void ScreenCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (initializingDisplay || initializingSettings || ScreenCombo.SelectedIndex < 0 || ScreenCombo.SelectedIndex >= screens.Count) return;
+        var target = screens[ScreenCombo.SelectedIndex];
+        ApplyMainPresenter(target);
+        DisplayStatus.Text = $"NOW PLAYING ON {target.Name}.";
+    }
+
+    void DisplayModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (initializingDisplay || initializingSettings || DisplayModeCombo.SelectedIndex < 0) return;
+        var windowed = DisplayModeCombo.SelectedIndex == 1;
+        if (windowed == settings.Windowed) return;
+        settings.Windowed = windowed;
+        settings.Save();
+        ApplyMainPresenter(ScreenOfWindow(MainAppWindow()));
+        DisplayStatus.Text = windowed ? "WINDOWED. DRAG THE TITLE BAR ANYWHERE, OR MAXIMIZE IT." : "FULLSCREEN.";
+    }
+
+    void QualityCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (initializingSettings || QualityCombo.SelectedIndex < 0) return;
+        settings.Quality = QualityCombo.SelectedIndex == 1 ? "hd" : "standard";
+        settings.Save();
+        if (web is not null) web.Quality = settings.Quality;
+    }
+
+    void ScanlinesToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (initializingSettings) return;
+        settings.HideScanlines = !ScanlinesToggle.IsOn;
+        settings.Save();
+        ApplyScanlines();
+    }
+
+    void ApplyScanlines()
+    {
+        var on = !settings.HideScanlines;
+        LauncherScan.Opacity = on ? 0.6 : 0;
+        CoverScan.Opacity = on ? 0.6 : 0;
+        WelcomeScan.Opacity = on ? 0.35 : 0;
+    }
+
+    void GpuToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (initializingSettings) return;
+        settings.DisableGpu = !GpuToggle.IsOn;
+        settings.Save();
+        DisplayStatus.Text = GpuToggle.IsOn
+            ? "HARDWARE ACCELERATION ON. RESTART ARCADEGRIDZ TO APPLY."
+            : "HARDWARE ACCELERATION OFF (ONLY FOR GLITCHY GRAPHICS). RESTART ARCADEGRIDZ TO APPLY.";
+    }
+
+    static void StepCombo(ComboBox combo, int delta)
+    {
+        var count = combo.Items.Count;
+        if (count == 0) return;
+        var i = combo.SelectedIndex;
+        for (int n = 0; n < count; n++)
+        {
+            i = Math.Clamp(i + delta, 0, count - 1);
+            if (combo.Items[i] is not ComboBoxItem { IsEnabled: false }) { combo.SelectedIndex = i; return; }
+            if (i == 0 || i == count - 1) return;
+        }
+    }
+
+    // ======== drag the window: the sign-in card anywhere, the fullscreen arcade by its background ========
+    Windows.Foundation.Point? dragStart;
+
+    void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (consoleMode || e.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse) return;
+        var point = e.GetCurrentPoint(Root);
+        if (!point.Properties.IsLeftButtonPressed) return;
+        if (floating && !signInPanelOpen || floating && point.Position.Y < 90)
+        {
+            // the floating sign-in card (or the email card's header): drag it like a title bar
+            e.Handled = true;
+            BeginNativeMove(false);
+            return;
+        }
+        if (gameOpen || startupOpen || settings.Windowed) return;
+        dragStart = point.Position;
+    }
+
+    void Root_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (dragStart is not { } start || dragging) return;
+        var point = e.GetCurrentPoint(Root);
+        if (!point.Properties.IsLeftButtonPressed) { dragStart = null; return; }
+        if (Math.Abs(point.Position.X - start.X) + Math.Abs(point.Position.Y - start.Y) < 24) return;
+        dragStart = null;
+        BeginNativeMove(true);
+    }
+
+    void Root_PointerReleased(object sender, PointerRoutedEventArgs e) => dragStart = null;
+
+    void BeginNativeMove(bool fromFullscreen)
+    {
+        try
+        {
+            var hwnd = WindowNative.GetWindowHandle(this);
+            var appWindow = MainAppWindow();
+            if (fromFullscreen)
+            {
+                // shrink to a window under the cursor, let Windows drag it, then go fullscreen on the screen it lands on
+                dragging = true;
+                GetCursorPos(out var cursor);
+                var screen = screens.Count > 0 ? screens.FirstOrDefault(s => s.Contains(cursor.X, cursor.Y)) : null;
+                screen ??= ScreenOfWindow(appWindow);
+                int w = Math.Max(640, (screen?.Width ?? 1920) * 45 / 100), h = Math.Max(360, (screen?.Height ?? 1080) * 45 / 100);
+                var presenter = OverlappedPresenter.Create();
+                presenter.IsResizable = false;
+                presenter.IsMaximizable = false;
+                presenter.SetBorderAndTitleBar(false, false);
+                appWindow.SetPresenter(presenter);
+                appWindow.MoveAndResize(new Windows.Graphics.RectInt32(cursor.X - w / 2, cursor.Y - 40, w, h));
+                StartupLog.Write("window", "Dragging the arcade to another screen");
+            }
+            Root.ReleasePointerCaptures();
+            ReleaseCapture();
+            SendMessage(hwnd, 0x00A1 /* WM_NCLBUTTONDOWN */, (IntPtr)2 /* HTCAPTION */, IntPtr.Zero); // returns on mouse up
+            if (fromFullscreen)
+            {
+                GetCursorPos(out var drop);
+                screens = DisplayService.Detect();
+                var target = screens.FirstOrDefault(s => s.Contains(drop.X, drop.Y)) ?? ScreenOfWindow(appWindow);
+                ApplyMainPresenter(target);
+            }
+        }
+        catch (Exception ex)
+        {
+            StartupLog.Exception("Drag window", ex);
+            if (fromFullscreen) ApplyMainPresenter();
+        }
+        finally { dragging = false; }
+    }
+
+    [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
+    [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT point);
+    [DllImport("user32.dll")] static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    // ======== games never show the website: cover until the game runs, bail out if it can't ========
+    void StartLaunchWatchdog(GameEntry g)
+    {
+        launchWatchdog?.Stop();
+        launchWatchdog = DispatcherQueue.CreateTimer();
+        launchWatchdog.Interval = TimeSpan.FromSeconds(30);
+        launchWatchdog.IsRepeating = false;
+        launchWatchdog.Tick += async (_, _) =>
+        {
+            if (!gameOpen || signInPanelOpen || GameCover.Visibility != Visibility.Visible) return;
+            StartupLog.Write("runtime", $"Launch watchdog: {g.Id} never started");
+            await ExitGame();
+            ShowMessage("GAME DIDN'T START", $"{g.Name} took too long to load. Check your connection and try again.");
+        };
+        launchWatchdog.Start();
+    }
+
+    void OnGameNavigating(string url)
+    {
+        // any page load during a game (sign-in bounce, reload) stays behind the loading cover until the game is running again
+        if (!gameOpen || signInPanelOpen || !ReferenceEquals(active, web) || url.StartsWith("about:", StringComparison.OrdinalIgnoreCase)) return;
+        if (GameCover.Visibility != Visibility.Visible)
+        {
+            GameCover.Visibility = Visibility.Visible;
+            BeginStoryboard("CoverPulse");
+            if (GameGrid.SelectedItem is GameEntry g) StartLaunchWatchdog(g);
+        }
+    }
+
+    async void OnPageError(string error)
+    {
+        if (!gameOpen || signInPanelOpen || !ReferenceEquals(active, web)) return;
+        var name = GameCoverTitle.Text;
+        await ExitGame();
+        ShowMessage("GAME DIDN'T START", error switch
+        {
+            "unknown_game" => $"{name} isn't in the arcade right now. Refresh the game list in Options and try again.",
+            "app_page_lost" => $"{name} lost its connection while loading. Please try again.",
+            _ => $"{name} couldn't start ({error}). Please try again."
+        });
+    }
+
+    // ======== daily rewards, natively (same Network rewards as the websites, no web page) ========
+    async void CheckDailyRewards(bool force = false)
+    {
+        try
+        {
+            if (account is null || web?.Token is not { Length: > 0 } token) return;
+            var state = await daily.VisitAsync(token, account.Id, force);
+            if (state is null || state.NewSparkz <= 0) return;
+            pendingDaily = state;
+            TryShowDaily();
+        }
+        catch (Exception ex) { StartupLog.Exception("Daily rewards", ex); }
+    }
+
+    bool TryShowDaily()
+    {
+        if (pendingDaily is null || gameOpen || startupOpen || floating || Launcher.Visibility != Visibility.Visible || Panel.Visibility == Visibility.Visible) return false;
+        var state = pendingDaily;
+        pendingDaily = null;
+        ShowDaily(state, fresh: true);
+        return true;
+    }
+
+    async void Daily_Click(object sender, RoutedEventArgs e)
+    {
+        if (web?.Token is not { Length: > 0 } token) return;
+        DailyButton.IsEnabled = false;
+        DailyButton.Content = "LOADING...";
+        var state = await daily.StateAsync(token);
+        DailyButton.IsEnabled = true;
+        DailyButton.Content = "DAILY REWARDS";
+        if (state is null) { DailyButton.Content = "REWARDS UNAVAILABLE · TRY AGAIN"; return; }
+        Panel.Visibility = Visibility.Collapsed;
+        Launcher.Visibility = Visibility.Visible;
+        ShowDaily(state, fresh: false);
+    }
+
+    void ShowDaily(DailyState state, bool fresh)
+    {
+        var stage = state.Stage;
+        DailyEyebrow.Text = fresh ? "GRiDDiM NETWORK  ·  DAILY REWARD" : "GRiDDiM NETWORK  ·  DAILY REWARDS";
+        DailySubtitle.Text = $"CYCLE {state.Cycle:00}  ·  {stage} / 7 SEALS RESTORED";
+        DailySeals.Children.Clear();
+        var gold = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgGold"];
+        var cyan = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgCyan"];
+        var dim = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgDim"];
+        var ink = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgInk"];
+        var pixel = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["AgPixel"];
+        var display = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["AgDisplay"];
+        for (int day = 1; day <= 7; day++)
+        {
+            var lit = day <= stage;
+            var today = day == stage;
+            var seal = new Border
+            {
+                Width = 74, Height = 92, CornerRadius = new CornerRadius(14), BorderThickness = new Thickness(today ? 3 : 2),
+                BorderBrush = lit ? (day == 7 ? gold : cyan) : dim,
+                Background = lit ? new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x55, 0x5E, 0xE7, 0xFF)) : new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x99, 0x0C, 0x0A, 0x26)),
+                Child = new StackPanel
+                {
+                    VerticalAlignment = VerticalAlignment.Center, Spacing = 8,
+                    Children =
+                    {
+                        new TextBlock { Text = $"DAY {day}", FontFamily = pixel, FontSize = 8, Foreground = lit ? ink : dim, HorizontalAlignment = HorizontalAlignment.Center },
+                        new TextBlock { Text = lit ? (day == 7 ? "✦" : "◆") : "◇", FontFamily = display, FontSize = 26, Foreground = lit ? (day == 7 ? gold : cyan) : dim, HorizontalAlignment = HorizontalAlignment.Center },
+                        new TextBlock { Text = day == 7 ? $"+{state.StreakBonus:N0}" : lit ? "LINKED" : "SEALED", FontFamily = pixel, FontSize = 7, Foreground = lit ? ink : dim, HorizontalAlignment = HorizontalAlignment.Center }
+                    }
+                }
+            };
+            if (lit) ((StackPanel)seal.Child).Children.OfType<TextBlock>().ToList().ForEach(t => { if (t.Text != "◆" && t.Text != "✦") t.Foreground = cyan; });
+            DailySeals.Children.Add(seal);
+        }
+        var total = state.NewSparkz;
+        DailyDrop.Text = total > 0 ? $"+{total:N0} SPARKZ" : stage == 7 ? "CORE UNLOCKED" : stage > 0 ? "CHECKED IN" : "NO SIGNAL YET";
+        DailyDropNote.Text = total > 0
+            ? string.Join("  ·  ", state.Rewards!.Where(r => r.Amount > 0).Select(r => $"+{r.Amount:N0} {(r.Name ?? "REWARD").ToUpperInvariant()}")) + "\nAlready added to your balance."
+            : stage == 7 ? "The core is open. Tomorrow starts a new seven-seal cycle." : "Come back tomorrow to release the next seal.";
+        DailyBalance.Text = "✦ " + state.BalanceText;
+        DailyStreak.Text = $"{state.Streak} {(state.Streak == 1 ? "DAY" : "DAYS")}";
+        DailyBonus.Text = $"+{state.StreakBonus:N0}";
+        DailyQuests.Children.Clear();
+        foreach (var q in state.Quests ?? [])
+        {
+            var row = new Grid { ColumnSpacing = 12 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var mark = new TextBlock { Text = q.Completed ? "✓" : "○", FontSize = 18, Foreground = q.Completed ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgGreen"] : dim, VerticalAlignment = VerticalAlignment.Center };
+            var copy = new StackPanel { Spacing = 2 };
+            copy.Children.Add(new TextBlock { Text = (q.Name ?? "").ToUpperInvariant(), FontFamily = pixel, FontSize = 9, Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgText"], TextWrapping = TextWrapping.Wrap });
+            if (!string.IsNullOrWhiteSpace(q.Description)) copy.Children.Add(new TextBlock { Text = q.Description, FontSize = 13, Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMuted"], TextWrapping = TextWrapping.Wrap });
+            var reward = new TextBlock { Text = $"+{q.Reward:N0} ✦", FontFamily = display, FontSize = 16, Foreground = gold, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(copy, 1);
+            Grid.SetColumn(reward, 2);
+            row.Children.Add(mark);
+            row.Children.Add(copy);
+            row.Children.Add(reward);
+            DailyQuests.Children.Add(new Border { Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x99, 0x0C, 0x0A, 0x26)), CornerRadius = new CornerRadius(10), Padding = new Thickness(14, 8, 14, 8), Child = row });
+        }
+        DailyCloseLabel.Text = total > 0 ? "COLLECT" : "CLOSE";
+        DailyLayer.Visibility = Visibility.Visible;
+        DailyCloseButton.Focus(FocusState.Programmatic);
+        StartupLog.Write("daily", $"Shown; fresh={fresh}; stage={stage}; new={total}");
+    }
+
+    void CloseDaily()
+    {
+        DailyLayer.Visibility = Visibility.Collapsed;
+        if (Launcher.Visibility == Visibility.Visible) SetLauncherFocus(launcherFocus);
+    }
+
+    void DailyClose_Click(object sender, RoutedEventArgs e) => CloseDaily();
 }

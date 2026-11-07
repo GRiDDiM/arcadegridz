@@ -1,5 +1,5 @@
 <Window x:Class="ArcadeGridz.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:m="using:ArcadeGridz.App.Models" xmlns:local="using:ArcadeGridz.App" Title="ArcadeGridz">
- <Grid x:Name="Root" Background="{StaticResource AgInk}" PreviewKeyDown="Root_KeyDown">
+ <Grid x:Name="Root" Background="{StaticResource AgInk}" PreviewKeyDown="Root_KeyDown" PointerPressed="Root_PointerPressed" PointerMoved="Root_PointerMoved" PointerReleased="Root_PointerReleased">
   <Grid.Resources>
    <Storyboard x:Key="CoverPulse" RepeatBehavior="Forever" AutoReverse="True">
     <DoubleAnimation Storyboard.TargetName="GameCoverLoading" Storyboard.TargetProperty="Opacity" From="1" To="0.3" Duration="0:0:0.55"/>
@@ -95,7 +95,7 @@
      </RadialGradientBrush>
     </Rectangle.Fill>
    </Rectangle>
-   <Image Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.6"/>
+   <Image x:Name="LauncherScan" Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.6" IsHitTestVisible="False"/>
    <Rectangle Height="4" VerticalAlignment="Top" Fill="{StaticResource AgNeonGradient}"/>
   </Grid>
 
@@ -264,10 +264,11 @@
          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
          <Border Style="{StaticResource PadChip}" VerticalAlignment="Center" Margin="0,0,12,0"><TextBlock Text="LB" Style="{StaticResource PadChipText}"/></Border>
          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-          <Button x:Name="OptionsTabGames" Tag="0" Content="GAMES" FontSize="11" Padding="18,10" MinWidth="120" Click="OptionsTab_Click"/>
-          <Button x:Name="OptionsTabSystem" Tag="1" Content="SYSTEM" FontSize="11" Padding="18,10" MinWidth="120" Click="OptionsTab_Click"/>
-          <Button x:Name="OptionsTabUpdates" Tag="2" Content="UPDATES" FontSize="11" Padding="18,10" MinWidth="120" Click="OptionsTab_Click"/>
-          <Button x:Name="OptionsTabAbout" Tag="3" Content="ABOUT" FontSize="11" Padding="18,10" MinWidth="120" Click="OptionsTab_Click"/>
+          <Button x:Name="OptionsTabGames" Tag="0" Content="GAMES" FontSize="11" Padding="14,10" MinWidth="104" Click="OptionsTab_Click"/>
+          <Button x:Name="OptionsTabDisplay" Tag="1" Content="DISPLAY" FontSize="11" Padding="14,10" MinWidth="104" Click="OptionsTab_Click"/>
+          <Button x:Name="OptionsTabSystem" Tag="2" Content="SYSTEM" FontSize="11" Padding="14,10" MinWidth="104" Click="OptionsTab_Click"/>
+          <Button x:Name="OptionsTabUpdates" Tag="3" Content="UPDATES" FontSize="11" Padding="14,10" MinWidth="104" Click="OptionsTab_Click"/>
+          <Button x:Name="OptionsTabAbout" Tag="4" Content="ABOUT" FontSize="11" Padding="14,10" MinWidth="104" Click="OptionsTab_Click"/>
          </StackPanel>
          <Border Grid.Column="2" Style="{StaticResource PadChip}" VerticalAlignment="Center" Margin="12,0,0,0"><TextBlock Text="RB" Style="{StaticResource PadChipText}"/></Border>
         </Grid>
@@ -276,6 +277,43 @@
           <ToggleSwitch x:Name="ShowAllToggle" Header="SHOW UNSUPPORTED GAMES (THEY WON'T LAUNCH)" Toggled="ShowAllToggle_Toggled"/>
          </Border>
          <Button x:Name="RefreshCatalogButton" Content="REFRESH GAME LIST" Click="RefreshCatalog_Click" HorizontalAlignment="Stretch" Margin="0,4,0,0"/>
+        </StackPanel>
+        <!-- DISPLAY: which screen, fullscreen/windowed, graphics -->
+        <StackPanel x:Name="OptionsDisplayTab" Spacing="10" Visibility="Collapsed">
+         <Border x:Name="ScreenRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,12">
+          <Grid ColumnSpacing="16">
+           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="380"/></Grid.ColumnDefinitions>
+           <StackPanel VerticalAlignment="Center" Spacing="4"><TextBlock Text="SCREEN" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgText}"/><TextBlock x:Name="ScreenHint" Text="Pick the monitor or TV ArcadeGridz plays on." Foreground="{StaticResource AgMuted}" FontFamily="{StaticResource AgBody}" FontSize="13" TextWrapping="Wrap"/></StackPanel>
+           <ComboBox x:Name="ScreenCombo" Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" SelectionChanged="ScreenCombo_SelectionChanged"/>
+          </Grid>
+         </Border>
+         <Border x:Name="DisplayModeRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,12">
+          <Grid ColumnSpacing="16">
+           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="380"/></Grid.ColumnDefinitions>
+           <StackPanel VerticalAlignment="Center" Spacing="4"><TextBlock Text="DISPLAY MODE" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgText}"/><TextBlock Text="Windowed lets you size and drag it like any app." Foreground="{StaticResource AgMuted}" FontFamily="{StaticResource AgBody}" FontSize="13" TextWrapping="Wrap"/></StackPanel>
+           <ComboBox x:Name="DisplayModeCombo" Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" SelectionChanged="DisplayModeCombo_SelectionChanged">
+            <x:String>FULLSCREEN</x:String>
+            <x:String>WINDOWED</x:String>
+           </ComboBox>
+          </Grid>
+         </Border>
+         <Border x:Name="QualityRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,12">
+          <Grid ColumnSpacing="16">
+           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="380"/></Grid.ColumnDefinitions>
+           <StackPanel VerticalAlignment="Center" Spacing="4"><TextBlock Text="GRAPHICS QUALITY" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgText}"/><TextBlock x:Name="QualityHint" Text="HD remakes of some games are on the way." Foreground="{StaticResource AgMuted}" FontFamily="{StaticResource AgBody}" FontSize="13" TextWrapping="Wrap"/></StackPanel>
+           <ComboBox x:Name="QualityCombo" Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" SelectionChanged="QualityCombo_SelectionChanged">
+            <ComboBoxItem Content="STANDARD"/>
+            <ComboBoxItem Content="HD  ·  COMING SOON" IsEnabled="False"/>
+           </ComboBox>
+          </Grid>
+         </Border>
+         <Border x:Name="ScanlinesRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,10">
+          <ToggleSwitch x:Name="ScanlinesToggle" Header="CRT SCANLINES ON MENUS" Toggled="ScanlinesToggle_Toggled"/>
+         </Border>
+         <Border x:Name="GpuRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,10">
+          <ToggleSwitch x:Name="GpuToggle" Header="HARDWARE ACCELERATION (APPLIES NEXT LAUNCH)" Toggled="GpuToggle_Toggled"/>
+         </Border>
+         <TextBlock x:Name="DisplayStatus" Text="TIP: DRAG THE TOP OF THE ARCADE TO ANOTHER SCREEN." Style="{StaticResource PixelLabel}" FontSize="8" Foreground="{StaticResource AgDim}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
         </StackPanel>
         <StackPanel x:Name="OptionsSystemTab" Spacing="12" Visibility="Collapsed">
          <Border x:Name="StartWithWindowsRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,14">
@@ -300,6 +338,7 @@
         <TextBlock x:Name="AccountPanelName" HorizontalAlignment="Center" Foreground="{StaticResource AgText}" FontFamily="{StaticResource AgDisplay}" FontSize="26" TextTrimming="CharacterEllipsis" Margin="0,8,0,0"/>
         <TextBlock x:Name="AccountPanelUsername" HorizontalAlignment="Center" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgCyan}"/>
         <TextBlock Text="SIGNED IN TO THE GRiDDiM NETWORK  ·  SCORES POST TO YOUR PROFILE" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Style="{StaticResource PixelLabel}" FontSize="8" Foreground="{StaticResource AgDim}" Margin="0,4,0,8"/>
+        <Button x:Name="DailyButton" Content="DAILY REWARDS" Click="Daily_Click" HorizontalAlignment="Stretch"/>
         <Button x:Name="SignOutButton" Style="{StaticResource DangerButton}" Content="SIGN OUT" Click="SignOut_Click" HorizontalAlignment="Stretch"/>
        </StackPanel>
        <Border x:Name="UpdateCard" Visibility="Collapsed" Margin="0,0,0,6" Background="#990C0A26" BorderBrush="#339F7CFF" BorderThickness="1" CornerRadius="14" Padding="22,18">
@@ -355,7 +394,7 @@
       </LinearGradientBrush>
      </Rectangle.Fill>
     </Rectangle>
-    <Image Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.6" IsHitTestVisible="False"/>
+    <Image x:Name="CoverScan" Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.6" IsHitTestVisible="False"/>
     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="22">
      <TextBlock x:Name="GameCoverTitle" Text="ARCADEGRIDZ" FontFamily="{StaticResource AgDisplay}" FontSize="64" Foreground="{StaticResource AgNeonGradient}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="1200"/>
      <ProgressBar IsIndeterminate="True" Width="360" Foreground="{StaticResource AgCyan}" Background="#22FFFFFF"/>
@@ -363,6 +402,36 @@
     </StackPanel>
    </Grid>
    <Border Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top" Background="#CC000000" Padding="12,6"><TextBlock x:Name="GameStatus" Text="LOADING" Foreground="{StaticResource AgCyan}"/></Border>
+  </Grid>
+
+  <!-- ===== Daily rewards (native; the app never loads the website's popup) ===== -->
+  <Grid x:Name="DailyLayer" Visibility="Collapsed" Background="#E607051A">
+   <Image Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.3" IsHitTestVisible="False"/>
+   <Grid MaxWidth="820" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40">
+    <Border Margin="-8" CornerRadius="34" BorderThickness="8" BorderBrush="#33FFC14D"/>
+    <Border Background="{StaticResource AgCardSolid}" BorderBrush="#99FFC14D" BorderThickness="2" CornerRadius="28" Padding="44,30">
+     <StackPanel Spacing="12">
+      <TextBlock x:Name="DailyEyebrow" Text="GRiDDiM NETWORK  ·  DAILY REWARDS" HorizontalAlignment="Center" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgGold}"/>
+      <TextBlock HorizontalAlignment="Center" FontFamily="{StaticResource AgDisplay}" FontSize="44" Foreground="{StaticResource AgNeonGradient}" Text="SIGNAL VAULT"/>
+      <TextBlock x:Name="DailySubtitle" Text="Seven days. Seven seals. Restore the signal." HorizontalAlignment="Center" Foreground="{StaticResource AgMuted}" FontFamily="{StaticResource AgBody}" FontSize="15"/>
+      <StackPanel x:Name="DailySeals" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,10,0,4"/>
+      <TextBlock x:Name="DailyDrop" HorizontalAlignment="Center" FontFamily="{StaticResource AgDisplay}" FontSize="40" Foreground="{StaticResource AgGold}" Text="+0 SPARKZ"/>
+      <TextBlock x:Name="DailyDropNote" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource AgText}" FontFamily="{StaticResource AgBody}" FontSize="15"/>
+      <Grid ColumnSpacing="12" Margin="0,6,0,0">
+       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+       <Border Background="#990C0A26" CornerRadius="12" Padding="14,10"><StackPanel Spacing="4"><TextBlock Text="YOUR SPARKZ" Style="{StaticResource PixelLabel}" FontSize="8"/><TextBlock x:Name="DailyBalance" FontFamily="{StaticResource AgDisplay}" FontSize="22" Foreground="{StaticResource AgCyan}"/></StackPanel></Border>
+       <Border Grid.Column="1" Background="#990C0A26" CornerRadius="12" Padding="14,10"><StackPanel Spacing="4"><TextBlock Text="STREAK" Style="{StaticResource PixelLabel}" FontSize="8"/><TextBlock x:Name="DailyStreak" FontFamily="{StaticResource AgDisplay}" FontSize="22" Foreground="{StaticResource AgPink}"/></StackPanel></Border>
+       <Border Grid.Column="2" Background="#990C0A26" CornerRadius="12" Padding="14,10"><StackPanel Spacing="4"><TextBlock Text="DAY 7 BONUS" Style="{StaticResource PixelLabel}" FontSize="8"/><TextBlock x:Name="DailyBonus" FontFamily="{StaticResource AgDisplay}" FontSize="22" Foreground="{StaticResource AgGold}"/></StackPanel></Border>
+      </Grid>
+      <TextBlock Text="DAILY SIGNALS" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgViolet}" Margin="0,8,0,0"/>
+      <StackPanel x:Name="DailyQuests" Spacing="6"/>
+      <TextBlock Text="RESETS AT MIDNIGHT PACIFIC  ·  A MISSED DAY RESTARTS THE SEALS" HorizontalAlignment="Center" Style="{StaticResource PixelLabel}" FontSize="7" Foreground="{StaticResource AgDim}" Margin="0,4,0,0"/>
+      <Button x:Name="DailyCloseButton" Click="DailyClose_Click" HorizontalAlignment="Stretch" Margin="0,8,0,0">
+       <StackPanel Orientation="Horizontal" Spacing="12"><Border Style="{StaticResource PadChip}" Margin="0"><TextBlock Text="A" Style="{StaticResource PadChipText}"/></Border><TextBlock x:Name="DailyCloseLabel" Text="COLLECT" VerticalAlignment="Center"/></StackPanel>
+      </Button>
+     </StackPanel>
+    </Border>
+   </Grid>
   </Grid>
 
   <!-- ===== Splash + welcome / sign-in ===== -->

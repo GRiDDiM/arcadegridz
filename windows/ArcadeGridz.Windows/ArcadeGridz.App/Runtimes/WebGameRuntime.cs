@@ -9,8 +9,10 @@ namespace ArcadeGridz.App.Runtimes;
 /// <summary>The signed-in Network account as the site reports it (name, @username, avatar URL).</summary>
 public sealed record NetworkAccount(string Id, string Name, string Username, string Avatar);
 
-public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
+public sealed class WebGameRuntime(WebView2 view, bool disableGpu = false, string quality = "standard") : IGameRuntime
 {
+    /// <summary>"standard" or "hd"; appended to game URLs as gfx=... so HD remakes can pick it up.</summary>
+    public string Quality { get; set; } = quality;
     TaskCompletionSource? signedOut;
     /// <summary>Raised with the account after sign-in / session check, or null after sign-out.</summary>
     public event Action<NetworkAccount?>? AccountChanged;
@@ -21,6 +23,29 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
     TaskCompletionSource<bool>? sessionCheck;
     public event EventHandler? Exited;
     public event Action<string>? Status;
+    /// <summary>The page reported a problem (e.g. the game could not start, or the app page was lost).</summary>
+    public event Action<string>? Error;
+    /// <summary>A top-level navigation started (url). Lets the app cover the view until the game says "started".</summary>
+    public event Action<string>? Navigating;
+    /// <summary>The Network session token for this app's web profile (null when signed out).</summary>
+    public string? Token { get; private set; }
+
+    // Every document in the app's WebView is marked as "inside the ag app" before any site script runs, so the
+    // site never shows its own popups (daily rewards, tours, notices) or website chrome here, even if a sign-in
+    // bounce drops ?host=winapp from the URL.
+    const string AppMarkerScript = """
+        (() => {
+          try { window.__AG_WINAPP__ = true; document.documentElement.classList.add('ag-winapp'); } catch (e) {}
+        })();
+        """;
+
+    static bool AllowedHost(Uri uri) =>
+        uri.Scheme is "about" or "data" ||
+        (uri.Scheme == Uri.UriSchemeHttps && (
+            uri.Host.Equals("arcadegridz.com", StringComparison.OrdinalIgnoreCase) ||
+            uri.Host.EndsWith(".arcadegridz.com", StringComparison.OrdinalIgnoreCase) ||
+            uri.Host.Equals("griddim.com", StringComparison.OrdinalIgnoreCase) ||
+            uri.Host.EndsWith(".griddim.com", StringComparison.OrdinalIgnoreCase)));
 
     public bool CanRun(GameEntry game) =>
         game.Runtime.Type.Equals("web", StringComparison.OrdinalIgnoreCase) &&
@@ -36,12 +61,31 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
             try { browserVersion = CoreWebView2Environment.GetAvailableBrowserVersionString(); }
             catch (Exception ex) { browserVersion = $"unavailable ({ex.Message})"; }
             StartupLog.Write("webview", $"Initializing; browser={browserVersion}; profile={AppPaths.WebView}");
-            var environment = await CoreWebView2Environment.CreateWithOptionsAsync(null, AppPaths.WebView, null);
+            var options = new CoreWebView2EnvironmentOptions { AdditionalBrowserArguments = disableGpu ? "--disable-gpu" : "" };
+            StartupLog.Write("webview", $"GPU acceleration={(disableGpu ? "off" : "on")}");
+            var environment = await CoreWebView2Environment.CreateWithOptionsAsync(null, AppPaths.WebView, options);
             await view.EnsureCoreWebView2Async(environment);
             view.CoreWebView2.Settings.AreDevToolsEnabled = false;
             view.CoreWebView2.Settings.IsStatusBarEnabled = false;
             if (consoleMode) await InstallConsoleInputLockAsync();
+            await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(AppMarkerScript);
             view.CoreWebView2.WebMessageReceived += OnMessage;
+            // the app never opens other websites or popup windows; links that try are dropped
+            view.CoreWebView2.NewWindowRequested += (_, e) =>
+            {
+                e.Handled = true;
+                StartupLog.Write("webview", $"Blocked popup window {e.Uri}");
+            };
+            view.CoreWebView2.NavigationStarting += (_, e) =>
+            {
+                if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) || !AllowedHost(uri))
+                {
+                    e.Cancel = true;
+                    StartupLog.Write("webview", $"Blocked navigation to {e.Uri}");
+                    return;
+                }
+                Navigating?.Invoke(e.Uri);
+            };
             ready = true;
             StartupLog.Write("webview", "CoreWebView2 initialized");
         }
@@ -55,8 +99,10 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
     public async Task LaunchAsync(GameEntry game, CancellationToken ct = default)
     {
         await EnsureAsync();
-        StartupLog.Write("webview", $"Navigate game={game.Id}; url={game.Runtime.Url}");
-        view.Source = new Uri(game.Runtime.Url!);
+        var url = game.Runtime.Url!;
+        url += (url.Contains('?') ? "&" : "?") + "gfx=" + Uri.EscapeDataString(Quality);
+        StartupLog.Write("webview", $"Navigate game={game.Id}; url={url}");
+        view.Source = new Uri(url);
     }
 
     public async Task NavigateAsync(string url)
@@ -72,6 +118,19 @@ public sealed class WebGameRuntime(WebView2 view) : IGameRuntime
         {
             using var document = JsonDocument.Parse(e.WebMessageAsJson);
             var type = document.RootElement.GetProperty("type").GetString() ?? "";
+            if (type is "hello" or "auth")
+            {
+                Token = document.RootElement.TryGetProperty("token", out var tok) && tok.ValueKind == JsonValueKind.String && tok.GetString() is { Length: > 0 } t
+                    ? t
+                    : type == "auth" ? Token : null;
+            }
+            else if (type == "signedout") Token = null;
+            if (type == "error")
+            {
+                var error = document.RootElement.TryGetProperty("error", out var err) ? err.ToString() : "unknown";
+                StartupLog.Write("webview", $"Page error: {error}");
+                Error?.Invoke(error);
+            }
             if (type is "hello" or "auth" && document.RootElement.TryGetProperty("account", out var acct) && acct.ValueKind == JsonValueKind.Object)
             {
                 string Str(string name) => acct.TryGetProperty(name, out var v) && v.ValueKind != JsonValueKind.Null ? v.ToString() : "";
