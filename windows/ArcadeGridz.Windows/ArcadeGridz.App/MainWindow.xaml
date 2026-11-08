@@ -100,6 +100,8 @@
   </Grid>
 
   <!-- ===== Game browser ===== -->
+  <!-- the browser is laid out for 1600x900+ and scaled down to fit smaller screens (720p TVs, scaled laptops) -->
+  <Viewbox x:Name="LauncherScaler" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
   <Grid x:Name="Launcher" Visibility="Collapsed">
    <Grid.RowDefinitions><RowDefinition Height="118"/><RowDefinition Height="78"/><RowDefinition Height="*"/><RowDefinition Height="66"/></Grid.RowDefinitions>
 
@@ -248,6 +250,7 @@
     </Grid>
    </Border>
   </Grid>
+  </Viewbox>
 
   <!-- ===== Options / message panel ===== -->
   <Grid x:Name="Panel" Visibility="Collapsed" Background="#D907051A">
@@ -441,6 +444,26 @@
    <Grid x:Name="WelcomePanel" Visibility="Collapsed">
     <Rectangle x:Name="WelcomeDim" Fill="#CC050312"/>
     <Image x:Name="WelcomeScan" Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.35" IsHitTestVisible="False"/>
+    <!-- update prompt shown before sign-in when a newer ag app is out -->
+    <Grid x:Name="UpdatePromptCard" Width="500" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+     <Border Background="{StaticResource AgCardSolid}" BorderBrush="#99FFC14D" BorderThickness="2" CornerRadius="8" Padding="36,30,36,26">
+      <StackPanel Spacing="12">
+       <Rectangle Height="4" RadiusX="2" RadiusY="2" Width="110" HorizontalAlignment="Center" Fill="{StaticResource AgNeonGradient}" Margin="0,0,0,6"/>
+       <Image Source="ms-appx:///Assets/arcadegridz-logo.png" Width="260" HorizontalAlignment="Center" Stretch="Uniform"/>
+       <TextBlock Text="UPDATE READY" HorizontalAlignment="Center" Foreground="{StaticResource AgGold}" FontFamily="{StaticResource AgDisplay}" FontSize="30"/>
+       <TextBlock x:Name="UpdatePromptVersion" HorizontalAlignment="Center" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgCyan}"/>
+       <TextBlock x:Name="UpdatePromptText" Text="A newer ArcadeGridz is out. Update now so you get the latest fixes before you sign in." HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource AgMuted}" FontFamily="{StaticResource AgBody}" FontSize="14"/>
+       <ProgressBar x:Name="UpdatePromptProgress" Minimum="0" Maximum="100" Height="6" Visibility="Collapsed" Margin="0,4,0,4"/>
+       <Button x:Name="UpdateNowButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="56" Click="UpdateNow_Click">
+        <StackPanel Orientation="Horizontal" Spacing="18"><FontIcon Glyph="&#xE896;" FontFamily="{StaticResource AgIcons}" FontSize="20"/><TextBlock x:Name="UpdateNowLabel" Text="UPDATE NOW" VerticalAlignment="Center"/></StackPanel>
+       </Button>
+       <Button x:Name="UpdateLaterButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="56" Click="UpdateLater_Click">
+        <StackPanel Orientation="Horizontal" Spacing="18"><FontIcon Glyph="&#xE72A;" FontFamily="{StaticResource AgIcons}" FontSize="20"/><TextBlock Text="NOT NOW" VerticalAlignment="Center"/></StackPanel>
+       </Button>
+       <TextBlock Text="D-PAD  NAVIGATE     A  SELECT     B  NOT NOW" Style="{StaticResource PixelLabel}" FontSize="8" Foreground="{StaticResource AgDim}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+      </StackPanel>
+     </Border>
+    </Grid>
     <Grid x:Name="WelcomeCard" Width="500" HorizontalAlignment="Center" VerticalAlignment="Center">
      <Border x:Name="WelcomeGlow" Margin="-8" CornerRadius="34" BorderThickness="8" BorderBrush="#225EE7FF"/>
      <Border x:Name="WelcomeFace" Background="{StaticResource AgCardSolid}" BorderBrush="#665EE7FF" BorderThickness="2" CornerRadius="28" Padding="36,30,36,24">

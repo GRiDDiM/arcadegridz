@@ -90,6 +90,7 @@ public sealed partial class MainWindow : Window
             GameGrid.ItemsSource = visible;
             // mouse wheel scrolls the game grid (handled ourselves so nothing in the tile template can swallow it)
             Root.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler(Root_PointerWheelChanged), true);
+            Root.SizeChanged += (_, _) => FitLauncher();
             native.Exited += (_, _) => DispatcherQueue.TryEnqueue(ReturnToLauncher);
             Activated += OnActivated;
             Root.Loaded += OnLoaded;
@@ -194,7 +195,9 @@ public sealed partial class MainWindow : Window
             catalogTimer.Interval = TimeSpan.FromMinutes(5);
             catalogTimer.Tick += (_, _) => QueueCatalogCheck();
             catalogTimer.Start();
+            var updateCheck = StartupUpdateCheckAsync();
             var hasPersistedSession = await EnsureWebRuntime().HasPersistedSessionAsync();
+            var startupUpdate = await updateCheck;
             // keep the logo up for at least ~1.2s so it reads as a splash, not a flicker
             var wait = MinimumSplash - SinceLaunch.Elapsed;
             splashTimer = DispatcherQueue.CreateTimer();
@@ -207,12 +210,22 @@ public sealed partial class MainWindow : Window
                 {
                     if (hasPersistedSession && !signInPanelOpen) NetworkState.Text = "SIGNED IN • GRID ONLINE";
                 }
-                else if (hasPersistedSession)
+                else
                 {
-                    NetworkState.Text = "SIGNED IN • GRID ONLINE";
-                    EnterLauncher(false);
+                    void Continue()
+                    {
+                        if (hasPersistedSession)
+                        {
+                            NetworkState.Text = "SIGNED IN • GRID ONLINE";
+                            if (floating) SetFloating(false);
+                            EnterLauncher(false);
+                        }
+                        else ShowWelcome();
+                    }
+                    // a newer app is out: offer it before the sign-in screen (it may change sign-in too)
+                    if (startupUpdate is not null && !signInPanelOpen) ShowUpdatePrompt(startupUpdate, Continue);
+                    else Continue();
                 }
-                else ShowWelcome();
                 Reveal();
             };
             splashTimer.Start();
@@ -460,6 +473,7 @@ public sealed partial class MainWindow : Window
             if (action is PadAction.A or PadAction.B) CloseDaily();
             return;
         }
+        if (updatePromptOpen) { HandleUpdatePromptAction(action); return; }
         if (startupOpen && WelcomePanel.Visibility == Visibility.Visible)
         {
             HandleStartupAction(action);
@@ -501,6 +515,7 @@ public sealed partial class MainWindow : Window
         StartupLayer.Visibility = Visibility.Collapsed;
         WelcomePanel.Visibility = Visibility.Collapsed;
         if (floating) SetFloating(false);
+        FitLauncher();
         Launcher.Visibility = Visibility.Visible;
         if (guest)
             NetworkState.Text = NetworkState.Text.StartsWith("OFFLINE", StringComparison.OrdinalIgnoreCase)
@@ -864,6 +879,14 @@ public sealed partial class MainWindow : Window
     void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (consoleMode) { e.Handled = true; return; }
+        if (updatePromptOpen)
+        {
+            // Enter/Space activate the focused button natively; Esc = not now, arrows move between the two
+            if (e.Key == VirtualKey.Escape) { UpdateLater_Click(this, new RoutedEventArgs()); e.Handled = true; }
+            else if (e.Key is VirtualKey.Up or VirtualKey.Left) { UpdateNowButton.Focus(FocusState.Keyboard); e.Handled = true; }
+            else if (e.Key is VirtualKey.Down or VirtualKey.Right) { UpdateLaterButton.Focus(FocusState.Keyboard); e.Handled = true; }
+            return;
+        }
         if (DailyLayer.Visibility == Visibility.Visible)
         {
             if (e.Key is VirtualKey.Enter or VirtualKey.Space or VirtualKey.Escape) { CloseDaily(); e.Handled = true; }
@@ -1729,7 +1752,8 @@ public sealed partial class MainWindow : Window
 
     // ======== mouse wheel: scroll the game grid ========
     ScrollViewer? gridScroller;
-    bool wheelLogged;
+    bool wheelLogged, wheelDiagLogged;
+    double launcherScale = 1;
 
     void Root_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
@@ -1738,17 +1762,31 @@ public sealed partial class MainWindow : Window
         if (e.Handled && e.OriginalSource is DependencyObject src && FindAncestor<ScrollViewer>(src) is { } sv && ReferenceEquals(sv, gridScroller ??= FindChild<ScrollViewer>(GameGrid))) return;
         if (Launcher.Visibility != Visibility.Visible || Panel.Visibility == Visibility.Visible || gameOpen || DailyLayer.Visibility == Visibility.Visible) return;
         var point = e.GetCurrentPoint(Root);
-        var origin = GameGrid.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, 0));
-        var over = point.Position.X >= origin.X && point.Position.X <= origin.X + GameGrid.ActualWidth &&
-                   point.Position.Y >= origin.Y && point.Position.Y <= origin.Y + GameGrid.ActualHeight;
-        if (!over) return;
+        // bounds in Root coordinates (the launcher is scaled by a Viewbox, so ActualWidth/Height alone would be off)
+        var bounds = GameGrid.TransformToVisual(Root).TransformBounds(new Windows.Foundation.Rect(0, 0, GameGrid.ActualWidth, GameGrid.ActualHeight));
+        var over = bounds.Contains(point.Position);
         gridScroller ??= FindChild<ScrollViewer>(GameGrid);
-        if (gridScroller is null) return;
+        if (!wheelDiagLogged)
+        {
+            wheelDiagLogged = true;
+            StartupLog.Write("input", $"Wheel: over={over}; grid={GameGrid.ActualWidth:0}x{GameGrid.ActualHeight:0}; scroller={(gridScroller is null ? "none" : $"extent={gridScroller.ExtentHeight:0} viewport={gridScroller.ViewportHeight:0} scrollable={gridScroller.ScrollableHeight:0}")}; root={Root.ActualWidth:0}x{Root.ActualHeight:0}; scale={launcherScale:0.00}");
+        }
+        if (!over) return;
         var delta = point.Properties.MouseWheelDelta; // +120 per notch away from the user
         if (delta == 0) return;
-        var target = Math.Clamp(gridScroller.VerticalOffset - delta / 120.0 * 150, 0, gridScroller.ScrollableHeight);
-        gridScroller.ChangeView(null, target, null, false);
         e.Handled = true;
+        if (gridScroller is not null && gridScroller.ScrollableHeight > 1)
+        {
+            var target = Math.Clamp(gridScroller.VerticalOffset - delta / 120.0 * 150, 0, gridScroller.ScrollableHeight);
+            gridScroller.ChangeView(null, target, null, false);
+            return;
+        }
+        // fallback: step the selection a row at a time (like the d-pad), which scrolls the picked card into view
+        if (visible.Count == 0) return;
+        var cols = GridColumns();
+        var i = Math.Clamp(Math.Max(0, GameGrid.SelectedIndex) + (delta > 0 ? -cols : cols), 0, visible.Count - 1);
+        GameGrid.SelectedIndex = i;
+        GameGrid.ScrollIntoView(GameGrid.SelectedItem);
     }
 
     static T? FindAncestor<T>(DependencyObject node) where T : DependencyObject
@@ -1767,5 +1805,127 @@ public sealed partial class MainWindow : Window
             if (FindChild<T>(child) is { } deeper) return deeper;
         }
         return null;
+    }
+
+    // ======== fit the game browser to small screens ========
+    const double DesignHeight = 900, DesignWidth = 1500;
+
+    void FitLauncher()
+    {
+        var w = Root.ActualWidth;
+        var h = Root.ActualHeight;
+        if (w < 100 || h < 100) return;
+        var scale = Math.Min(1, Math.Min(h / DesignHeight, w / DesignWidth));
+        if (Math.Abs(scale - launcherScale) < 0.001 && Math.Abs(Launcher.Width - w / scale) < 0.5 && Math.Abs(Launcher.Height - h / scale) < 0.5) return;
+        launcherScale = scale;
+        Launcher.Width = w / scale;
+        Launcher.Height = h / scale;
+        StartupLog.Write("window", $"Game browser fit: window={w:0}x{h:0}; scale={scale:0.00}");
+    }
+
+    // ======== update check before the sign-in screen ========
+    bool updatePromptOpen;
+    Action? afterUpdatePrompt;
+
+    async Task<UpdateInfo?> StartupUpdateCheckAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+            var result = await updates.CheckAsync(cts.Token);
+            StartupLog.Write("update", $"Startup check; installed={result.InstalledVersion}; available={result.Update?.Version}");
+            availableUpdate = result.Update;
+            if (result.Update is not null) InstallUpdateButton.IsEnabled = true;
+            return result.Update;
+        }
+        catch (Exception ex)
+        {
+            StartupLog.Write("update", $"Startup check skipped: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
+    }
+
+    void ShowUpdatePrompt(UpdateInfo update, Action continueWith)
+    {
+        afterUpdatePrompt = continueWith;
+        updatePromptOpen = true;
+        startupOpen = true;
+        Launcher.Visibility = Visibility.Collapsed;
+        Panel.Visibility = Visibility.Collapsed;
+        StartupLayer.Visibility = Visibility.Visible;
+        WelcomePanel.Visibility = Visibility.Visible;
+        WelcomeCard.Visibility = Visibility.Collapsed;
+        UpdatePromptCard.Visibility = Visibility.Visible;
+        UpdatePromptVersion.Text = $"V{UpdateService.InstalledVersion}  →  V{update.Version}";
+        UpdatePromptProgress.Visibility = Visibility.Collapsed;
+        UpdateNowButton.IsEnabled = UpdateLaterButton.IsEnabled = true;
+        UpdateNowLabel.Text = "UPDATE NOW";
+        UpdatePromptCard.Measure(new Windows.Foundation.Size(500, double.PositiveInfinity));
+        var height = UpdatePromptCard.DesiredSize.Height;
+        SetFloating(true, 500, height > 100 ? height : 520);
+        UpdateNowButton.Focus(FocusState.Programmatic);
+        StartupLog.Write("update", $"Prompting before sign-in: {update.Version}");
+    }
+
+    void CloseUpdatePrompt()
+    {
+        updatePromptOpen = false;
+        UpdatePromptCard.Visibility = Visibility.Collapsed;
+        WelcomeCard.Visibility = Visibility.Visible;
+        WelcomePanel.Visibility = Visibility.Collapsed;
+        startupOpen = false;
+        var next = afterUpdatePrompt;
+        afterUpdatePrompt = null;
+        next?.Invoke();
+    }
+
+    void UpdateLater_Click(object sender, RoutedEventArgs e)
+    {
+        if (!UpdateLaterButton.IsEnabled) return;
+        StartupLog.Write("update", "Startup prompt: not now");
+        CloseUpdatePrompt();
+    }
+
+    async void UpdateNow_Click(object sender, RoutedEventArgs e)
+    {
+        if (availableUpdate is null || !UpdateNowButton.IsEnabled) return;
+        var update = availableUpdate;
+        UpdateNowButton.IsEnabled = UpdateLaterButton.IsEnabled = false;
+        UpdatePromptProgress.Value = 0;
+        UpdatePromptProgress.Visibility = Visibility.Visible;
+        UpdateNowLabel.Text = "DOWNLOADING...";
+        try
+        {
+            var progress = new Progress<double>(value =>
+            {
+                UpdatePromptProgress.Value = value * 100;
+                UpdateNowLabel.Text = $"DOWNLOADING  {value:P0}";
+            });
+            var installer = await updates.DownloadAsync(update, progress);
+            UpdateNowLabel.Text = "INSTALLING...";
+            StartupLog.Write("update", $"Startup prompt: verified installer for {update.Version}: {installer}");
+            UpdateService.InstallAndRestart(installer);
+        }
+        catch (Exception ex)
+        {
+            StartupLog.Exception("Startup update install", ex);
+            UpdatePromptText.Text = "The update couldn't be downloaded. You can try again from Options > UPDATES.";
+            UpdatePromptProgress.Visibility = Visibility.Collapsed;
+            UpdateNowLabel.Text = "TRY AGAIN";
+            UpdateNowButton.IsEnabled = UpdateLaterButton.IsEnabled = true;
+            UpdateLaterButton.Focus(FocusState.Programmatic);
+        }
+    }
+
+    void HandleUpdatePromptAction(PadAction action)
+    {
+        if (action == PadAction.B) { UpdateLater_Click(this, new RoutedEventArgs()); return; }
+        if (action is PadAction.Up or PadAction.Left) UpdateNowButton.Focus(FocusState.Programmatic);
+        else if (action is PadAction.Down or PadAction.Right) UpdateLaterButton.Focus(FocusState.Programmatic);
+        else if (action == PadAction.A)
+        {
+            if (UpdateLaterButton.FocusState != FocusState.Unfocused) UpdateLater_Click(this, new RoutedEventArgs());
+            else UpdateNow_Click(this, new RoutedEventArgs());
+        }
     }
 }
