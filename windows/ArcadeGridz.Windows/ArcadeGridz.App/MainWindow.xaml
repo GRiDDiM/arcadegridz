@@ -143,6 +143,7 @@
     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
      <Button x:Name="GamesButton" MinWidth="180" Click="Games_Click"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE7FC;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="GAMES" VerticalAlignment="Center"/></StackPanel></Button>
      <Button x:Name="ScoresButton" MinWidth="220" Click="Scores_Click"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE734;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="HI-SCORES" VerticalAlignment="Center"/></StackPanel></Button>
+     <Button x:Name="StoryboardsButton" MinWidth="240" Click="Storyboards_Click"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE8F1;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="STORYBOARDS" VerticalAlignment="Center"/></StackPanel></Button>
      <Button x:Name="OptionsButton" MinWidth="200" Click="Options_Click"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE713;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="OPTIONS" VerticalAlignment="Center"/></StackPanel></Button>
     </StackPanel>
     <Button x:Name="ExitButton" Style="{StaticResource DangerButton}" HorizontalAlignment="Right" MinWidth="240" Click="Close_Click"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE7E8;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="EXIT" VerticalAlignment="Center"/></StackPanel></Button>
@@ -151,7 +152,7 @@
    <!-- Game grid + hero -->
    <Grid Grid.Row="2" Margin="30,10,40,14">
     <Grid.ColumnDefinitions><ColumnDefinition Width="1.15*"/><ColumnDefinition Width="0.85*" MaxWidth="760"/></Grid.ColumnDefinitions>
-    <GridView x:Name="GameGrid" Padding="12" IsItemClickEnabled="True" ItemClick="GameGrid_ItemClick" SelectionChanged="GameGrid_SelectionChanged" SelectionMode="Single" IsTabStop="True" UseSystemFocusVisuals="False" ItemContainerStyle="{StaticResource TileItemStyle}" ScrollViewer.VerticalScrollBarVisibility="Hidden">
+    <GridView x:Name="GameGrid" Padding="12" IsItemClickEnabled="True" ItemClick="GameGrid_ItemClick" SelectionChanged="GameGrid_SelectionChanged" SelectionMode="Single" IsTabStop="True" UseSystemFocusVisuals="False" ItemContainerStyle="{StaticResource TileItemStyle}" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollMode="Enabled" ScrollViewer.IsVerticalRailEnabled="True">
      <GridView.ItemsPanel><ItemsPanelTemplate><ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="4" ItemWidth="224" ItemHeight="300"/></ItemsPanelTemplate></GridView.ItemsPanel>
      <GridView.ItemTemplate>
       <DataTemplate x:DataType="m:GameEntry">

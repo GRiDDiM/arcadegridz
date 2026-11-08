@@ -15,7 +15,7 @@ namespace ArcadeGridz.App;
 
 public sealed partial class MainWindow : Window
 {
-    enum LauncherFocus { Categories, Games, Scores, Options, Exit, GameGrid, Play, SignIn }
+    enum LauncherFocus { Categories, Games, Scores, Storyboards, Options, Exit, GameGrid, Play, SignIn }
     enum StartupFocus { Email, Google, Guest, Terms, Privacy }
     const string TermsUrl = "https://griddim.com/terms/";
     const string PrivacyUrl = "https://griddim.com/privacy/";
@@ -35,6 +35,10 @@ public sealed partial class MainWindow : Window
     WebGameRuntime? web;
     IGameRuntime? active;
     int categoryIndex;
+    // storyboards (interactive films) live in their own section, not in ALL GAMES or the genre list
+    const string StoryboardCategory = "STORYBOARD";
+    bool storyMode;
+    static bool IsStoryboard(GameEntry g) => g.Category.Equals(StoryboardCategory, StringComparison.OrdinalIgnoreCase);
     bool gameOpen;
     UpdateInfo? availableUpdate;
     LauncherFocus launcherFocus = LauncherFocus.GameGrid;
@@ -84,6 +88,8 @@ public sealed partial class MainWindow : Window
             };
             revealFailsafe.Start();
             GameGrid.ItemsSource = visible;
+            // mouse wheel scrolls the game grid (handled ourselves so nothing in the tile template can swallow it)
+            Root.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler(Root_PointerWheelChanged), true);
             native.Exited += (_, _) => DispatcherQueue.TryEnqueue(ReturnToLauncher);
             Activated += OnActivated;
             Root.Loaded += OnLoaded;
@@ -301,17 +307,21 @@ public sealed partial class MainWindow : Window
     {
         categories.Clear();
         categories.Add("ALL GAMES");
-        categories.AddRange(all.Where(g => settings.ShowAll || (g.Potato && g.Playable)).Select(g => g.Category.ToUpperInvariant()).Where(x => x.Length > 0).Distinct().Order());
+        categories.AddRange(all.Where(g => (settings.ShowAll || (g.Potato && g.Playable)) && !IsStoryboard(g)).Select(g => g.Category.ToUpperInvariant()).Where(x => x.Length > 0).Distinct().Order());
         categoryIndex = Math.Min(categoryIndex, categories.Count - 1);
     }
 
     void ApplyFilter()
     {
-        var cat = categories.Count == 0 ? "ALL GAMES" : categories[categoryIndex];
+        var cat = storyMode ? "STORYBOARDS" : categories.Count == 0 ? "ALL GAMES" : categories[categoryIndex];
         CategoryLabel.Text = cat;
         visible.Clear();
-        foreach (var g in all.Where(g => (settings.ShowAll || (g.Potato && g.Playable)) && (cat == "ALL GAMES" || g.Category.Equals(cat, StringComparison.OrdinalIgnoreCase))))
+        foreach (var g in all.Where(g => (settings.ShowAll || (g.Potato && g.Playable)) &&
+                 (storyMode ? IsStoryboard(g) : !IsStoryboard(g) && (cat == "ALL GAMES" || g.Category.Equals(cat, StringComparison.OrdinalIgnoreCase)))))
             visible.Add(g);
+        if (storyMode) StoryboardsButton.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
+        else StoryboardsButton.ClearValue(Control.BorderBrushProperty);
+        if (visible.Count > 0) GameGrid.ScrollIntoView(visible[0]);
         if (visible.Count > 0) { GameGrid.SelectedIndex = 0; _ = ShowHero(visible[0]); }
         else
         {
@@ -581,7 +591,8 @@ public sealed partial class MainWindow : Window
             switch (launcherFocus)
             {
                 case LauncherFocus.Categories: ChangeCategory(1); break;
-                case LauncherFocus.Games: ReturnToLauncher(); break;
+                case LauncherFocus.Games: ShowSection(false); break;
+                case LauncherFocus.Storyboards: ShowSection(true); break;
                 case LauncherFocus.Scores: Scores_Click(this, new RoutedEventArgs()); break;
                 case LauncherFocus.Options: Options_Click(this, new RoutedEventArgs()); break;
                 case LauncherFocus.Exit: Close(); break;
@@ -628,8 +639,8 @@ public sealed partial class MainWindow : Window
         }
 
         var menu = consoleMode
-            ? new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Options }
-            : new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Options, LauncherFocus.Exit };
+            ? new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Storyboards, LauncherFocus.Options }
+            : new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Storyboards, LauncherFocus.Options, LauncherFocus.Exit };
         var menuIndex = Array.IndexOf(menu, launcherFocus);
         if (menuIndex >= 0)
         {
@@ -687,6 +698,7 @@ public sealed partial class MainWindow : Window
             LauncherFocus.Categories => NextCategoryButton,
             LauncherFocus.Games => GamesButton,
             LauncherFocus.Scores => ScoresButton,
+            LauncherFocus.Storyboards => StoryboardsButton,
             LauncherFocus.Options => OptionsButton,
             LauncherFocus.Exit => ExitButton,
             LauncherFocus.Play => PlayButton,
@@ -841,6 +853,7 @@ public sealed partial class MainWindow : Window
     void ChangeCategory(int delta)
     {
         if (categories.Count == 0) return;
+        if (storyMode) { storyMode = false; ApplyFilter(); return; } // LB/RB from STORYBOARDS goes back to the games
         categoryIndex = (categoryIndex + delta + categories.Count) % categories.Count;
         ApplyFilter();
     }
@@ -951,7 +964,18 @@ public sealed partial class MainWindow : Window
         Launcher.Visibility = Visibility.Collapsed;
         SelectOptionsTab(optionsTab, keepFocusOnTabs: true);
     }
-    void Games_Click(object sender, RoutedEventArgs e) => ReturnToLauncher();
+    void Games_Click(object sender, RoutedEventArgs e) => ShowSection(false);
+
+    void Storyboards_Click(object sender, RoutedEventArgs e) => ShowSection(true);
+
+    void ShowSection(bool storyboards)
+    {
+        var changed = storyMode != storyboards;
+        storyMode = storyboards;
+        ReturnToLauncher();
+        if (changed) ApplyFilter();
+        SetLauncherFocus(LauncherFocus.GameGrid);
+    }
     void Back_Click(object sender, RoutedEventArgs e) => ReturnToLauncher();
     void Close_Click(object sender, RoutedEventArgs e) => Close();
     void ShowMessage(string title, string body)
@@ -1702,4 +1726,44 @@ public sealed partial class MainWindow : Window
     }
 
     void DailyClose_Click(object sender, RoutedEventArgs e) => CloseDaily();
+
+    // ======== mouse wheel: scroll the game grid ========
+    ScrollViewer? gridScroller;
+
+    void Root_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        // the grid's own ScrollViewer already took it: don't scroll twice
+        if (e.Handled && e.OriginalSource is DependencyObject src && FindAncestor<ScrollViewer>(src) is { } sv && ReferenceEquals(sv, gridScroller ??= FindChild<ScrollViewer>(GameGrid))) return;
+        if (Launcher.Visibility != Visibility.Visible || Panel.Visibility == Visibility.Visible || gameOpen || DailyLayer.Visibility == Visibility.Visible) return;
+        var point = e.GetCurrentPoint(Root);
+        var origin = GameGrid.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, 0));
+        var over = point.Position.X >= origin.X && point.Position.X <= origin.X + GameGrid.ActualWidth &&
+                   point.Position.Y >= origin.Y && point.Position.Y <= origin.Y + GameGrid.ActualHeight;
+        if (!over) return;
+        gridScroller ??= FindChild<ScrollViewer>(GameGrid);
+        if (gridScroller is null) return;
+        var delta = point.Properties.MouseWheelDelta; // +120 per notch away from the user
+        if (delta == 0) return;
+        var target = Math.Clamp(gridScroller.VerticalOffset - delta / 120.0 * 150, 0, gridScroller.ScrollableHeight);
+        gridScroller.ChangeView(null, target, null, false);
+        e.Handled = true;
+    }
+
+    static T? FindAncestor<T>(DependencyObject node) where T : DependencyObject
+    {
+        for (var p = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node); p is not null; p = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(p))
+            if (p is T hit) return hit;
+        return null;
+    }
+
+    static T? FindChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (int i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is T hit) return hit;
+            if (FindChild<T>(child) is { } deeper) return deeper;
+        }
+        return null;
+    }
 }
