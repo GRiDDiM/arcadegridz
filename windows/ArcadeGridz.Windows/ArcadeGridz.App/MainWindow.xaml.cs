@@ -1524,6 +1524,7 @@ public sealed partial class MainWindow : Window
     void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (consoleMode || e.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse) return;
+        if (DailyLayer.Visibility == Visibility.Visible || updatePromptOpen) return; // popups: clicks never drag the window
         var point = e.GetCurrentPoint(Root);
         if (!point.Properties.IsLeftButtonPressed) return;
         if (floating && !signInPanelOpen || floating && point.Position.Y < 90)
@@ -1744,11 +1745,17 @@ public sealed partial class MainWindow : Window
 
     void CloseDaily()
     {
+        StartupLog.Write("daily", "Closed");
         DailyLayer.Visibility = Visibility.Collapsed;
         if (Launcher.Visibility == Visibility.Visible) SetLauncherFocus(launcherFocus);
     }
 
     void DailyClose_Click(object sender, RoutedEventArgs e) => CloseDaily();
+
+    // click outside the card closes it; clicks inside the card don't
+    void DailyBackdrop_Tapped(object sender, TappedRoutedEventArgs e) => CloseDaily();
+
+    void DailyCard_Tapped(object sender, TappedRoutedEventArgs e) => e.Handled = true;
 
     // ======== mouse wheel: scroll the game grid ========
     ScrollViewer? gridScroller;

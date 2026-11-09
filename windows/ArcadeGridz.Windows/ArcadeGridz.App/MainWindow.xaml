@@ -409,9 +409,11 @@
   </Grid>
 
   <!-- ===== Daily rewards (native; the app never loads the website's popup) ===== -->
-  <Grid x:Name="DailyLayer" Visibility="Collapsed" Background="#E607051A">
+  <Grid x:Name="DailyLayer" Visibility="Collapsed" Background="#E607051A" Tapped="DailyBackdrop_Tapped">
    <Image Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.3" IsHitTestVisible="False"/>
-   <Grid MaxWidth="820" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40">
+   <!-- shrinks to fit short screens (720p TVs) so COLLECT and the X are always on screen -->
+   <Viewbox Stretch="Uniform" StretchDirection="DownOnly" Margin="24">
+   <Grid x:Name="DailyCard" Width="820" HorizontalAlignment="Center" VerticalAlignment="Center" Tapped="DailyCard_Tapped">
     <Border Margin="-8" CornerRadius="34" BorderThickness="8" BorderBrush="#33FFC14D"/>
     <Border Background="{StaticResource AgCardSolid}" BorderBrush="#99FFC14D" BorderThickness="2" CornerRadius="28" Padding="44,30">
      <StackPanel Spacing="12">
@@ -435,7 +437,11 @@
       </Button>
      </StackPanel>
     </Border>
+    <Button x:Name="DailyXButton" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,14,14,0" Width="48" Height="48" Padding="0" CornerRadius="24" Click="DailyClose_Click" ToolTipService.ToolTip="Close (Esc / B)">
+     <FontIcon Glyph="&#xE711;" FontFamily="{StaticResource AgIcons}" FontSize="18"/>
+    </Button>
    </Grid>
+  </Viewbox>
   </Grid>
 
   <!-- ===== Splash + welcome / sign-in ===== -->
