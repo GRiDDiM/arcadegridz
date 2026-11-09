@@ -470,7 +470,8 @@ public sealed partial class MainWindow : Window
         // on the UI thread. Handling it directly avoids a second queued UI hop.
         if (DailyLayer.Visibility == Visibility.Visible)
         {
-            if (action is PadAction.A or PadAction.B) CloseDaily();
+            if (action == PadAction.A) DailyPrimary();
+            else if (action == PadAction.B) CloseDaily();
             return;
         }
         if (updatePromptOpen) { HandleUpdatePromptAction(action); return; }
@@ -889,7 +890,8 @@ public sealed partial class MainWindow : Window
         }
         if (DailyLayer.Visibility == Visibility.Visible)
         {
-            if (e.Key is VirtualKey.Enter or VirtualKey.Space or VirtualKey.Escape) { CloseDaily(); e.Handled = true; }
+            if (e.Key is VirtualKey.Enter or VirtualKey.Space) { DailyPrimary(); e.Handled = true; }
+            else if (e.Key == VirtualKey.Escape) { CloseDaily(); e.Handled = true; }
             return;
         }
         // Ctrl+Shift+Left/Right: hop the arcade to the next screen (handy for the TV)
@@ -1711,7 +1713,10 @@ public sealed partial class MainWindow : Window
             DailySeals.Children.Add(seal);
         }
         var total = state.NewSparkz;
-        DailyDrop.Text = total > 0 ? $"+{total:N0} SPARKZ" : stage == 7 ? "CORE UNLOCKED" : stage > 0 ? "CHECKED IN" : "NO SIGNAL YET";
+        dailyState = state;
+        dailyRevealed = total <= 0;
+        DailyDropScale.ScaleX = DailyDropScale.ScaleY = 1;
+        DailyDrop.Text = total > 0 ? "DROP SECURED" : stage == 7 ? "CORE UNLOCKED" : stage > 0 ? "CHECKED IN" : "NO SIGNAL YET";
         DailyDropNote.Text = total > 0
             ? string.Join("  ·  ", state.Rewards!.Where(r => r.Amount > 0).Select(r => $"+{r.Amount:N0} {(r.Name ?? "REWARD").ToUpperInvariant()}")) + "\nAlready added to your balance."
             : stage == 7 ? "The core is open. Tomorrow starts a new seven-seal cycle." : "Come back tomorrow to release the next seal.";
@@ -1737,7 +1742,9 @@ public sealed partial class MainWindow : Window
             row.Children.Add(reward);
             DailyQuests.Children.Add(new Border { Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x99, 0x0C, 0x0A, 0x26)), CornerRadius = new CornerRadius(10), Padding = new Thickness(14, 8, 14, 8), Child = row });
         }
-        DailyCloseLabel.Text = total > 0 ? "COLLECT" : "CLOSE";
+        if (total > 0) DailyDropNote.Text = "Your rewards are already credited. Reveal today's drop.";
+        // same flow as the website: REVEAL DROP (OPEN CORE on day 7) first, then COLLECT closes
+        DailyCloseLabel.Text = total > 0 ? (stage == 7 ? "OPEN CORE" : "REVEAL DROP") : "CLOSE";
         DailyLayer.Visibility = Visibility.Visible;
         DailyCloseButton.Focus(FocusState.Programmatic);
         StartupLog.Write("daily", $"Shown; fresh={fresh}; stage={stage}; new={total}");
@@ -1751,6 +1758,40 @@ public sealed partial class MainWindow : Window
     }
 
     void DailyClose_Click(object sender, RoutedEventArgs e) => CloseDaily();
+
+    DailyState? dailyState;
+    bool dailyRevealed = true;
+
+    void DailyPrimary_Click(object sender, RoutedEventArgs e) => DailyPrimary();
+
+    void DailyPrimary()
+    {
+        if (dailyRevealed || dailyState is null) { CloseDaily(); return; }
+        dailyRevealed = true;
+        var state = dailyState;
+        DailyDrop.Text = $"+{state.NewSparkz:N0} SPARKZ";
+        DailyDropNote.Text = string.Join("  ·  ", (state.Rewards ?? []).Where(r => r.Amount > 0).Select(r => $"+{r.Amount:N0} {(r.Name ?? "REWARD").ToUpperInvariant()}"))
+            + "\nSignal accepted. Your Sparkz are in your balance.";
+        DailyCloseLabel.Text = "COLLECT";
+        try
+        {
+            var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+            foreach (var prop in new[] { "ScaleX", "ScaleY" })
+            {
+                var a = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+                {
+                    From = 0.3, To = 1, Duration = TimeSpan.FromMilliseconds(700),
+                    EasingFunction = new Microsoft.UI.Xaml.Media.Animation.ElasticEase { Oscillations = 2, Springiness = 4, EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut }
+                };
+                Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(a, DailyDropScale);
+                Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(a, prop);
+                sb.Children.Add(a);
+            }
+            sb.Begin();
+        }
+        catch (Exception ex) { StartupLog.Exception("Daily reveal animation", ex); }
+        StartupLog.Write("daily", $"Revealed +{state.NewSparkz}");
+    }
 
     // click outside the card closes it; clicks inside the card don't
     void DailyBackdrop_Tapped(object sender, TappedRoutedEventArgs e) => CloseDaily();
