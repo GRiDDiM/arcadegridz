@@ -313,7 +313,7 @@ public sealed partial class MainWindow : Window
             _ => "GAME LIST REFRESH FAILED. SEE THE STARTUP LOG FOR DETAILS."
         };
         RefreshCatalogButton.IsEnabled = true;
-        RefreshCatalogButton.Focus(FocusState.Programmatic);
+        PadFocus(RefreshCatalogButton);
     }
 
     void BuildCategories()
@@ -555,7 +555,7 @@ public sealed partial class MainWindow : Window
             StartupFocus.Privacy => PrivacyButton,
             _ => StartupEmailButton
         };
-        control.Focus(FocusState.Programmatic);
+        PadFocus(control);
     }
 
     async void StartupEmail_Click(object sender, RoutedEventArgs e)
@@ -708,6 +708,7 @@ public sealed partial class MainWindow : Window
     {
         if (consoleMode && target == LauncherFocus.Exit)
             target = LauncherFocus.Options;
+        if (launcherFocus != target) StartupLog.Write("nav", $"launcher focus {launcherFocus} -> {target}");
         launcherFocus = target;
         Control control = target switch
         {
@@ -721,7 +722,7 @@ public sealed partial class MainWindow : Window
             LauncherFocus.SignIn => account is not null ? AccountButton : SignInButton,
             _ => GameGrid
         };
-        control.Focus(FocusState.Programmatic);
+        PadFocus(control);
     }
 
     Button[] OptionsTabButtons => [OptionsTabGames, OptionsTabDisplay, OptionsTabSystem, OptionsTabUpdates, OptionsTabAbout];
@@ -1020,7 +1021,7 @@ public sealed partial class MainWindow : Window
         Panel.Visibility = Visibility.Visible;
         Launcher.Visibility = Visibility.Collapsed;
         panelFocus = 0;
-        BackButton.Focus(FocusState.Programmatic);
+        PadFocus(BackButton);
     }
 
     async void CheckUpdate_Click(object sender, RoutedEventArgs e)
@@ -1120,7 +1121,7 @@ public sealed partial class MainWindow : Window
         ConsoleModeStatus.Text = "Controller-only mode is active. Keyboard and WebView pointer input are disabled; Exit ArcadeGridz stays hidden until restart.";
         web?.SetConsoleMode(true);
         StartupLog.Write("settings", "Console mode enabled for this session");
-        BackButton.Focus(FocusState.Programmatic);
+        PadFocus(BackButton);
     }
 
     void Terms_Click(object sender, RoutedEventArgs e) => OpenExternal(TermsUrl);
@@ -1746,7 +1747,7 @@ public sealed partial class MainWindow : Window
         // same flow as the website: REVEAL DROP (OPEN CORE on day 7) first, then COLLECT closes
         DailyCloseLabel.Text = total > 0 ? (stage == 7 ? "OPEN CORE" : "REVEAL DROP") : "CLOSE";
         DailyLayer.Visibility = Visibility.Visible;
-        DailyCloseButton.Focus(FocusState.Programmatic);
+        PadFocus(DailyCloseButton);
         StartupLog.Write("daily", $"Shown; fresh={fresh}; stage={stage}; new={total}");
     }
 
@@ -1911,7 +1912,7 @@ public sealed partial class MainWindow : Window
         UpdatePromptCard.Measure(new Windows.Foundation.Size(500, double.PositiveInfinity));
         var height = UpdatePromptCard.DesiredSize.Height;
         SetFloating(true, 500, height > 100 ? height : 520);
-        UpdateNowButton.Focus(FocusState.Programmatic);
+        PadFocus(UpdateNowButton);
         StartupLog.Write("update", $"Prompting before sign-in: {update.Version}");
     }
 
@@ -1961,19 +1962,25 @@ public sealed partial class MainWindow : Window
             UpdatePromptProgress.Visibility = Visibility.Collapsed;
             UpdateNowLabel.Text = "TRY AGAIN";
             UpdateNowButton.IsEnabled = UpdateLaterButton.IsEnabled = true;
-            UpdateLaterButton.Focus(FocusState.Programmatic);
+            PadFocus(UpdateLaterButton);
         }
     }
 
     void HandleUpdatePromptAction(PadAction action)
     {
         if (action == PadAction.B) { UpdateLater_Click(this, new RoutedEventArgs()); return; }
-        if (action is PadAction.Up or PadAction.Left) UpdateNowButton.Focus(FocusState.Programmatic);
-        else if (action is PadAction.Down or PadAction.Right) UpdateLaterButton.Focus(FocusState.Programmatic);
+        if (action is PadAction.Up or PadAction.Left) PadFocus(UpdateNowButton);
+        else if (action is PadAction.Down or PadAction.Right) PadFocus(UpdateLaterButton);
         else if (action == PadAction.A)
         {
             if (UpdateLaterButton.FocusState != FocusState.Unfocused) UpdateLater_Click(this, new RoutedEventArgs());
             else UpdateNow_Click(this, new RoutedEventArgs());
         }
     }
+
+    // ======== controller / keyboard focus ========
+    // ALWAYS move focus with FocusState.Keyboard, never Programmatic. Windows only draws the focus highlight for
+    // keyboard-state focus, so after any mouse use (e.g. dragging the window to the TV) Programmatic focus moves
+    // silently: up/down seem dead and only the grid's left/right selection shows. This has regressed several times.
+    static void PadFocus(Control? control) => control?.Focus(FocusState.Keyboard);
 }
