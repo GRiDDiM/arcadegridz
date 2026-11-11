@@ -29,6 +29,19 @@ public sealed class GamepadService : IDisposable
     bool loggedNoController;
     int rawA = 1, rawB = 0;
 
+    // Axis safety. Generic USB pads (this one has no hat switch, its d-pad is axes 0/1) can read 0.0 (= "left/up
+    // held") until their first real HID report, or rest off-centre. Either pins the launcher focus to one row so
+    // only left/right seem to work. So: axes are ignored until the pad has sent a real report (any change from the
+    // connect snapshot), and a direction that stays held at exactly the same value for StuckMs with no other input
+    // is treated as the new centre for that axis until the value moves.
+    const long StuckMs = 6000;
+    double[] connectAxes = [];
+    bool axesArmed;
+    readonly double?[] axisNeutral = new double?[2];   // re-centred value per axis (null = 0.5)
+    readonly long[] heldSince = new long[4];
+    readonly double[] heldValue = new double[4];
+    long lastLoggedDirection;
+
     public event Action<PadAction>? Pressed;
 
     public GamepadService(DispatcherQueue queue)
@@ -96,6 +109,11 @@ public sealed class GamepadService : IDisposable
             rawSwitches = new GameControllerSwitchPosition[(int)raw.SwitchCount];
             rawAxes = new double[(int)raw.AxisCount];
             ResetDirections();
+            raw.GetCurrentReading(rawButtons, rawSwitches, rawAxes);
+            connectAxes = (double[])rawAxes.Clone();
+            axesArmed = false;
+            axisNeutral[0] = axisNeutral[1] = null;
+            StartupLog.Write("controller", $"Raw axes at connect: [{string.Join(", ", rawAxes.Select(v => v.ToString("0.000")))}] (ignored until the pad reports)");
             // Generic USB SNES pads ("USB,2-axis 8-button gamepad", iBuffalo/Retrolink 0583:2060 and clones) report raw
             // button 0 = A (right face) and 1 = B (bottom face). Browsers remap these to the standard layout for the web
             // games, but Windows.Gaming.Input hands us the raw order, so confirm/back were swapped in the launcher.
@@ -123,10 +141,33 @@ public sealed class GamepadService : IDisposable
         }
         else if (rawAxes.Length >= 2)
         {
-            left = LowAxisActive(rawAxes[0], directionHeld[2]);
-            right = HighAxisActive(rawAxes[0], directionHeld[3]);
-            up = LowAxisActive(rawAxes[1], directionHeld[0]);
-            down = HighAxisActive(rawAxes[1], directionHeld[1]);
+            if (!axesArmed)
+            {
+                var changed = false;
+                for (var i = 0; i < rawAxes.Length && i < connectAxes.Length; i++)
+                    if (Math.Abs(rawAxes[i] - connectAxes[i]) > 0.001) changed = true;
+                for (var i = 0; i < rawButtons.Length; i++)
+                    if (rawButtons[i]) changed = true;
+                if (changed)
+                {
+                    axesArmed = true;
+                    StartupLog.Write("controller", $"Raw axes live: [{string.Join(", ", rawAxes.Select(v => v.ToString("0.000")))}]");
+                }
+            }
+            if (axesArmed)
+            {
+                var x = Recentre(0, rawAxes[0]);
+                var y = Recentre(1, rawAxes[1]);
+                left = LowAxisActive(x, directionHeld[2]);
+                right = HighAxisActive(x, directionHeld[3]);
+                up = LowAxisActive(y, directionHeld[0]);
+                down = HighAxisActive(y, directionHeld[1]);
+                var anyButton = rawButtons.Any(b => b);
+                left = NotStuck(2, left, rawAxes[0], 0, anyButton);
+                right = NotStuck(3, right, rawAxes[0], 0, anyButton);
+                up = NotStuck(0, up, rawAxes[1], 1, anyButton);
+                down = NotStuck(1, down, rawAxes[1], 1, anyButton);
+            }
         }
 
         EmitDirection(0, up, PadAction.Up);
@@ -148,6 +189,31 @@ public sealed class GamepadService : IDisposable
         }
 
         Array.Copy(rawButtons, previousRawButtons, rawButtons.Length);
+    }
+
+    // shift a re-centred axis back so its new rest value reads as 0.5
+    double Recentre(int axis, double value)
+    {
+        if (axisNeutral[axis] is not { } n) return value;
+        if (Math.Abs(value - n) > 0.2) { axisNeutral[axis] = null; StartupLog.Write("controller", $"Axis {axis} moved off its stuck value; centre restored"); return value; }
+        return 0.5;
+    }
+
+    bool NotStuck(int dir, bool active, double value, int axis, bool anyButton)
+    {
+        var now = Environment.TickCount64;
+        if (!active) { heldSince[dir] = 0; return false; }
+        if (heldSince[dir] == 0 || Math.Abs(value - heldValue[dir]) > 0.001 || anyButton)
+        {
+            heldSince[dir] = now;
+            heldValue[dir] = value;
+            return true;
+        }
+        if (now - heldSince[dir] < StuckMs) return true;
+        axisNeutral[axis] = value;
+        heldSince[dir] = 0;
+        StartupLog.Write("controller", $"Axis {axis} stuck at {value:0.000} for {StuckMs / 1000}s with no other input; treating it as centre");
+        return false;
     }
 
     static bool LowAxisActive(double value, bool wasHeld) =>
@@ -182,6 +248,11 @@ public sealed class GamepadService : IDisposable
         {
             directionHeld[index] = true;
             nextRepeatAt[index] = now + InitialRepeatDelayMilliseconds;
+            if (now - lastLoggedDirection > 150)
+            {
+                lastLoggedDirection = now;
+                StartupLog.Write("controller", $"dir {action}; axes=[{string.Join(", ", rawAxes.Select(v => v.ToString("0.000")))}]");
+            }
             Pressed?.Invoke(action);
             return;
         }
@@ -221,6 +292,7 @@ public sealed class GamepadService : IDisposable
     {
         Array.Clear(directionHeld);
         Array.Clear(nextRepeatAt);
+        Array.Clear(heldSince);
     }
 
     void ResetRaw()
