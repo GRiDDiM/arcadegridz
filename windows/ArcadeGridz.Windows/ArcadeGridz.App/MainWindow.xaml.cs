@@ -409,7 +409,7 @@ public sealed partial class MainWindow : Window
             if (active is null) { ShowMessage("RUNTIME ERROR", "This game's runtime manifest is incomplete."); return; }
             StartupLog.Write("runtime", $"Launching id={g.Id}; type={g.Runtime.Type}");
             gameOpen = true;
-            GameCoverTitle.Text = g.Name;
+            SetCoverTitle(g.Id, g.Name);
             try { GameCoverArt.Source = new BitmapImage(new Uri(g.Art)); } catch { GameCoverArt.Source = null; }
             GameCover.Visibility = Visibility.Visible;
             BeginStoryboard("CoverPulse");
@@ -1991,5 +1991,18 @@ public sealed partial class MainWindow : Window
         if (GameGrid.SelectedItem is null || GameGrid.ContainerFromItem(GameGrid.SelectedItem) is not GridViewItem tile) return;
         var lit = launcherFocus is LauncherFocus.GameGrid or LauncherFocus.Play;
         VisualStateManager.GoToState(tile, lit ? "Selected" : "Normal", true);
+    }
+
+    // The loading cover shows the game's name. 2DISO SHIFT styles its last word in italics, as the game's own logo does.
+    private void SetCoverTitle(string id, string name)
+    {
+        name ??= "";
+        const string word = "SHIFT";
+        var at = id == "2diso-shift" ? name.IndexOf(word, System.StringComparison.Ordinal) : -1;
+        if (at < 0) { GameCoverTitle.Text = name; return; }
+        GameCoverTitle.Inlines.Clear();
+        if (at > 0) GameCoverTitle.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = name.Substring(0, at) });
+        GameCoverTitle.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = word, FontStyle = Windows.UI.Text.FontStyle.Italic });
+        if (at + word.Length < name.Length) GameCoverTitle.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = name.Substring(at + word.Length) });
     }
 }
