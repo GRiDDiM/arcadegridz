@@ -710,6 +710,7 @@ public sealed partial class MainWindow : Window
             target = LauncherFocus.Options;
         if (launcherFocus != target) StartupLog.Write("nav", $"launcher focus {launcherFocus} -> {target}");
         launcherFocus = target;
+        UpdateTileHighlight();
         Control control = target switch
         {
             LauncherFocus.Categories => NextCategoryButton,
@@ -1983,4 +1984,12 @@ public sealed partial class MainWindow : Window
     // keyboard-state focus, so after any mouse use (e.g. dragging the window to the TV) Programmatic focus moves
     // silently: up/down seem dead and only the grid's left/right selection shows. This has regressed several times.
     static void PadFocus(Control? control) => control?.Focus(FocusState.Keyboard);
+
+    // the selected card only glows while the grid (or its PLAY button) has focus; menu buttons get the highlight alone
+    void UpdateTileHighlight()
+    {
+        if (GameGrid.SelectedItem is null || GameGrid.ContainerFromItem(GameGrid.SelectedItem) is not GridViewItem tile) return;
+        var lit = launcherFocus is LauncherFocus.GameGrid or LauncherFocus.Play;
+        VisualStateManager.GoToState(tile, lit ? "Selected" : "Normal", true);
+    }
 }

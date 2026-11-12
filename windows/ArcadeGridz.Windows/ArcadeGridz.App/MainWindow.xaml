@@ -189,7 +189,7 @@
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
      <Grid>
       <Border Margin="-8" CornerRadius="26" BorderThickness="8" BorderBrush="#225EE7FF"/>
-      <Border CornerRadius="20" Background="{StaticResource AgCardSolid}" BorderBrush="#665EE7FF" BorderThickness="2" Height="250">
+      <Border CornerRadius="20" Background="{StaticResource AgCardSolid}" BorderBrush="#665EE7FF" BorderThickness="2" Height="200">
        <Grid>
         <Image x:Name="HeroArt" Stretch="UniformToFill"/>
         <Rectangle>
@@ -203,21 +203,23 @@
        </Grid>
       </Border>
      </Grid>
-     <TextBlock x:Name="HeroName" Grid.Row="1" FontFamily="{StaticResource AgDisplay}" FontSize="42" Foreground="White" Margin="0,22,0,6" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"/>
+     <TextBlock x:Name="HeroName" Grid.Row="1" FontFamily="{StaticResource AgDisplay}" FontSize="38" Foreground="White" Margin="0,16,0,6" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"/>
      <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12">
       <Border x:Name="HeroStatusChip" BorderBrush="{StaticResource AgCyan}" BorderThickness="1" CornerRadius="6" Padding="9,6" VerticalAlignment="Center">
        <TextBlock x:Name="HeroStatus" Foreground="{StaticResource AgCyan}" FontFamily="{StaticResource AgPixel}" FontSize="9"/>
       </Border>
       <TextBlock x:Name="HeroMeta" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgCyan}"/>
      </StackPanel>
-     <TextBlock x:Name="HeroDescription" Grid.Row="3" Foreground="#FFC9D2E2" FontFamily="{StaticResource AgBody}" TextWrapping="Wrap" FontSize="16" LineHeight="25" MaxLines="4" TextTrimming="WordEllipsis" Margin="0,14,0,10"/>
+     <TextBlock x:Name="HeroDescription" Grid.Row="3" Foreground="#FFC9D2E2" FontFamily="{StaticResource AgBody}" TextWrapping="Wrap" FontSize="16" LineHeight="24" MaxLines="3" TextTrimming="WordEllipsis" Margin="0,12,0,10"/>
      <Button x:Name="PlayButton" Grid.Row="4" Style="{StaticResource PlayButton}" HorizontalAlignment="Left" MinWidth="230" Click="Play_Click">
       <StackPanel Orientation="Horizontal" Spacing="14"><FontIcon Glyph="&#xE768;" FontFamily="{StaticResource AgIcons}" FontSize="20"/><TextBlock x:Name="PlayLabel" Text="PLAY" VerticalAlignment="Center"/></StackPanel>
      </Button>
-     <Border Grid.Row="5" Margin="0,16,0,0" Background="#B30B0820" BorderBrush="#33FFC14D" BorderThickness="1" CornerRadius="14" Padding="18,14" VerticalAlignment="Top">
-      <StackPanel Spacing="8">
-       <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE734;" FontFamily="{StaticResource AgIcons}" FontSize="14" Foreground="{StaticResource AgGold}"/><TextBlock Text="HIGH SCORES" Foreground="{StaticResource AgGold}" FontFamily="{StaticResource AgPixel}" FontSize="11" VerticalAlignment="Center"/></StackPanel>
-       <TextBlock x:Name="ScoreEmpty" Text="NO SCORES YET. BE THE FIRST." Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}" Visibility="Collapsed"/>
+     <Border Grid.Row="5" Margin="0,14,0,0" Background="#B30B0820" BorderBrush="#33FFC14D" BorderThickness="1" CornerRadius="14" Padding="18,12" VerticalAlignment="Stretch" MinHeight="96">
+      <Grid RowSpacing="8">
+       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+       <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE734;" FontFamily="{StaticResource AgIcons}" FontSize="14" Foreground="{StaticResource AgGold}"/><TextBlock Text="HIGH SCORES" Foreground="{StaticResource AgGold}" FontFamily="{StaticResource AgPixel}" FontSize="11" VerticalAlignment="Center"/></StackPanel>
+       <TextBlock x:Name="ScoreEmpty" Grid.Row="1" Text="NO SCORES YET. BE THE FIRST." Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}" Visibility="Collapsed"/>
+       <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Hidden" VerticalScrollMode="Enabled">
        <ItemsControl x:Name="ScoreList">
         <ItemsControl.ItemTemplate>
          <DataTemplate x:DataType="m:ScoreRow">
@@ -233,7 +235,8 @@
          </DataTemplate>
         </ItemsControl.ItemTemplate>
        </ItemsControl>
-      </StackPanel>
+       </ScrollViewer>
+      </Grid>
      </Border>
     </Grid>
    </Grid>
