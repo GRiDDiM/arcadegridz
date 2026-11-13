@@ -8,6 +8,8 @@ public sealed class SettingsService
     /// <summary>Windowed (normal resizable window) instead of fullscreen.</summary>
     public bool Windowed {get;set;}
     public bool HideScanlines {get;set;}
+    public bool MusicOff {get;set;}
+    public bool SfxOff {get;set;}
     /// <summary>Turns off GPU acceleration in the game view (troubleshooting); applies next launch.</summary>
     public bool DisableGpu {get;set;}
     /// <summary>"standard" or "hd". Passed to games as gfx=...; HD remakes will read it.</summary>

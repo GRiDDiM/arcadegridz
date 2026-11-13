@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
     readonly CatalogService catalogs = new();
     readonly LeaderboardService leaderboards = new();
     readonly SettingsService settings = SettingsService.Load();
+    AudioService? audio;
     readonly UpdateService updates = new();
     readonly DesktopAuthService desktopAuth = new();
     readonly DailyRewardsService daily = new();
@@ -72,6 +73,8 @@ public sealed partial class MainWindow : Window
         {
             InitializeComponent();
             StartupLog.Write("window", "InitializeComponent completed (WebView2 deferred)");
+            audio = new AudioService(DispatcherQueue, !settings.MusicOff, !settings.SfxOff);
+            audio.Play("jingle"); // loading jingle over the splash
             // Load fullscreen but cloaked (invisible) behind the overlay splash; Reveal() uncloaks it once the
             // launcher or sign-in panel is ready, so there is never a full-screen loading screen.
             SetCloaked(true);
@@ -141,6 +144,8 @@ public sealed partial class MainWindow : Window
     void OnActivated(object sender, WindowActivatedEventArgs e)
     {
         if (e.WindowActivationState != WindowActivationState.Deactivated) { QueueCatalogCheck(); CheckDailyRewards(); }
+        // launcher music only while the app is in front and no game is running
+        if (revealed) audio?.MusicWanted(e.WindowActivationState != WindowActivationState.Deactivated && !gameOpen);
         try
         {
             var hwnd = WindowNative.GetWindowHandle(this);
@@ -180,6 +185,8 @@ public sealed partial class MainWindow : Window
             ShowAllToggle.IsOn = settings.ShowAll;
             StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
             ScanlinesToggle.IsOn = !settings.HideScanlines;
+            MusicToggle.IsOn = !settings.MusicOff;
+            SfxToggle.IsOn = !settings.SfxOff;
             GpuToggle.IsOn = !settings.DisableGpu;
             DisplayModeCombo.SelectedIndex = settings.Windowed ? 1 : 0;
             QualityCombo.SelectedIndex = 0; // HD isn't available yet
@@ -409,6 +416,8 @@ public sealed partial class MainWindow : Window
             if (active is null) { ShowMessage("RUNTIME ERROR", "This game's runtime manifest is incomplete."); return; }
             StartupLog.Write("runtime", $"Launching id={g.Id}; type={g.Runtime.Type}");
             gameOpen = true;
+            audio?.Play("launch");
+            audio?.MusicWanted(false); // the game brings its own audio
             SetCoverTitle(g.Id, g.Name);
             try { GameCoverArt.Source = new BitmapImage(new Uri(g.Art)); } catch { GameCoverArt.Source = null; }
             GameCover.Visibility = Visibility.Visible;
@@ -439,6 +448,7 @@ public sealed partial class MainWindow : Window
 
     void ReturnToLauncher()
     {
+        if (gameOpen && revealed) audio?.MusicWanted(true);
         gameOpen = false;
         active = null;
         launchWatchdog?.Stop();
@@ -468,6 +478,7 @@ public sealed partial class MainWindow : Window
     {
         // GamepadService is driven by a DispatcherQueueTimer, so this already runs
         // on the UI thread. Handling it directly avoids a second queued UI hop.
+        if (!gameOpen) audio?.Nav(action);
         if (DailyLayer.Visibility == Visibility.Visible)
         {
             if (action == PadAction.A) DailyPrimary();
@@ -748,6 +759,8 @@ public sealed partial class MainWindow : Window
                     controls.Add(GpuToggle);
                     break;
                 case 2:
+                    controls.Add(MusicToggle);
+                    controls.Add(SfxToggle);
                     controls.Add(StartWithWindowsToggle);
                     if (ConsoleModeButton.IsEnabled) controls.Add(ConsoleModeButton);
                     break;
@@ -807,6 +820,8 @@ public sealed partial class MainWindow : Window
             if (onTabs) { panelFocus = Math.Min(1, controls.Count - 1); }
             else if (control == ShowAllToggle) ShowAllToggle.IsOn = !ShowAllToggle.IsOn;
             else if (control == StartWithWindowsToggle) StartWithWindowsToggle.IsOn = !StartWithWindowsToggle.IsOn;
+            else if (control == MusicToggle) MusicToggle.IsOn = !MusicToggle.IsOn;
+            else if (control == SfxToggle) SfxToggle.IsOn = !SfxToggle.IsOn;
             else if (control == ScanlinesToggle) ScanlinesToggle.IsOn = !ScanlinesToggle.IsOn;
             else if (control == GpuToggle) GpuToggle.IsOn = !GpuToggle.IsOn;
             else if (control == DailyButton) { Daily_Click(this, new RoutedEventArgs()); return; }
@@ -833,6 +848,8 @@ public sealed partial class MainWindow : Window
         var line = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgLine"];
         ShowAllRow.BorderBrush = control == ShowAllToggle ? cyan : line;
         StartWithWindowsRow.BorderBrush = control == StartWithWindowsToggle ? cyan : line;
+        MusicRow.BorderBrush = control == MusicToggle ? cyan : line;
+        SfxRow.BorderBrush = control == SfxToggle ? cyan : line;
         ScreenRow.BorderBrush = control == ScreenCombo ? cyan : line;
         DisplayModeRow.BorderBrush = control == DisplayModeCombo ? cyan : line;
         QualityRow.BorderBrush = control == QualityCombo ? cyan : line;
@@ -930,6 +947,7 @@ public sealed partial class MainWindow : Window
             if (action is not null)
             {
                 e.Handled = true;
+                audio?.Nav(action.Value);
                 if (startupOpen && WelcomePanel.Visibility == Visibility.Visible)
                     HandleStartupAction(action.Value);
                 else
@@ -989,6 +1007,7 @@ public sealed partial class MainWindow : Window
         InstallUpdateButton.IsEnabled = availableUpdate is not null;
         Panel.Visibility = Visibility.Visible;
         Launcher.Visibility = Visibility.Collapsed;
+        audio?.Play("open");
         SelectOptionsTab(optionsTab, keepFocusOnTabs: true);
     }
     void Games_Click(object sender, RoutedEventArgs e) => ShowSection(false);
@@ -1021,6 +1040,7 @@ public sealed partial class MainWindow : Window
         UpdateProgress.Visibility = Visibility.Collapsed;
         Panel.Visibility = Visibility.Visible;
         Launcher.Visibility = Visibility.Collapsed;
+        audio?.Play("open");
         panelFocus = 0;
         PadFocus(BackButton);
     }
@@ -1092,6 +1112,23 @@ public sealed partial class MainWindow : Window
         settings.Save();
         BuildCategories();
         ApplyFilter();
+    }
+
+    void MusicToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (initializingSettings) return;
+        settings.MusicOff = !MusicToggle.IsOn;
+        settings.Save();
+        audio?.SetMusicOn(MusicToggle.IsOn);
+    }
+
+    void SfxToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (initializingSettings) return;
+        settings.SfxOff = !SfxToggle.IsOn;
+        settings.Save();
+        if (audio is not null) audio.SfxOn = SfxToggle.IsOn;
+        audio?.Play("select");
     }
 
     void StartWithWindowsToggle_Toggled(object sender, RoutedEventArgs e)
@@ -1226,6 +1263,11 @@ public sealed partial class MainWindow : Window
         {
             if (cloaked) SetCloaked(false);
             Activate();
+            var m = DispatcherQueue.CreateTimer();
+            m.Interval = TimeSpan.FromMilliseconds(1600);
+            m.IsRepeating = false;
+            m.Tick += (_, _) => { if (!gameOpen) audio?.MusicWanted(true); };
+            m.Start();
             SplashWindow.FadeOutAndClose(DispatcherQueue);
         };
         t.Start();
@@ -1282,6 +1324,7 @@ public sealed partial class MainWindow : Window
         DailyButton.Content = "DAILY REWARDS";
         Panel.Visibility = Visibility.Visible;
         Launcher.Visibility = Visibility.Collapsed;
+        audio?.Play("open");
         panelFocus = 0;
         FocusPanelControl(PanelControls()[0]);
     }
@@ -1612,6 +1655,7 @@ public sealed partial class MainWindow : Window
             if (!gameOpen || signInPanelOpen || GameCover.Visibility != Visibility.Visible) return;
             StartupLog.Write("runtime", $"Launch watchdog: {g.Id} never started");
             await ExitGame();
+            audio?.Play("error");
             ShowMessage("GAME DIDN'T START", $"{g.Name} took too long to load. Check your connection and try again.");
         };
         launchWatchdog.Start();
@@ -1634,6 +1678,7 @@ public sealed partial class MainWindow : Window
         if (!gameOpen || signInPanelOpen || !ReferenceEquals(active, web)) return;
         var name = GameCoverTitle.Text;
         await ExitGame();
+        audio?.Play("error");
         ShowMessage("GAME DIDN'T START", error switch
         {
             "unknown_game" => $"{name} isn't in the arcade right now. Refresh the game list in Options and try again.",
@@ -1793,6 +1838,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex) { StartupLog.Exception("Daily reveal animation", ex); }
         StartupLog.Write("daily", $"Revealed +{state.NewSparkz}");
+        audio?.Play("jingle");
     }
 
     // click outside the card closes it; clicks inside the card don't

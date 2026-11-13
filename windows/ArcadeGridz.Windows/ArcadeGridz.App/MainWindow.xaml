@@ -323,6 +323,12 @@
          <TextBlock x:Name="DisplayStatus" Text="TIP: DRAG THE TOP OF THE ARCADE TO ANOTHER SCREEN." Style="{StaticResource PixelLabel}" FontSize="8" Foreground="{StaticResource AgDim}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
         </StackPanel>
         <StackPanel x:Name="OptionsSystemTab" Spacing="12" Visibility="Collapsed">
+         <Border x:Name="MusicRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,10">
+          <ToggleSwitch x:Name="MusicToggle" Header="LAUNCHER MUSIC (AMBIENT CHILLSTEP)" Toggled="MusicToggle_Toggled"/>
+         </Border>
+         <Border x:Name="SfxRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,10">
+          <ToggleSwitch x:Name="SfxToggle" Header="MENU SOUNDS" Toggled="SfxToggle_Toggled"/>
+         </Border>
          <Border x:Name="StartWithWindowsRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,14">
           <ToggleSwitch x:Name="StartWithWindowsToggle" Header="START ARCADEGRIDZ WITH WINDOWS" Toggled="StartWithWindowsToggle_Toggled"/>
          </Border>
