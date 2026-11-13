@@ -103,7 +103,7 @@
   <!-- the browser is laid out for 1600x900+ and scaled down to fit smaller screens (720p TVs, scaled laptops) -->
   <Viewbox x:Name="LauncherScaler" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
   <Grid x:Name="Launcher" Visibility="Collapsed">
-   <Grid.RowDefinitions><RowDefinition Height="118"/><RowDefinition Height="78"/><RowDefinition Height="*"/><RowDefinition Height="66"/></Grid.RowDefinitions>
+   <Grid.RowDefinitions><RowDefinition Height="118"/><RowDefinition Height="78"/><RowDefinition Height="*"/><RowDefinition Height="92"/></Grid.RowDefinitions>
 
    <!-- Header: logo / genre switcher / clock + account -->
    <Grid Grid.Row="0" Margin="40,16,40,0">
@@ -242,13 +242,56 @@
    </Grid>
 
    <!-- Controller legend -->
-   <Border Grid.Row="3" Background="#CC050312" BorderBrush="{StaticResource AgLine}" BorderThickness="0,1,0,0">
-    <Grid Margin="40,0">
-     <TextBlock Text="HOLD SELECT + START IN A GAME TO COME BACK" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}"/>
-     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="26">
-      <StackPanel Orientation="Horizontal"><Border Style="{StaticResource PadChip}" Background="{StaticResource AgGreen}"><TextBlock Text="A" Style="{StaticResource PadChipText}"/></Border><TextBlock Text="SELECT" Style="{StaticResource PixelLabel}" FontSize="9"/></StackPanel>
-      <StackPanel Orientation="Horizontal"><Border Style="{StaticResource PadChip}" Background="{StaticResource AgRed}"><TextBlock Text="B" Style="{StaticResource PadChipText}" Foreground="White"/></Border><TextBlock Text="BACK" Style="{StaticResource PixelLabel}" FontSize="9"/></StackPanel>
-      <StackPanel Orientation="Horizontal"><Border Style="{StaticResource PadChip}" Margin="0,0,6,0"><TextBlock Text="LB" Style="{StaticResource PadChipText}" FontSize="8"/></Border><Border Style="{StaticResource PadChip}"><TextBlock Text="RB" Style="{StaticResource PadChipText}" FontSize="8"/></Border><TextBlock Text="GENRE" Style="{StaticResource PixelLabel}" FontSize="9"/></StackPanel>
+   <!-- Bottom bar: music player (album "GAME OVER - Insert Coin To Continue") + pad hints -->
+   <Border Grid.Row="3" Background="#E6050312" BorderBrush="{StaticResource AgLine}" BorderThickness="0,1,0,0">
+    <Grid Margin="28,0" ColumnSpacing="18">
+     <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+     </Grid.ColumnDefinitions>
+     <!-- L/R peak meter (segments built in code) -->
+     <Grid VerticalAlignment="Center" RowSpacing="5" ColumnSpacing="6">
+      <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <TextBlock Text="L" Style="{StaticResource PixelLabel}" FontSize="7" VerticalAlignment="Center"/>
+      <StackPanel x:Name="MeterL" Grid.Column="1" Orientation="Horizontal" Spacing="2"/>
+      <TextBlock Grid.Row="1" Text="R" Style="{StaticResource PixelLabel}" FontSize="7" VerticalAlignment="Center"/>
+      <StackPanel x:Name="MeterR" Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="2"/>
+     </Grid>
+     <!-- now playing + seek -->
+     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="5" MinWidth="200">
+      <TextBlock x:Name="MusicTitle" Text="LOADING MUSIC..." FontFamily="{StaticResource AgDisplay}" FontSize="17" Foreground="White" TextTrimming="CharacterEllipsis"/>
+      <TextBlock x:Name="MusicAlbum" Text="GAME OVER  ·  INSERT COIN TO CONTINUE" Style="{StaticResource PixelLabel}" FontSize="7" Foreground="{StaticResource AgMagenta}" TextTrimming="CharacterEllipsis"/>
+      <Grid ColumnSpacing="10">
+       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <Grid x:Name="MusicSeek" Background="Transparent" Height="14" VerticalAlignment="Center" Tapped="MusicSeek_Tapped">
+        <ProgressBar x:Name="MusicProgress" Minimum="0" Maximum="1000" Height="4" VerticalAlignment="Center" IsHitTestVisible="False"/>
+       </Grid>
+       <TextBlock x:Name="MusicTime" Grid.Column="1" Text="0:00 / 0:00" Style="{StaticResource PixelLabel}" FontSize="7" VerticalAlignment="Center"/>
+      </Grid>
+     </StackPanel>
+     <!-- transport -->
+     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+      <Button x:Name="MusicPrevButton" Width="44" Height="44" Padding="0" CornerRadius="22" Click="MusicPrev_Click" ToolTipService.ToolTip="Previous track"><FontIcon Glyph="&#xE892;" FontFamily="{StaticResource AgIcons}" FontSize="16"/></Button>
+      <Button x:Name="MusicPlayButton" Width="54" Height="54" Padding="0" CornerRadius="27" Click="MusicPlay_Click" ToolTipService.ToolTip="Play / pause"><FontIcon x:Name="MusicPlayIcon" Glyph="&#xE768;" FontFamily="{StaticResource AgIcons}" FontSize="20"/></Button>
+      <Button x:Name="MusicNextButton" Width="44" Height="44" Padding="0" CornerRadius="22" Click="MusicNext_Click" ToolTipService.ToolTip="Next track"><FontIcon Glyph="&#xE893;" FontFamily="{StaticResource AgIcons}" FontSize="16"/></Button>
+     </StackPanel>
+     <!-- modes -->
+     <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+      <Button x:Name="MusicShuffleButton" Width="44" Height="44" Padding="0" CornerRadius="22" Click="MusicShuffle_Click" ToolTipService.ToolTip="Shuffle"><FontIcon x:Name="MusicShuffleIcon" Glyph="&#xE8B1;" FontFamily="{StaticResource AgIcons}" FontSize="16"/></Button>
+      <Button x:Name="MusicRepeatButton" Width="44" Height="44" Padding="0" CornerRadius="22" Click="MusicRepeat_Click" ToolTipService.ToolTip="Repeat: all / one / off"><FontIcon x:Name="MusicRepeatIcon" Glyph="&#xE8EE;" FontFamily="{StaticResource AgIcons}" FontSize="16"/></Button>
+     </StackPanel>
+     <!-- volume -->
+     <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+      <Button x:Name="MusicMuteButton" Width="44" Height="44" Padding="0" CornerRadius="22" Click="MusicMute_Click" ToolTipService.ToolTip="Mute"><FontIcon x:Name="MusicMuteIcon" Glyph="&#xE767;" FontFamily="{StaticResource AgIcons}" FontSize="16"/></Button>
+      <Border x:Name="MusicVolumeFrame" BorderThickness="2" BorderBrush="Transparent" CornerRadius="12" Padding="8,0">
+       <Slider x:Name="MusicVolumeSlider" Width="130" Minimum="0" Maximum="100" StepFrequency="1" VerticalAlignment="Center" ValueChanged="MusicVolume_ValueChanged" IsThumbToolTipEnabled="True"/>
+      </Border>
+     </StackPanel>
+     <!-- pad hints -->
+     <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center" Spacing="16">
+      <StackPanel Orientation="Horizontal"><Border Style="{StaticResource PadChip}" Background="{StaticResource AgGreen}"><TextBlock Text="A" Style="{StaticResource PadChipText}"/></Border><TextBlock Text="SELECT" Style="{StaticResource PixelLabel}" FontSize="8"/></StackPanel>
+      <StackPanel Orientation="Horizontal"><Border Style="{StaticResource PadChip}" Background="{StaticResource AgRed}"><TextBlock Text="B" Style="{StaticResource PadChipText}" Foreground="White"/></Border><TextBlock Text="BACK" Style="{StaticResource PixelLabel}" FontSize="8"/></StackPanel>
+      <StackPanel Orientation="Horizontal"><Border Style="{StaticResource PadChip}" Margin="0,0,6,0"><TextBlock Text="LB" Style="{StaticResource PadChipText}" FontSize="8"/></Border><Border Style="{StaticResource PadChip}"><TextBlock Text="RB" Style="{StaticResource PadChipText}" FontSize="8"/></Border><TextBlock Text="GENRE" Style="{StaticResource PixelLabel}" FontSize="8"/></StackPanel>
      </StackPanel>
     </Grid>
    </Border>
@@ -324,7 +367,7 @@
         </StackPanel>
         <StackPanel x:Name="OptionsSystemTab" Spacing="12" Visibility="Collapsed">
          <Border x:Name="MusicRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,10">
-          <ToggleSwitch x:Name="MusicToggle" Header="LAUNCHER MUSIC (AMBIENT CHILLSTEP)" Toggled="MusicToggle_Toggled"/>
+          <ToggleSwitch x:Name="MusicToggle" Header="PLAY THE GAME OVER ALBUM WHEN ARCADEGRIDZ STARTS" Toggled="MusicToggle_Toggled"/>
          </Border>
          <Border x:Name="SfxRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,10">
           <ToggleSwitch x:Name="SfxToggle" Header="MENU SOUNDS" Toggled="SfxToggle_Toggled"/>

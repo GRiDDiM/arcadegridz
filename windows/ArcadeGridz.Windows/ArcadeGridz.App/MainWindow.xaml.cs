@@ -15,7 +15,7 @@ namespace ArcadeGridz.App;
 
 public sealed partial class MainWindow : Window
 {
-    enum LauncherFocus { Categories, Games, Scores, Storyboards, Options, Exit, GameGrid, Play, SignIn }
+    enum LauncherFocus { Categories, Games, Scores, Storyboards, Options, Exit, GameGrid, Play, SignIn, Player }
     enum StartupFocus { Email, Google, Guest, Terms, Privacy }
     const string TermsUrl = "https://griddim.com/terms/";
     const string PrivacyUrl = "https://griddim.com/privacy/";
@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window
     readonly LeaderboardService leaderboards = new();
     readonly SettingsService settings = SettingsService.Load();
     AudioService? audio;
+    MusicPlayerService? music;
     readonly UpdateService updates = new();
     readonly DesktopAuthService desktopAuth = new();
     readonly DailyRewardsService daily = new();
@@ -73,7 +74,10 @@ public sealed partial class MainWindow : Window
         {
             InitializeComponent();
             StartupLog.Write("window", "InitializeComponent completed (WebView2 deferred)");
-            audio = new AudioService(DispatcherQueue, !settings.MusicOff, !settings.SfxOff);
+            audio = new AudioService(DispatcherQueue, !settings.SfxOff);
+            music = new MusicPlayerService(DispatcherQueue, settings);
+            music.Changed += UpdateMusicUi;
+            BuildMeter();
             audio.Play("jingle"); // loading jingle over the splash
             // Load fullscreen but cloaked (invisible) behind the overlay splash; Reveal() uncloaks it once the
             // launcher or sign-in panel is ready, so there is never a full-screen loading screen.
@@ -144,8 +148,7 @@ public sealed partial class MainWindow : Window
     void OnActivated(object sender, WindowActivatedEventArgs e)
     {
         if (e.WindowActivationState != WindowActivationState.Deactivated) { QueueCatalogCheck(); CheckDailyRewards(); }
-        // launcher music only while the app is in front and no game is running
-        if (revealed) audio?.MusicWanted(e.WindowActivationState != WindowActivationState.Deactivated && !gameOpen);
+        // the music player keeps playing when the app loses focus (it only stops for games)
         try
         {
             var hwnd = WindowNative.GetWindowHandle(this);
@@ -417,7 +420,7 @@ public sealed partial class MainWindow : Window
             StartupLog.Write("runtime", $"Launching id={g.Id}; type={g.Runtime.Type}");
             gameOpen = true;
             audio?.Play("launch");
-            audio?.MusicWanted(false); // the game brings its own audio
+            music?.PauseForGame(); // the game brings its own audio; never play under it
             SetCoverTitle(g.Id, g.Name);
             try { GameCoverArt.Source = new BitmapImage(new Uri(g.Art)); } catch { GameCoverArt.Source = null; }
             GameCover.Visibility = Visibility.Visible;
@@ -448,7 +451,7 @@ public sealed partial class MainWindow : Window
 
     void ReturnToLauncher()
     {
-        if (gameOpen && revealed) audio?.MusicWanted(true);
+        if (gameOpen) music?.ResumeAfterGame();
         gameOpen = false;
         active = null;
         launchWatchdog?.Stop();
@@ -631,9 +634,12 @@ public sealed partial class MainWindow : Window
                 case LauncherFocus.Play:
                     if (GameGrid.SelectedItem is GameEntry game) await Launch(game);
                     break;
+                case LauncherFocus.Player: PlayerActivate(); break;
             }
             return;
         }
+
+        if (launcherFocus == LauncherFocus.Player) { PlayerMove(action); return; }
 
         if (launcherFocus == LauncherFocus.GameGrid &&
             action is PadAction.Left or PadAction.Right or PadAction.Up or PadAction.Down)
@@ -645,7 +651,7 @@ public sealed partial class MainWindow : Window
         if (launcherFocus == LauncherFocus.Play)
         {
             if (action == PadAction.Up || action == PadAction.Left) SetLauncherFocus(LauncherFocus.GameGrid);
-            else if (action == PadAction.Down) SetLauncherFocus(consoleMode ? LauncherFocus.Options : LauncherFocus.Exit);
+            else if (action == PadAction.Down) SetLauncherFocus(LauncherFocus.Player);
             return;
         }
 
@@ -702,7 +708,7 @@ public sealed partial class MainWindow : Window
                 if (i - cols < 0) { SetLauncherFocus(LauncherFocus.Games); return; }
                 i -= cols; break;
             case PadAction.Down:
-                if (i / cols == (visible.Count - 1) / cols) { SetLauncherFocus(LauncherFocus.Play); return; }
+                if (i / cols == (visible.Count - 1) / cols) { SetLauncherFocus(LauncherFocus.Player); return; }
                 i = Math.Min(i + cols, visible.Count - 1); break;
             case PadAction.Left:
                 if (col == 0) return;
@@ -721,6 +727,7 @@ public sealed partial class MainWindow : Window
             target = LauncherFocus.Options;
         if (launcherFocus != target) StartupLog.Write("nav", $"launcher focus {launcherFocus} -> {target}");
         launcherFocus = target;
+        if (target != LauncherFocus.Player) SetVolumeAdjust(false);
         UpdateTileHighlight();
         Control control = target switch
         {
@@ -732,6 +739,7 @@ public sealed partial class MainWindow : Window
             LauncherFocus.Exit => ExitButton,
             LauncherFocus.Play => PlayButton,
             LauncherFocus.SignIn => account is not null ? AccountButton : SignInButton,
+            LauncherFocus.Player => PlayerControls[Math.Clamp(playerIndex, 0, PlayerControls.Length - 1)],
             _ => GameGrid
         };
         PadFocus(control);
@@ -1119,7 +1127,6 @@ public sealed partial class MainWindow : Window
         if (initializingSettings) return;
         settings.MusicOff = !MusicToggle.IsOn;
         settings.Save();
-        audio?.SetMusicOn(MusicToggle.IsOn);
     }
 
     void SfxToggle_Toggled(object sender, RoutedEventArgs e)
@@ -1266,7 +1273,7 @@ public sealed partial class MainWindow : Window
             var m = DispatcherQueue.CreateTimer();
             m.Interval = TimeSpan.FromMilliseconds(1600);
             m.IsRepeating = false;
-            m.Tick += (_, _) => { if (!gameOpen) audio?.MusicWanted(true); };
+            m.Tick += (_, _) => { if (music is not null && music.Album is null) _ = music.LoadAsync(autoPlay: !settings.MusicOff && !gameOpen); };
             m.Start();
             SplashWindow.FadeOutAndClose(DispatcherQueue);
         };
@@ -2050,5 +2057,156 @@ public sealed partial class MainWindow : Window
         if (at > 0) GameCoverTitle.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = name.Substring(0, at) });
         GameCoverTitle.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = word, FontStyle = Windows.UI.Text.FontStyle.Italic });
         if (at + word.Length < name.Length) GameCoverTitle.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = name.Substring(at + word.Length) });
+    }
+
+    // ======== music player (bottom bar) ========
+    int playerIndex = 1;          // 0 prev, 1 play, 2 next, 3 shuffle, 4 repeat, 5 mute, 6 volume
+    bool volumeAdjust;            // A on the volume slider: left/right change volume until A/B
+    bool syncingVolume;
+    readonly List<Microsoft.UI.Xaml.Shapes.Rectangle> segL = [], segR = [];
+    double levelL, levelR, holdL, holdR;
+    long holdLAt, holdRAt;
+    Microsoft.UI.Dispatching.DispatcherQueueTimer? meterTimer;
+    const int MeterSegments = 16;
+
+    Control[] PlayerControls => [MusicPrevButton, MusicPlayButton, MusicNextButton, MusicShuffleButton, MusicRepeatButton, MusicMuteButton, MusicVolumeSlider];
+
+    void PlayerMove(PadAction action)
+    {
+        if (volumeAdjust)
+        {
+            if (action is PadAction.Left or PadAction.Right) { music?.SetVolume((music?.Volume ?? 0.6) + (action == PadAction.Right ? 0.05 : -0.05)); return; }
+            if (action is PadAction.B or PadAction.Up or PadAction.Down) { SetVolumeAdjust(false); if (action != PadAction.Up) return; }
+        }
+        switch (action)
+        {
+            case PadAction.Up: SetLauncherFocus(LauncherFocus.GameGrid); break;
+            case PadAction.Left: if (playerIndex > 0) { playerIndex--; SetLauncherFocus(LauncherFocus.Player); } break;
+            case PadAction.Right: if (playerIndex < PlayerControls.Length - 1) { playerIndex++; SetLauncherFocus(LauncherFocus.Player); } break;
+        }
+    }
+
+    void PlayerActivate()
+    {
+        switch (playerIndex)
+        {
+            case 0: music?.Previous(); break;
+            case 1: music?.TogglePlay(); break;
+            case 2: music?.Next(); break;
+            case 3: music?.ToggleShuffle(); break;
+            case 4: music?.CycleRepeat(); break;
+            case 5: music?.ToggleMute(); break;
+            case 6: SetVolumeAdjust(!volumeAdjust); break;
+        }
+    }
+
+    void SetVolumeAdjust(bool on)
+    {
+        volumeAdjust = on;
+        MusicVolumeFrame.BorderBrush = on ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgCyan"] : new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    }
+
+    void MusicPrev_Click(object sender, RoutedEventArgs e) => music?.Previous();
+    void MusicPlay_Click(object sender, RoutedEventArgs e) => music?.TogglePlay();
+    void MusicNext_Click(object sender, RoutedEventArgs e) => music?.Next();
+    void MusicShuffle_Click(object sender, RoutedEventArgs e) => music?.ToggleShuffle();
+    void MusicRepeat_Click(object sender, RoutedEventArgs e) => music?.CycleRepeat();
+    void MusicMute_Click(object sender, RoutedEventArgs e) => music?.ToggleMute();
+
+    void MusicVolume_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (syncingVolume || music is null) return;
+        music.SetVolume(e.NewValue / 100.0);
+    }
+
+    void MusicSeek_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        var x = e.GetPosition(MusicSeek).X;
+        if (MusicSeek.ActualWidth > 0) music?.Seek(x / MusicSeek.ActualWidth);
+    }
+
+    void UpdateMusicUi()
+    {
+        if (music is null) return;
+        var t = music.Current;
+        var cyan = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgCyan"];
+        var white = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgText"];
+        var dim = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgDim"];
+        if (t is not null && music.Album is not null)
+        {
+            MusicTitle.Text = $"{t.Number:00}  ·  {t.Title.ToUpperInvariant()}";
+            MusicAlbum.Text = $"{music.Album.Title}  ·  {music.Album.Subtitle.ToUpperInvariant()}  ·  {music.Album.Artist.ToUpperInvariant()}";
+        }
+        MusicPlayIcon.Glyph = music.IsPlaying ? "" : "";
+        MusicShuffleIcon.Foreground = music.Shuffle ? cyan : dim;
+        MusicRepeatIcon.Glyph = music.Repeat == RepeatMode.One ? "" : "";
+        MusicRepeatIcon.Foreground = music.Repeat == RepeatMode.Off ? dim : cyan;
+        ToolTipService.SetToolTip(MusicRepeatButton, music.Repeat switch { RepeatMode.All => "Repeat: all", RepeatMode.One => "Repeat: this track", _ => "Repeat: off" });
+        MusicMuteIcon.Glyph = music.Muted || music.Volume <= 0 ? "" : "";
+        MusicMuteIcon.Foreground = music.Muted ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"] : white;
+        syncingVolume = true;
+        MusicVolumeSlider.Value = Math.Round(music.Volume * 100);
+        syncingVolume = false;
+    }
+
+    void BuildMeter()
+    {
+        foreach (var (panel, list) in new[] { (MeterL, segL), (MeterR, segR) })
+        {
+            panel.Children.Clear();
+            list.Clear();
+            for (int i = 0; i < MeterSegments; i++)
+            {
+                var r = new Microsoft.UI.Xaml.Shapes.Rectangle { Width = 6, Height = 11, RadiusX = 1.5, RadiusY = 1.5, Fill = SegBrush(i, false) };
+                panel.Children.Add(r);
+                list.Add(r);
+            }
+        }
+        meterTimer = DispatcherQueue.CreateTimer();
+        meterTimer.Interval = TimeSpan.FromMilliseconds(33);
+        meterTimer.IsRepeating = true;
+        var tick = 0;
+        meterTimer.Tick += (_, _) =>
+        {
+            if (music is null || Launcher.Visibility != Visibility.Visible) return;
+            var (l, r) = music.Levels();
+            var now = Environment.TickCount64;
+            // fast attack, smooth release, peak hold ~0.7 s
+            levelL = l > levelL ? l : Math.Max(l, levelL - 0.045);
+            levelR = r > levelR ? r : Math.Max(r, levelR - 0.045);
+            if (levelL >= holdL || now - holdLAt > 700) { holdL = levelL; holdLAt = now; }
+            if (levelR >= holdR || now - holdRAt > 700) { holdR = levelR; holdRAt = now; }
+            PaintMeter(segL, levelL, holdL);
+            PaintMeter(segR, levelR, holdR);
+            if (++tick % 8 == 0) UpdateMusicTime();
+        };
+        meterTimer.Start();
+    }
+
+    static readonly Microsoft.UI.Xaml.Media.SolidColorBrush[] segOn = Enumerable.Range(0, MeterSegments).Select(i => new Microsoft.UI.Xaml.Media.SolidColorBrush(
+        i < 10 ? Microsoft.UI.ColorHelper.FromArgb(255, 0x3A, 0xFF, 0x9A) : i < 13 ? Microsoft.UI.ColorHelper.FromArgb(255, 0xFF, 0xD9, 0x3A) : Microsoft.UI.ColorHelper.FromArgb(255, 0xFF, 0x3B, 0x4E))).ToArray();
+    static readonly Microsoft.UI.Xaml.Media.SolidColorBrush segOff = new(Microsoft.UI.ColorHelper.FromArgb(255, 0x1E, 0x1A, 0x33));
+
+    static Microsoft.UI.Xaml.Media.Brush SegBrush(int i, bool on) => on ? segOn[i] : segOff;
+
+    static void PaintMeter(List<Microsoft.UI.Xaml.Shapes.Rectangle> segs, double level, double hold)
+    {
+        var lit = (int)Math.Round(level * MeterSegments);
+        var holdSeg = (int)Math.Round(hold * MeterSegments) - 1;
+        for (int i = 0; i < segs.Count; i++)
+        {
+            var on = i < lit || (i == holdSeg && hold > 0.05);
+            var b = SegBrush(i, on);
+            if (!ReferenceEquals(segs[i].Fill, b)) segs[i].Fill = b;
+        }
+    }
+
+    void UpdateMusicTime()
+    {
+        if (music?.Current is null) return;
+        var p = music.Position;
+        var d = music.Duration;
+        MusicTime.Text = $"{(int)p.TotalMinutes}:{p.Seconds:00} / {(int)d.TotalMinutes}:{d.Seconds:00}";
+        MusicProgress.Value = d.TotalSeconds > 0 ? p.TotalSeconds / d.TotalSeconds * 1000 : 0;
     }
 }

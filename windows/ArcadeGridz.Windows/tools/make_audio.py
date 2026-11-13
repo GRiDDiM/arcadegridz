@@ -2,7 +2,7 @@
   Assets/Audio/chillstep.wav   seamless ambient chillstep loop (70 BPM, 16 bars)
   Assets/Audio/jingle.wav      loading jingle (startup splash)
   Assets/Audio/move.wav select.wav back.wav open.wav launch.wav error.wav   UI sfx
-Run: python3 make_audio.py <out_dir>   (needs numpy, scipy, ffmpeg on PATH)
+Run: python3 make_audio.py <out_dir> [--music]   (chillstep loop only with --music; the app now plays the album)   (needs numpy, scipy, ffmpeg on PATH)
 """
 import os, subprocess, sys
 import numpy as np
@@ -209,6 +209,8 @@ wavfile.write(tmp, SR, (stereo * 32767).astype(np.int16))
 # WAV (not MP3/AAC): those add encoder priming silence that makes an audible gap at the loop point
 subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", tmp, "-ar", "32000", os.path.join(OUT, "chillstep.wav")], check=True)
 os.remove(tmp)
+if "--music" not in sys.argv:
+    os.remove(os.path.join(OUT, "chillstep.wav"))  # replaced by the album player; kept for reference
 
 # ---------------------------------------------------------------- sfx
 def blip(f0, f1, dur, shape="sine", decay=30):
@@ -226,18 +228,27 @@ write_wav("select.wav", tail(np.concatenate([blip(880, 880, 0.07, decay=35), bli
 write_wav("back.wav", tail(np.concatenate([blip(990, 990, 0.06, decay=40), blip(660, 640, 0.14, decay=25)]) * 0.7))
 w = lp(rng.standard_normal(int(0.35 * SR)), 2500) * np.sin(np.linspace(0, np.pi, int(0.35 * SR))) * 0.35
 write_wav("open.wav", tail(w + blip(500, 1500, 0.35, decay=6) * 0.3, 0.4))
-t = t_(1.1)
-# filter sweep done in chunks (cutoff 600 Hz -> 5.6 kHz)
-_n = rng.standard_normal(len(t)); _chunks = np.array_split(np.arange(len(t)), 24)
-riser = np.concatenate([lp(_n[c], 600 + 5000 * (k / 23) ** 2) for k, c in enumerate(_chunks)]) * (t / t[-1]) ** 2 * 0.4
-riser += blip(200, 1200, len(t) / SR, decay=0.5) * (t / t[-1]) ** 2 * 0.15
-stab = np.zeros(len(t))
-for m in (69, 76, 81, 85):
-    stab += np.sin(2 * np.pi * mtof(m) * t_(1.1)) * np.exp(-t_(1.1) * 3)
-launch = np.concatenate([riser[: int(0.6 * SR)], np.zeros(0)])
-launch = np.pad(launch, (0, int(1.2 * SR)))
-mix_into(launch, stab * 0.25, 0.6)
-write_wav("launch.wav", tail(launch, 0.4))
+# game launch: arcade coin-drop "ka-ching" (B5 -> E6 square) then a power-up sweep, sub hit and bright chord
+def square(f, dur, decay):
+    t = t_(dur)
+    return np.sign(np.sin(2 * np.pi * f * t)) * np.exp(-t * decay) * 0.5
+coin = np.concatenate([square(988, 0.075, 6), square(1319, 0.42, 7)])
+coin = lp(coin, 7000)
+L2 = int(1.5 * SR)
+launch = np.zeros(L2)
+mix_into(launch, coin * 0.55, 0)
+sw = t_(0.32)
+sweep = np.sin(2 * np.pi * np.cumsum(300 * (12 ** (sw / sw[-1]))) / SR) * np.sin(np.pi * sw / sw[-1]) * 0.35
+mix_into(launch, lp(sweep, 6000), 0.36)
+for k, m in enumerate((69, 73, 76, 81)):           # quick A-major arpeggio up
+    tt = t_(0.5)
+    mix_into(launch, np.sin(2 * np.pi * mtof(m + 12) * tt) * np.exp(-tt * 9) * 0.22, 0.4 + k * 0.045)
+hit_t = t_(0.9)
+chord = sum(lp(saw_stack(mtof(m), 0.9), 3500) for m in (57, 64, 69, 73, 76)) / 5 * np.exp(-hit_t * 3.2)
+mix_into(launch, chord * 0.5, 0.62)
+mix_into(launch, kick()[: int(0.5 * SR)] * 0.6, 0.62)
+mix_into(launch, hp(rng.standard_normal(int(0.6 * SR)), 6000) * np.exp(-t_(0.6) * 6) * 0.08, 0.62)
+write_wav("launch.wav", tail(launch, 0.3))
 write_wav("error.wav", tail(lp(blip(180, 150, 0.22, shape="saw", decay=12), 1500) * 0.6, 0.2))
 
 # loading jingle: rising sparkly arpeggio into a warm chord (A major 9 lift), ~2.6 s

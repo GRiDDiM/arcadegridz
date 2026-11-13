@@ -9,6 +9,11 @@ public sealed class SettingsService
     public bool Windowed {get;set;}
     public bool HideScanlines {get;set;}
     public bool MusicOff {get;set;}
+    public double MusicVolume {get;set;}=0.6;
+    public bool MusicMuted {get;set;}
+    public bool MusicShuffle {get;set;}
+    public RepeatMode MusicRepeat {get;set;}=RepeatMode.All;
+    public int MusicTrack {get;set;}
     public bool SfxOff {get;set;}
     /// <summary>Turns off GPU acceleration in the game view (troubleshooting); applies next launch.</summary>
     public bool DisableGpu {get;set;}
