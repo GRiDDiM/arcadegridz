@@ -8,6 +8,7 @@ public sealed class SettingsService
     /// <summary>Windowed (normal resizable window) instead of fullscreen.</summary>
     public bool Windowed {get;set;}
     public bool HideScanlines {get;set;}
+    public bool StillBackground {get;set;}
     public bool MusicOff {get;set;}
     public double MusicVolume {get;set;}=0.6;
     public bool MusicMuted {get;set;}

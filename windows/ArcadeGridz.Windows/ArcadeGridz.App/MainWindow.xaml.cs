@@ -188,6 +188,7 @@ public sealed partial class MainWindow : Window
             ShowAllToggle.IsOn = settings.ShowAll;
             StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
             ScanlinesToggle.IsOn = !settings.HideScanlines;
+            CityLifeToggle.IsOn = !settings.StillBackground;
             MusicToggle.IsOn = !settings.MusicOff;
             SfxToggle.IsOn = !settings.SfxOff;
             GpuToggle.IsOn = !settings.DisableGpu;
@@ -195,6 +196,7 @@ public sealed partial class MainWindow : Window
             QualityCombo.SelectedIndex = 0; // HD isn't available yet
             initializingSettings = false;
             ApplyScanlines();
+            ApplyCityLife();
             clockTimer = DispatcherQueue.CreateTimer();
             clockTimer.Interval = TimeSpan.FromSeconds(1);
             clockTimer.Tick += (_, _) => ClockText.Text = DateTime.Now.ToString("h:mm tt");
@@ -421,6 +423,7 @@ public sealed partial class MainWindow : Window
             gameOpen = true;
             audio?.Play("launch");
             music?.PauseForGame(); // the game brings its own audio; never play under it
+            PauseCityLife();
             SetCoverTitle(g.Id, g.Name);
             try { GameCoverArt.Source = new BitmapImage(new Uri(g.Art)); } catch { GameCoverArt.Source = null; }
             GameCover.Visibility = Visibility.Visible;
@@ -453,6 +456,7 @@ public sealed partial class MainWindow : Window
     {
         if (gameOpen) music?.ResumeAfterGame();
         gameOpen = false;
+        ApplyCityLife();
         active = null;
         launchWatchdog?.Stop();
         GameLayer.Visibility = Visibility.Collapsed;
@@ -764,6 +768,7 @@ public sealed partial class MainWindow : Window
                     controls.Add(DisplayModeCombo);
                     controls.Add(QualityCombo);
                     controls.Add(ScanlinesToggle);
+                    controls.Add(CityLifeToggle);
                     controls.Add(GpuToggle);
                     break;
                 case 2:
@@ -831,6 +836,7 @@ public sealed partial class MainWindow : Window
             else if (control == MusicToggle) MusicToggle.IsOn = !MusicToggle.IsOn;
             else if (control == SfxToggle) SfxToggle.IsOn = !SfxToggle.IsOn;
             else if (control == ScanlinesToggle) ScanlinesToggle.IsOn = !ScanlinesToggle.IsOn;
+            else if (control == CityLifeToggle) CityLifeToggle.IsOn = !CityLifeToggle.IsOn;
             else if (control == GpuToggle) GpuToggle.IsOn = !GpuToggle.IsOn;
             else if (control == DailyButton) { Daily_Click(this, new RoutedEventArgs()); return; }
             else if (control == RefreshCatalogButton) { if (RefreshCatalogButton.IsEnabled) RefreshCatalog_Click(this, new RoutedEventArgs()); return; }
@@ -862,6 +868,7 @@ public sealed partial class MainWindow : Window
         DisplayModeRow.BorderBrush = control == DisplayModeCombo ? cyan : line;
         QualityRow.BorderBrush = control == QualityCombo ? cyan : line;
         ScanlinesRow.BorderBrush = control == ScanlinesToggle ? cyan : line;
+        CityLifeRow.BorderBrush = control == CityLifeToggle ? cyan : line;
         GpuRow.BorderBrush = control == GpuToggle ? cyan : line;
     }
 
@@ -1539,6 +1546,44 @@ public sealed partial class MainWindow : Window
         settings.HideScanlines = !ScanlinesToggle.IsOn;
         settings.Save();
         ApplyScanlines();
+    }
+
+    void CityLifeToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (initializingSettings) return;
+        settings.StillBackground = !CityLifeToggle.IsOn;
+        settings.Save();
+        ApplyCityLife();
+    }
+
+    // The skyline animations only touch Opacity and transforms, so they run on the
+    // compositor thread and cost the UI thread nothing. Paused while a game is up.
+    bool cityLifeRunning;
+    Microsoft.UI.Xaml.Media.Animation.Storyboard? CityLifeStory =>
+        CityLife.Resources.TryGetValue("CityLifeStory", out var sb) ? sb as Microsoft.UI.Xaml.Media.Animation.Storyboard : null;
+
+    void ApplyCityLife()
+    {
+        try
+        {
+            var sb = CityLifeStory;
+            if (sb is null) return;
+            if (settings.StillBackground || gameOpen)
+            {
+                if (settings.StillBackground) { sb.Stop(); cityLifeRunning = false; CityLife.Visibility = Visibility.Collapsed; }
+                else sb.Pause();
+                return;
+            }
+            CityLife.Visibility = Visibility.Visible;
+            if (!cityLifeRunning) { sb.Begin(); cityLifeRunning = true; }
+            else sb.Resume();
+        }
+        catch (Exception ex) { StartupLog.Exception("CityLife", ex); }
+    }
+
+    void PauseCityLife()
+    {
+        try { if (cityLifeRunning) CityLifeStory?.Pause(); } catch { }
     }
 
     void ApplyScanlines()

@@ -109,3 +109,9 @@ v0.1 done =
 - Settings now includes installed version, Check for Updates, progress/error state, and Install Update. The updater trusts HTTPS GitHub hosts only, rejects non-newer versions, and performs fixed-time SHA-256 verification against `update-manifest.json` before starting the installer.
 - GitHub Actions run 61 passed publish, full-launcher startup, live catalog, installer compilation, silent install payload verification, uninstall, manifest generation, and both artifact uploads.
 - Distribution limitation: `GRiDDiM/arcadegridz` is currently private. Manual downloads work for signed-in repository users, but an installed app cannot read a private GitHub Release without a token. Do not embed a token. Make the repository/releases publicly readable or use a separate public official releases repository before declaring unattended in-app updates operational.
+
+## 2026-11-13 — v0.1.29 animated city backdrop (Claude)
+- Backdrop image now sits in a `Viewbox Stretch=UniformToFill` with a 1672x941 Grid, so the new `CityLife` Canvas (clipped to the hall's window) crops exactly with the art.
+- CityLife: hovercars in 7 lanes, a mag-lev line + 4-car cybertrain over the water, 3 boats with wakes and mast lights, moon rim glow cycling magenta→cyan→violet, sun halo + water glints, grid pulses, twinkling stars, a shooting star, spire beacons, flickering windows, 2 searchlights, needle ring lights.
+- Only Opacity/CompositeTransform are animated (independent animations, compositor thread, no per-frame C#). Storyboard `CityLifeStory` pauses while a game/sign-in is open; OPTIONS > DISPLAY > ANIMATED CITY BACKGROUND turns it off (`StillBackground` setting).
+- Regenerate the XAML with `tools/make_citylife.py` (coordinates are in the 1672x941 source-image space).
