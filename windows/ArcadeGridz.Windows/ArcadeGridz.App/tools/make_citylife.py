@@ -3,15 +3,18 @@
 import random, sys
 random.seed(7)
 X=[]; A=[]   # element xaml, animation xaml
+def ts(t):
+    m,sec=divmod(t,60)
+    return f'0:{int(m)}:{round(sec,3):g}'
 def anim(target, prop, frames=None, frm=None, to=None, dur=None, rev=False, begin=0, ease=False):
-    b=f' BeginTime="0:0:{begin:g}"' if begin else ''
+    b=f' BeginTime="{ts(begin)}"' if begin else ''
     if frames is not None:
-        ks=''.join(f'<{"Discrete" if d else "Linear"}DoubleKeyFrame KeyTime="0:0:{t:g}" Value="{v:g}"/>' for t,v,d in frames)
+        ks=''.join(f'<{"Discrete" if d else "Linear"}DoubleKeyFrame KeyTime="{ts(t)}" Value="{v:g}"/>' for t,v,d in frames)
         A.append(f'<DoubleAnimationUsingKeyFrames Storyboard.TargetName="{target}" Storyboard.TargetProperty="{prop}" RepeatBehavior="Forever"{b}>{ks}</DoubleAnimationUsingKeyFrames>')
     else:
         e='<DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>' if ease else ''
-        A.append(f'<DoubleAnimation Storyboard.TargetName="{target}" Storyboard.TargetProperty="{prop}" From="{frm:g}" To="{to:g}" Duration="0:0:{dur:g}" AutoReverse="{str(rev)}" RepeatBehavior="Forever"{b}>{e}</DoubleAnimation>' if e else
-                 f'<DoubleAnimation Storyboard.TargetName="{target}" Storyboard.TargetProperty="{prop}" From="{frm:g}" To="{to:g}" Duration="0:0:{dur:g}" AutoReverse="{str(rev)}" RepeatBehavior="Forever"{b}/>')
+        A.append(f'<DoubleAnimation Storyboard.TargetName="{target}" Storyboard.TargetProperty="{prop}" From="{frm:g}" To="{to:g}" Duration="{ts(dur)}" AutoReverse="{str(rev)}" RepeatBehavior="Forever"{b}>{e}</DoubleAnimation>' if e else
+                 f'<DoubleAnimation Storyboard.TargetName="{target}" Storyboard.TargetProperty="{prop}" From="{frm:g}" To="{to:g}" Duration="{ts(dur)}" AutoReverse="{str(rev)}" RepeatBehavior="Forever"{b}/>')
 TX='(UIElement.RenderTransform).(CompositeTransform.TranslateX)'
 TY='(UIElement.RenderTransform).(CompositeTransform.TranslateY)'
 ROT='(UIElement.RenderTransform).(CompositeTransform.Rotation)'
@@ -164,7 +167,7 @@ for i,(y,s,rtl,d,col,b) in enumerate([(254,0.55,True,70,'5EE7FF',0),(270,0.8,Fal
     anim(n+'Mast',OP,frames=[(0,1,True),(0.6,0.2,True),(1.4,0.2,True)])
     preview.append(('rect',500+i*120,y,40*s,9*s,col))
 
-xaml=('<Canvas x:Name="CityLife" Width="1672" Height="941" Opacity="0.85">\n'
+xaml=('<Canvas x:Name="CityLife" Width="1672" Height="941" Opacity="0.62">\n'
       '<Canvas.Clip><RectangleGeometry Rect="290,0,1096,322"/></Canvas.Clip>\n'
       '<Canvas.Resources><Storyboard x:Key="CityLifeStory">\n'+'\n'.join(A)+'\n</Storyboard></Canvas.Resources>\n'
       +'\n'.join(X)+'\n</Canvas>')
