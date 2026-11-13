@@ -398,7 +398,14 @@ public sealed partial class MainWindow : Window
     }
 
     void GameGrid_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (GameGrid.SelectedItem is GameEntry g) _ = ShowHero(g); }
-    async void GameGrid_ItemClick(object sender, ItemClickEventArgs e) { if (e.ClickedItem is GameEntry g) await Launch(g); }
+    // A mouse/touch click only picks the game; launching is the PLAY button's job
+    // (controller A / Enter still launch from the grid via HandleLauncherAction).
+    void GameGrid_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not GameEntry g) return;
+        if (!ReferenceEquals(GameGrid.SelectedItem, g)) { GameGrid.SelectedItem = g; audio?.Play("move"); }
+        else _ = ShowHero(g);
+    }
     async void Play_Click(object sender, RoutedEventArgs e) { if (GameGrid.SelectedItem is GameEntry g) await Launch(g); }
 
     async Task Launch(GameEntry g)

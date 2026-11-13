@@ -115,3 +115,6 @@ v0.1 done =
 - CityLife: hovercars in 7 lanes, a mag-lev line + 4-car cybertrain over the water, 3 boats with wakes and mast lights, moon rim glow cycling magenta→cyan→violet, sun halo + water glints, grid pulses, twinkling stars, a shooting star, spire beacons, flickering windows, 2 searchlights, needle ring lights.
 - Only Opacity/CompositeTransform are animated (independent animations, compositor thread, no per-frame C#). Storyboard `CityLifeStory` pauses while a game/sign-in is open; OPTIONS > DISPLAY > ANIMATED CITY BACKGROUND turns it off (`StillBackground` setting).
 - Regenerate the XAML with `tools/make_citylife.py` (coordinates are in the 1672x941 source-image space).
+
+## 2026-11-13 — v0.1.30 click selects, PLAY launches (Claude)
+- Mouse/touch click on a game card now only selects it (hero panel updates); launching needs the PLAY button. Controller A / Enter on the grid still launch.
