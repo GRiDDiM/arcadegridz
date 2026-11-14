@@ -118,3 +118,6 @@ v0.1 done =
 
 ## 2026-11-13 — v0.1.30 click selects, PLAY launches (Claude)
 - Mouse/touch click on a game card now only selects it (hero panel updates); launching needs the PLAY button. Controller A / Enter on the grid still launch.
+
+## 2026-11-13 — v0.1.31 music default volume 10 (Claude)
+- MusicVolume default 0.1 (slider 10). One-time migration (SettingsVersion 1) moves installs still on the old 60% default down to 10; volumes people changed are kept.
