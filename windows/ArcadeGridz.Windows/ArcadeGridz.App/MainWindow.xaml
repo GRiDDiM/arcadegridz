@@ -408,9 +408,14 @@
       <TextBlock x:Name="HeroMeta" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgCyan}"/>
      </StackPanel>
      <TextBlock x:Name="HeroDescription" Grid.Row="3" Foreground="#FFC9D2E2" FontFamily="{StaticResource AgBody}" TextWrapping="Wrap" FontSize="16" LineHeight="24" MaxLines="3" TextTrimming="WordEllipsis" Margin="0,12,0,10"/>
-     <Button x:Name="PlayButton" Grid.Row="4" Style="{StaticResource PlayButton}" HorizontalAlignment="Left" MinWidth="230" Click="Play_Click">
+     <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="14">
+     <Button x:Name="PlayButton" Style="{StaticResource PlayButton}" HorizontalAlignment="Left" MinWidth="230" Click="Play_Click">
       <StackPanel Orientation="Horizontal" Spacing="14"><FontIcon Glyph="&#xE768;" FontFamily="{StaticResource AgIcons}" FontSize="20"/><TextBlock x:Name="PlayLabel" Text="PLAY" VerticalAlignment="Center"/></StackPanel>
      </Button>
+     <Button x:Name="TrailerButton" Style="{StaticResource NeonButton}" Visibility="Collapsed" MinWidth="170" Click="Trailer_Click" BorderBrush="{StaticResource AgMagenta}">
+      <StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE714;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="TRAILER" VerticalAlignment="Center"/></StackPanel>
+     </Button>
+     </StackPanel>
      <Border Grid.Row="5" Margin="0,14,0,0" Background="#B30B0820" BorderBrush="#33FFC14D" BorderThickness="1" CornerRadius="14" Padding="18,12" VerticalAlignment="Stretch" MinHeight="96">
       <Grid RowSpacing="8">
        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>

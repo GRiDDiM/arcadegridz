@@ -15,7 +15,7 @@ namespace ArcadeGridz.App;
 
 public sealed partial class MainWindow : Window
 {
-    enum LauncherFocus { Categories, Games, Scores, Storyboards, Options, Exit, GameGrid, Play, SignIn, Player }
+    enum LauncherFocus { Categories, Games, Scores, Storyboards, Options, Exit, GameGrid, Play, SignIn, Player, Trailer }
     enum StartupFocus { Email, Google, Guest, Terms, Privacy }
     const string TermsUrl = "https://griddim.com/terms/";
     const string PrivacyUrl = "https://griddim.com/privacy/";
@@ -382,6 +382,8 @@ public sealed partial class MainWindow : Window
         HeroDescription.Text = g.Description;
         PlayButton.IsEnabled = g.Playable;
         PlayLabel.Text = g.Playable ? "PLAY" : "UNAVAILABLE";
+        TrailerButton.Visibility = HasTrailer(g) ? Visibility.Visible : Visibility.Collapsed;
+        if (launcherFocus == LauncherFocus.Trailer && !HasTrailer(g)) SetLauncherFocus(LauncherFocus.Play);
         ScoreList.ItemsSource = null;
         ScoreEmpty.Visibility = Visibility.Collapsed;
         try { HeroArt.Source = new BitmapImage(new Uri(g.Art)); } catch { HeroArt.Source = null; }
@@ -407,6 +409,16 @@ public sealed partial class MainWindow : Window
         else _ = ShowHero(g);
     }
     async void Play_Click(object sender, RoutedEventArgs e) { if (GameGrid.SelectedItem is GameEntry g) await Launch(g); }
+    static bool HasTrailer(GameEntry g) => g.Trailer && g.Playable && g.Runtime.Type.Equals("web", StringComparison.OrdinalIgnoreCase);
+    async void Trailer_Click(object sender, RoutedEventArgs e) { if (GameGrid.SelectedItem is GameEntry g) await LaunchTrailer(g); }
+    // A trailer runs on the game itself: same web runtime and URL, plus trailer=1 (the site starts the trailer instead of the game)
+    async Task LaunchTrailer(GameEntry g)
+    {
+        if (!HasTrailer(g)) return;
+        EnsureWebRuntime().TrailerNext = true;
+        StartupLog.Write("runtime", $"Trailer id={g.Id}");
+        await Launch(g);
+    }
 
     async Task Launch(GameEntry g)
     {
@@ -646,6 +658,9 @@ public sealed partial class MainWindow : Window
                     if (GameGrid.SelectedItem is GameEntry game) await Launch(game);
                     break;
                 case LauncherFocus.Player: PlayerActivate(); break;
+                case LauncherFocus.Trailer:
+                    if (GameGrid.SelectedItem is GameEntry tg) await LaunchTrailer(tg);
+                    break;
             }
             return;
         }
@@ -661,7 +676,15 @@ public sealed partial class MainWindow : Window
 
         if (launcherFocus == LauncherFocus.Play)
         {
-            if (action == PadAction.Up || action == PadAction.Left) SetLauncherFocus(LauncherFocus.GameGrid);
+            if (action == PadAction.Right && TrailerButton.Visibility == Visibility.Visible) SetLauncherFocus(LauncherFocus.Trailer);
+            else if (action == PadAction.Up || action == PadAction.Left) SetLauncherFocus(LauncherFocus.GameGrid);
+            else if (action == PadAction.Down) SetLauncherFocus(LauncherFocus.Player);
+            return;
+        }
+        if (launcherFocus == LauncherFocus.Trailer)
+        {
+            if (action == PadAction.Left) SetLauncherFocus(LauncherFocus.Play);
+            else if (action == PadAction.Up) SetLauncherFocus(LauncherFocus.GameGrid);
             else if (action == PadAction.Down) SetLauncherFocus(LauncherFocus.Player);
             return;
         }
@@ -749,6 +772,7 @@ public sealed partial class MainWindow : Window
             LauncherFocus.Options => OptionsButton,
             LauncherFocus.Exit => ExitButton,
             LauncherFocus.Play => PlayButton,
+            LauncherFocus.Trailer => TrailerButton,
             LauncherFocus.SignIn => account is not null ? AccountButton : SignInButton,
             LauncherFocus.Player => PlayerControls[Math.Clamp(playerIndex, 0, PlayerControls.Length - 1)],
             _ => GameGrid
@@ -2094,7 +2118,7 @@ public sealed partial class MainWindow : Window
     void UpdateTileHighlight()
     {
         if (GameGrid.SelectedItem is null || GameGrid.ContainerFromItem(GameGrid.SelectedItem) is not GridViewItem tile) return;
-        var lit = launcherFocus is LauncherFocus.GameGrid or LauncherFocus.Play;
+        var lit = launcherFocus is LauncherFocus.GameGrid or LauncherFocus.Play or LauncherFocus.Trailer;
         VisualStateManager.GoToState(tile, lit ? "Selected" : "Normal", true);
     }
 

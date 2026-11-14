@@ -96,11 +96,13 @@ public sealed class WebGameRuntime(WebView2 view, bool disableGpu = false, strin
         }
     }
 
+    public bool TrailerNext; // set right before LaunchAsync to open the game's trailer instead of the game
     public async Task LaunchAsync(GameEntry game, CancellationToken ct = default)
     {
         await EnsureAsync();
         var url = game.Runtime.Url!;
         url += (url.Contains('?') ? "&" : "?") + "gfx=" + Uri.EscapeDataString(Quality);
+        if (TrailerNext) { url += "&trailer=1"; TrailerNext = false; } // one launch only
         StartupLog.Write("webview", $"Navigate game={game.Id}; url={url}");
         view.Source = new Uri(url);
     }

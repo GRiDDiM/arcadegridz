@@ -121,3 +121,7 @@ v0.1 done =
 
 ## 2026-11-13 — v0.1.31 music default volume 10 (Claude)
 - MusicVolume default 0.1 (slider 10). One-time migration (SettingsVersion 1) moves installs still on the old 60% default down to 10; volumes people changed are kept.
+
+## 2026-11-14 — v0.1.32 TRAILER button (Claude)
+- Catalog entries can carry `trailer: true` (site: `trailer:true` on the game in public/app.js; launcher-catalog.mjs passes the field). The hero panel shows a TRAILER button beside PLAY for those games. It launches the same web runtime URL with `&trailer=1` (WebGameRuntime.TrailerNext); the site's apphost.js then calls `ArcadeGridz.openTrailer(id)` instead of starting the game.
+- Pad: Right from PLAY reaches TRAILER (LauncherFocus.Trailer); Left back to PLAY, Up to the grid, Down to the music player. First game with one: 2DISO SHIFT.

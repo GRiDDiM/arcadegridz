@@ -19,6 +19,7 @@ public sealed class GameEntry
     [JsonPropertyName("mark")] public string Mark { get; set; } = "";
     [JsonPropertyName("potato")] public bool Potato { get; set; }
     [JsonPropertyName("playable")] public bool Playable { get; set; }
+    [JsonPropertyName("trailer")] public bool Trailer { get; set; } // the site can play a trailer for this game (launch URL + &trailer=1)
     [JsonPropertyName("runtime")] public RuntimeSpec Runtime { get; set; } = new();
 }
 public sealed class RuntimeSpec
