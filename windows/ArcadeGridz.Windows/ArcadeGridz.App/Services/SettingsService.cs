@@ -3,6 +3,8 @@ namespace ArcadeGridz.App.Services;
 public sealed class SettingsService
 {
     public bool ShowAll {get;set;}
+    /// <summary>Also list BETA and ALPHA games. Off by default: the launcher shows LIVE games only.</summary>
+    public bool ShowTesting {get;set;}
     /// <summary>Outer bounds ("x,y,w,h") of the display the app last ran fullscreen on, so it reopens there (e.g. the TV).</summary>
     public string? Display {get;set;}
     /// <summary>Windowed (normal resizable window) instead of fullscreen.</summary>

@@ -15,7 +15,7 @@ namespace ArcadeGridz.App;
 
 public sealed partial class MainWindow : Window
 {
-    enum LauncherFocus { Categories, Games, Scores, Storyboards, Options, Exit, GameGrid, Play, SignIn, Player, Trailer }
+    enum LauncherFocus { Categories, Games, Scores, Storyboards, Options, Testing, Exit, GameGrid, Play, SignIn, Player, Trailer }
     enum StartupFocus { Email, Google, Guest, Terms, Privacy }
     const string TermsUrl = "https://griddim.com/terms/";
     const string PrivacyUrl = "https://griddim.com/privacy/";
@@ -41,6 +41,9 @@ public sealed partial class MainWindow : Window
     const string StoryboardCategory = "STORYBOARD";
     bool storyMode;
     static bool IsStoryboard(GameEntry g) => g.Category.Equals(StoryboardCategory, StringComparison.OrdinalIgnoreCase);
+    static bool IsLive(GameEntry g) => g.Status.Equals("live", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Launcher list rule: launchable (or SHOW UNSUPPORTED on) and LIVE (or BETAS &amp; ALPHAS toggled on next to OPTIONS).</summary>
+    bool Listed(GameEntry g) => (settings.ShowAll || (g.Potato && g.Playable)) && (settings.ShowTesting || IsLive(g));
     bool gameOpen;
     UpdateInfo? availableUpdate;
     LauncherFocus launcherFocus = LauncherFocus.GameGrid;
@@ -186,6 +189,7 @@ public sealed partial class MainWindow : Window
             }
             initializingSettings = true;
             ShowAllToggle.IsOn = settings.ShowAll;
+            UpdateTestingButton();
             StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
             ScanlinesToggle.IsOn = !settings.HideScanlines;
             CityLifeToggle.IsOn = !settings.StillBackground;
@@ -316,7 +320,7 @@ public sealed partial class MainWindow : Window
         UpdateStatus.Visibility = Visibility.Visible;
         UpdateStatus.Text = "CHECKING THE GRID FOR NEW GAMES...";
         var outcome = await RefreshCatalog(true);
-        var ready = all.Count(g => settings.ShowAll || (g.Potato && g.Playable));
+        var ready = all.Count(Listed);
         UpdateStatus.Text = outcome switch
         {
             CatalogRefresh.Changed => $"GAME LIST UPDATED • {ready} GAMES READY.",
@@ -332,7 +336,7 @@ public sealed partial class MainWindow : Window
     {
         categories.Clear();
         categories.Add("ALL GAMES");
-        categories.AddRange(all.Where(g => (settings.ShowAll || (g.Potato && g.Playable)) && !IsStoryboard(g)).Select(g => g.Category.ToUpperInvariant()).Where(x => x.Length > 0).Distinct().Order());
+        categories.AddRange(all.Where(g => Listed(g) && !IsStoryboard(g)).Select(g => g.Category.ToUpperInvariant()).Where(x => x.Length > 0).Distinct().Order());
         categoryIndex = Math.Min(categoryIndex, categories.Count - 1);
     }
 
@@ -341,7 +345,7 @@ public sealed partial class MainWindow : Window
         var cat = storyMode ? "STORYBOARDS" : categories.Count == 0 ? "ALL GAMES" : categories[categoryIndex];
         CategoryLabel.Text = cat;
         visible.Clear();
-        foreach (var g in all.Where(g => (settings.ShowAll || (g.Potato && g.Playable)) &&
+        foreach (var g in all.Where(g => Listed(g) &&
                  (storyMode ? IsStoryboard(g) : !IsStoryboard(g) && (cat == "ALL GAMES" || g.Category.Equals(cat, StringComparison.OrdinalIgnoreCase)))))
             visible.Add(g);
         if (storyMode) StoryboardsButton.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
@@ -355,7 +359,9 @@ public sealed partial class MainWindow : Window
             HeroMeta.Text = "";
             HeroStatusChip.Visibility = Visibility.Collapsed;
             ScoreEmpty.Visibility = Visibility.Collapsed;
-            HeroDescription.Text = "No catalog entries match this filter.";
+            HeroDescription.Text = settings.ShowTesting
+                ? "No catalog entries match this filter."
+                : "Nothing LIVE here yet. Turn on BETAS & ALPHAS (next to OPTIONS) to see games still in testing.";
             HeroArt.Source = null;
             PlayButton.IsEnabled = false;
             PlayLabel.Text = "UNAVAILABLE";
@@ -648,6 +654,7 @@ public sealed partial class MainWindow : Window
                 case LauncherFocus.Storyboards: ShowSection(true); break;
                 case LauncherFocus.Scores: Scores_Click(this, new RoutedEventArgs()); break;
                 case LauncherFocus.Options: Options_Click(this, new RoutedEventArgs()); break;
+                case LauncherFocus.Testing: Testing_Click(this, new RoutedEventArgs()); break;
                 case LauncherFocus.Exit: Close(); break;
                 case LauncherFocus.SignIn:
                     if (account is not null) Account_Click(this, new RoutedEventArgs());
@@ -706,8 +713,8 @@ public sealed partial class MainWindow : Window
         }
 
         var menu = consoleMode
-            ? new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Storyboards, LauncherFocus.Options }
-            : new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Storyboards, LauncherFocus.Options, LauncherFocus.Exit };
+            ? new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Storyboards, LauncherFocus.Options, LauncherFocus.Testing }
+            : new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Storyboards, LauncherFocus.Options, LauncherFocus.Testing, LauncherFocus.Exit };
         var menuIndex = Array.IndexOf(menu, launcherFocus);
         if (menuIndex >= 0)
         {
@@ -770,6 +777,7 @@ public sealed partial class MainWindow : Window
             LauncherFocus.Scores => ScoresButton,
             LauncherFocus.Storyboards => StoryboardsButton,
             LauncherFocus.Options => OptionsButton,
+            LauncherFocus.Testing => TestingButton,
             LauncherFocus.Exit => ExitButton,
             LauncherFocus.Play => PlayButton,
             LauncherFocus.Trailer => TrailerButton,
@@ -1151,6 +1159,25 @@ public sealed partial class MainWindow : Window
             UpdateProgress.Visibility = Visibility.Collapsed;
         }
     }
+    void Testing_Click(object sender, RoutedEventArgs e)
+    {
+        settings.ShowTesting = !settings.ShowTesting;
+        settings.Save();
+        audio?.Play(settings.ShowTesting ? "open" : "back");
+        UpdateTestingButton();
+        StartupLog.Write("nav", $"betas & alphas {(settings.ShowTesting ? "shown" : "hidden")}");
+        BuildCategories();
+        ApplyFilter();
+    }
+
+    void UpdateTestingButton()
+    {
+        TestingLabel.Text = settings.ShowTesting ? "+ BETAS & ALPHAS" : "LIVE ONLY";
+        TestingIcon.Glyph = settings.ShowTesting ? "\uE73A" : "\uE71C";
+        if (settings.ShowTesting) TestingButton.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
+        else TestingButton.ClearValue(Control.BorderBrushProperty);
+    }
+
     void ShowAllToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (initializingSettings) return;
