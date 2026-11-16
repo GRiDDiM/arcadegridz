@@ -68,6 +68,7 @@
 
   <!-- ===== Backdrop: 80s arcade hall, neon haze, scanlines ===== -->
   <Grid x:Name="Backdrop" IsHitTestVisible="False">
+  <Grid x:Name="NeonBackdrop">
    <!-- the hall art and its animated city life share one 1672x941 space so they crop together -->
    <Viewbox Stretch="UniformToFill">
     <Grid Width="1672" Height="941">
@@ -292,6 +293,9 @@
      </RadialGradientBrush>
     </Rectangle.Fill>
    </Rectangle>
+  </Grid>
+  <!-- non-neon themes draw their own scene here (ThemeScenes.cs) -->
+  <Grid x:Name="ThemeBackdrop"/>
    <Image x:Name="LauncherScan" Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.6" IsHitTestVisible="False"/>
    <Rectangle Height="4" VerticalAlignment="Top" Fill="{StaticResource AgNeonGradient}"/>
   </Grid>
@@ -517,11 +521,12 @@
          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
          <Border Style="{StaticResource PadChip}" VerticalAlignment="Center" Margin="0,0,12,0"><TextBlock Text="LB" Style="{StaticResource PadChipText}"/></Border>
          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-          <Button x:Name="OptionsTabGames" Tag="0" Content="GAMES" FontSize="11" Padding="14,10" MinWidth="104" Click="OptionsTab_Click"/>
-          <Button x:Name="OptionsTabDisplay" Tag="1" Content="DISPLAY" FontSize="11" Padding="14,10" MinWidth="104" Click="OptionsTab_Click"/>
-          <Button x:Name="OptionsTabSystem" Tag="2" Content="SYSTEM" FontSize="11" Padding="14,10" MinWidth="104" Click="OptionsTab_Click"/>
-          <Button x:Name="OptionsTabUpdates" Tag="3" Content="UPDATES" FontSize="11" Padding="14,10" MinWidth="104" Click="OptionsTab_Click"/>
-          <Button x:Name="OptionsTabAbout" Tag="4" Content="ABOUT" FontSize="11" Padding="14,10" MinWidth="104" Click="OptionsTab_Click"/>
+          <Button x:Name="OptionsTabGames" Tag="0" Content="GAMES" FontSize="11" Padding="12,10" MinWidth="96" Click="OptionsTab_Click"/>
+          <Button x:Name="OptionsTabDisplay" Tag="1" Content="DISPLAY" FontSize="11" Padding="12,10" MinWidth="96" Click="OptionsTab_Click"/>
+          <Button x:Name="OptionsTabThemes" Tag="2" Content="THEMES" FontSize="11" Padding="12,10" MinWidth="96" Click="OptionsTab_Click" ToolTipService.ToolTip="Theme manager: change the whole look of the launcher"/>
+          <Button x:Name="OptionsTabSystem" Tag="3" Content="SYSTEM" FontSize="11" Padding="12,10" MinWidth="96" Click="OptionsTab_Click"/>
+          <Button x:Name="OptionsTabUpdates" Tag="4" Content="UPDATES" FontSize="11" Padding="12,10" MinWidth="96" Click="OptionsTab_Click"/>
+          <Button x:Name="OptionsTabAbout" Tag="5" Content="ABOUT" FontSize="11" Padding="12,10" MinWidth="96" Click="OptionsTab_Click"/>
          </StackPanel>
          <Border Grid.Column="2" Style="{StaticResource PadChip}" VerticalAlignment="Center" Margin="12,0,0,0"><TextBlock Text="RB" Style="{StaticResource PadChipText}"/></Border>
         </Grid>
@@ -564,12 +569,20 @@
           <ToggleSwitch x:Name="ScanlinesToggle" Header="CRT SCANLINES ON MENUS" Toggled="ScanlinesToggle_Toggled"/>
          </Border>
          <Border x:Name="CityLifeRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,10">
-          <ToggleSwitch x:Name="CityLifeToggle" Header="ANIMATED CITY BACKGROUND" Toggled="CityLifeToggle_Toggled"/>
+          <ToggleSwitch x:Name="CityLifeToggle" Header="ANIMATED BACKGROUND" Toggled="CityLifeToggle_Toggled"/>
          </Border>
          <Border x:Name="GpuRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,10">
           <ToggleSwitch x:Name="GpuToggle" Header="HARDWARE ACCELERATION (APPLIES NEXT LAUNCH)" Toggled="GpuToggle_Toggled"/>
          </Border>
          <TextBlock x:Name="DisplayStatus" Text="TIP: DRAG THE TOP OF THE ARCADE TO ANOTHER SCREEN." Style="{StaticResource PixelLabel}" FontSize="8" Foreground="{StaticResource AgDim}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+        </StackPanel>
+        <!-- THEMES: the theme manager. Cards are built in MainWindow.Themes.cs -->
+        <StackPanel x:Name="OptionsThemesTab" Spacing="10" Visibility="Collapsed">
+         <Grid x:Name="ThemeCards" ColumnSpacing="12" RowSpacing="12">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+         </Grid>
+         <TextBlock x:Name="ThemeStatus" Style="{StaticResource PixelLabel}" FontSize="8" Foreground="{StaticResource AgDim}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
         </StackPanel>
         <StackPanel x:Name="OptionsSystemTab" Spacing="12" Visibility="Collapsed">
          <Border x:Name="MusicRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,10">

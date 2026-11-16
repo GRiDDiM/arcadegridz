@@ -48,8 +48,8 @@ public sealed partial class MainWindow : Window
     UpdateInfo? availableUpdate;
     LauncherFocus launcherFocus = LauncherFocus.GameGrid;
     int panelFocus;
-    int optionsTab; // 0 GAMES, 1 DISPLAY, 2 SYSTEM, 3 UPDATES, 4 ABOUT
-    const int OptionsTabCount = 5;
+    int optionsTab; // 0 GAMES, 1 DISPLAY, 2 THEMES, 3 SYSTEM, 4 UPDATES, 5 ABOUT
+    const int OptionsTabCount = 6;
     NetworkAccount? account;
     StartupFocus startupFocus = StartupFocus.Email;
     bool startupOpen = true;
@@ -201,6 +201,7 @@ public sealed partial class MainWindow : Window
             initializingSettings = false;
             ApplyScanlines();
             ApplyCityLife();
+            try { InitThemes(); } catch (Exception ex) { StartupLog.Exception("Themes init", ex); }
             clockTimer = DispatcherQueue.CreateTimer();
             clockTimer.Interval = TimeSpan.FromSeconds(1);
             clockTimer.Tick += (_, _) => ClockText.Text = DateTime.Now.ToString("h:mm tt");
@@ -788,7 +789,7 @@ public sealed partial class MainWindow : Window
         PadFocus(control);
     }
 
-    Button[] OptionsTabButtons => [OptionsTabGames, OptionsTabDisplay, OptionsTabSystem, OptionsTabUpdates, OptionsTabAbout];
+    Button[] OptionsTabButtons => [OptionsTabGames, OptionsTabDisplay, OptionsTabThemes, OptionsTabSystem, OptionsTabUpdates, OptionsTabAbout];
 
     List<Control> PanelControls()
     {
@@ -810,17 +811,20 @@ public sealed partial class MainWindow : Window
                     controls.Add(CityLifeToggle);
                     controls.Add(GpuToggle);
                     break;
-                case 2:
+                case ThemesTab:
+                    controls.AddRange(themeCards);
+                    break;
+                case 3:
                     controls.Add(MusicToggle);
                     controls.Add(SfxToggle);
                     controls.Add(StartWithWindowsToggle);
                     if (ConsoleModeButton.IsEnabled) controls.Add(ConsoleModeButton);
                     break;
-                case 3:
+                case 4:
                     if (CheckUpdateButton.IsEnabled) controls.Add(CheckUpdateButton);
                     if (InstallUpdateButton.IsEnabled) controls.Add(InstallUpdateButton);
                     break;
-                case 4:
+                case 5:
                     controls.Add(OptionsTermsButton);
                     controls.Add(OptionsPrivacyButton);
                     break;
@@ -853,6 +857,8 @@ public sealed partial class MainWindow : Window
             SelectOptionsTab((optionsTab + delta + OptionsTabCount) % OptionsTabCount, keepFocusOnTabs: onTabs || action is PadAction.Left or PadAction.Right);
             return;
         }
+        // theme cards: a 3x2 grid, d-pad moves in 2D and A applies the theme
+        if (options && optionsTab == ThemesTab && HandleThemeGrid(action, current, controls)) return;
         // dropdowns: left/right flips through the choices (or up/down while the list is open); A opens / closes the list
         if (current is ComboBox combo)
         {
@@ -917,10 +923,11 @@ public sealed partial class MainWindow : Window
         if (optionsTab == 1) RefreshScreens();
         OptionsGamesTab.Visibility = optionsTab == 0 ? Visibility.Visible : Visibility.Collapsed;
         OptionsDisplayTab.Visibility = optionsTab == 1 ? Visibility.Visible : Visibility.Collapsed;
-        OptionsSystemTab.Visibility = optionsTab == 2 ? Visibility.Visible : Visibility.Collapsed;
-        UpdateCard.Visibility = optionsTab == 3 ? Visibility.Visible : Visibility.Collapsed;
-        OptionsAboutTab.Visibility = optionsTab == 4 ? Visibility.Visible : Visibility.Collapsed;
-        OptionsLegal.Visibility = optionsTab == 4 ? Visibility.Visible : Visibility.Collapsed;
+        OptionsThemesTab.Visibility = optionsTab == ThemesTab ? Visibility.Visible : Visibility.Collapsed;
+        OptionsSystemTab.Visibility = optionsTab == 3 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateCard.Visibility = optionsTab == 4 ? Visibility.Visible : Visibility.Collapsed;
+        OptionsAboutTab.Visibility = optionsTab == 5 ? Visibility.Visible : Visibility.Collapsed;
+        OptionsLegal.Visibility = optionsTab == 5 ? Visibility.Visible : Visibility.Collapsed;
         var pink = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
         var selectedFill = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x44, 0xFF, 0x3A, 0xA7));
         var buttons = OptionsTabButtons;
@@ -932,6 +939,7 @@ public sealed partial class MainWindow : Window
         var controls = PanelControls();
         panelFocus = keepFocusOnTabs ? 0 : Math.Min(1, controls.Count - 1);
         FocusPanelControl(controls[panelFocus]);
+        if (!ThemeService.Current.IsNeon) ThemeWalk(); // tab highlight brushes are made here: theme them before they paint
     }
 
     void OptionsTab_Click(object sender, RoutedEventArgs e)
@@ -1624,8 +1632,15 @@ public sealed partial class MainWindow : Window
     {
         try
         {
+            ApplyThemeSceneMotion();
             var sb = CityLifeStory;
             if (sb is null) return;
+            if (!ThemeService.Current.IsNeon)
+            {
+                // other themes hide the hall: stop its city animation entirely
+                sb.Stop(); cityLifeRunning = false; CityLife.Visibility = Visibility.Collapsed;
+                return;
+            }
             if (settings.StillBackground || gameOpen)
             {
                 if (settings.StillBackground) { sb.Stop(); cityLifeRunning = false; CityLife.Visibility = Visibility.Collapsed; }
@@ -1642,11 +1657,12 @@ public sealed partial class MainWindow : Window
     void PauseCityLife()
     {
         try { if (cityLifeRunning) CityLifeStory?.Pause(); } catch { }
+        try { if (themeSceneRunning) themeScene?.Story.Pause(); } catch { }
     }
 
     void ApplyScanlines()
     {
-        var on = !settings.HideScanlines;
+        var on = !settings.HideScanlines && ThemeService.Current.Scanlines;
         LauncherScan.Opacity = on ? 0.6 : 0;
         CoverScan.Opacity = on ? 0.6 : 0;
         WelcomeScan.Opacity = on ? 0.35 : 0;

@@ -25,6 +25,7 @@
       <SolidColorBrush x:Key="AgMuted" Color="#FF9FB0D8"/>
       <SolidColorBrush x:Key="AgDim" Color="#FF6C7699"/>
       <SolidColorBrush x:Key="AgLine" Color="#335EE7FF"/>
+      <SolidColorBrush x:Key="AgCyanHover" Color="#CC5EE7FF"/>
       <LinearGradientBrush x:Key="AgNeonGradient" StartPoint="0,0" EndPoint="1,0">
         <GradientStop Color="#FF5EE7FF" Offset="0"/>
         <GradientStop Color="#FF9F7CFF" Offset="0.5"/>
@@ -73,7 +74,7 @@
                   <VisualStateGroup x:Name="CommonStates">
                     <VisualState x:Name="Normal"/>
                     <VisualState x:Name="PointerOver">
-                      <VisualState.Setters><Setter Target="Face.BorderBrush" Value="#CC5EE7FF"/><Setter Target="Glow.Opacity" Value="0.45"/></VisualState.Setters>
+                      <VisualState.Setters><Setter Target="Face.BorderBrush" Value="{StaticResource AgCyanHover}"/><Setter Target="Glow.Opacity" Value="0.45"/></VisualState.Setters>
                     </VisualState>
                     <VisualState x:Name="Pressed">
                       <Storyboard>

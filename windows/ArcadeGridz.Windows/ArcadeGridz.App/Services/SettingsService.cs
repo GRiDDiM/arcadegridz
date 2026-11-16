@@ -9,6 +9,8 @@ public sealed class SettingsService
     public string? Display {get;set;}
     /// <summary>Windowed (normal resizable window) instead of fullscreen.</summary>
     public bool Windowed {get;set;}
+    /// <summary>Launcher theme id (OPTIONS &gt; THEMES): neon, acid, brutal, happy, beige, console.</summary>
+    public string Theme {get;set;}="neon";
     public bool HideScanlines {get;set;}
     public bool StillBackground {get;set;}
     public bool MusicOff {get;set;}
