@@ -92,7 +92,7 @@ jobs:
         run: |
           $root = Join-Path $env:LOCALAPPDATA "ArcadeGridz"
           $log = Join-Path $root "logs/startup.log"
-          foreach ($theme in @("acid", "brutal", "happy", "beige", "console", "neon")) {
+          foreach ($theme in @("acid", "brutal", "happy", "beige", "console")) {  # neon is covered by the startup smoke test above
             Remove-Item $log -Force -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Force $root | Out-Null
             $settingsFile = Join-Path $root "settings.json"
