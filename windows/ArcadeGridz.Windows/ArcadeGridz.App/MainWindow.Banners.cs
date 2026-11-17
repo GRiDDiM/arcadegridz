@@ -41,9 +41,31 @@ public sealed partial class MainWindow
 
     async void InitBanners()
     {
+        GameGrid.SizeChanged += (_, _) => CenterBanner();
+        BannerSlot.Loaded += (_, _) => CenterBanner();
         bannerTimer = DispatcherQueue.CreateTimer();
         bannerTimer.Tick += (_, _) => NextBanner();
         await LoadBanners();
+    }
+
+    /// <summary>
+    /// Center the banner in the empty band between the last tile column and the details panel. The banner's
+    /// column keeps a fixed width (margins always add up to 10), so shifting it never changes the layout around it.
+    /// </summary>
+    void CenterBanner()
+    {
+        var w = GameGrid.ActualWidth;
+        if (w <= 0) return;
+        // right edge of the visible tiles: grid padding + whole 224px columns, minus the tile's own 10px margin
+        var tilesRight = GameGrid.Padding.Left + GridColumns() * 224 - 10;
+        var free = Math.Max(0, w - tilesRight); // empty space left inside the grid's column
+        const double heroInset = 24;            // the details panel's own left margin
+        // band = [tiles right edge, hero left]; banner column starts at w, its 160px box at w + left
+        var bandLeft = tilesRight - w;          // relative to the banner column start (<= 0)
+        var bandRight = 170 + heroInset;
+        var left = Math.Round((bandLeft + bandRight) / 2 - 80);
+        left = Math.Clamp(left, -free, 10);
+        BannerSlot.Margin = new Thickness(left, 12, 10 - left, 12);
     }
 
     async Task LoadBanners()

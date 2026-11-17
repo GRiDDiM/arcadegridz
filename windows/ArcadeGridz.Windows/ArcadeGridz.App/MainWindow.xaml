@@ -369,7 +369,7 @@
    <Grid Grid.Row="2" Margin="30,10,40,14">
     <Grid.ColumnDefinitions><ColumnDefinition Width="1.15*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="0.85*" MaxWidth="760"/></Grid.ColumnDefinitions>
     <!-- banner slot: IAB wide skyscraper 160x600, rotated from arcadegridz.com/assets/banners/banners.json (MainWindow.Banners.cs) -->
-    <Grid x:Name="BannerSlot" Grid.Column="1" Width="160" MaxHeight="600" Margin="6,12,4,12" VerticalAlignment="Top" Visibility="Collapsed">
+    <Grid x:Name="BannerSlot" Grid.Column="1" Width="160" MaxHeight="600" Margin="5,12,5,12" VerticalAlignment="Top" Visibility="Collapsed">
      <Viewbox Stretch="Uniform" VerticalAlignment="Top">
       <Grid Width="160" Height="600">
        <Border CornerRadius="10" BorderBrush="#335EE7FF" BorderThickness="1">
