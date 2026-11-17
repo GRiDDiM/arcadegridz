@@ -205,6 +205,7 @@ public sealed partial class MainWindow : Window
             try { InitThemes(); } catch (Exception ex) { StartupLog.Exception("Themes init", ex); }
             try { InitTrailerPreview(); } catch (Exception ex) { StartupLog.Exception("Trailer preview init", ex); }
             try { InitUpdateWatch(); } catch (Exception ex) { StartupLog.Exception("Update watch init", ex); }
+            try { InitBanners(); } catch (Exception ex) { StartupLog.Exception("Banners init", ex); }
             clockTimer = DispatcherQueue.CreateTimer();
             clockTimer.Interval = TimeSpan.FromSeconds(1);
             clockTimer.Tick += (_, _) => ClockText.Text = DateTime.Now.ToString("h:mm tt");
