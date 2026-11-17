@@ -193,6 +193,7 @@ public sealed partial class MainWindow : Window
             StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
             ScanlinesToggle.IsOn = !settings.HideScanlines;
             CityLifeToggle.IsOn = !settings.StillBackground;
+            TrailerPreviewToggle.IsOn = !settings.NoTrailerPreview;
             MusicToggle.IsOn = !settings.MusicOff;
             SfxToggle.IsOn = !settings.SfxOff;
             GpuToggle.IsOn = !settings.DisableGpu;
@@ -202,6 +203,7 @@ public sealed partial class MainWindow : Window
             ApplyScanlines();
             ApplyCityLife();
             try { InitThemes(); } catch (Exception ex) { StartupLog.Exception("Themes init", ex); }
+            try { InitTrailerPreview(); } catch (Exception ex) { StartupLog.Exception("Trailer preview init", ex); }
             clockTimer = DispatcherQueue.CreateTimer();
             clockTimer.Interval = TimeSpan.FromSeconds(1);
             clockTimer.Tick += (_, _) => ClockText.Text = DateTime.Now.ToString("h:mm tt");
@@ -395,6 +397,7 @@ public sealed partial class MainWindow : Window
         ScoreList.ItemsSource = null;
         ScoreEmpty.Visibility = Visibility.Collapsed;
         try { HeroArt.Source = new BitmapImage(new Uri(g.Art)); } catch { HeroArt.Source = null; }
+        QueueTrailerPreview(g);
 
         try
         {
@@ -805,6 +808,7 @@ public sealed partial class MainWindow : Window
             {
                 case 0:
                     controls.Add(ShowAllToggle);
+                    controls.Add(TrailerPreviewToggle);
                     controls.Add(RefreshCatalogButton);
                     break;
                 case 1:
@@ -886,6 +890,7 @@ public sealed partial class MainWindow : Window
             else if (control == SfxToggle) SfxToggle.IsOn = !SfxToggle.IsOn;
             else if (control == ScanlinesToggle) ScanlinesToggle.IsOn = !ScanlinesToggle.IsOn;
             else if (control == CityLifeToggle) CityLifeToggle.IsOn = !CityLifeToggle.IsOn;
+            else if (control == TrailerPreviewToggle) TrailerPreviewToggle.IsOn = !TrailerPreviewToggle.IsOn;
             else if (control == GpuToggle) GpuToggle.IsOn = !GpuToggle.IsOn;
             else if (control == DailyButton) { Daily_Click(this, new RoutedEventArgs()); return; }
             else if (control == RefreshCatalogButton) { if (RefreshCatalogButton.IsEnabled) RefreshCatalog_Click(this, new RoutedEventArgs()); return; }
@@ -918,6 +923,7 @@ public sealed partial class MainWindow : Window
         QualityRow.BorderBrush = control == QualityCombo ? cyan : line;
         ScanlinesRow.BorderBrush = control == ScanlinesToggle ? cyan : line;
         CityLifeRow.BorderBrush = control == CityLifeToggle ? cyan : line;
+        TrailerPreviewRow.BorderBrush = control == TrailerPreviewToggle ? cyan : line;
         GpuRow.BorderBrush = control == GpuToggle ? cyan : line;
     }
 
@@ -1664,6 +1670,7 @@ public sealed partial class MainWindow : Window
     {
         try { if (cityLifeRunning) CityLifeStory?.Pause(); } catch { }
         try { if (themeSceneRunning) themeScene?.Story.Pause(); } catch { }
+        StopTrailerPreview(); // a game is starting: free the preview engine
     }
 
     void ApplyScanlines()

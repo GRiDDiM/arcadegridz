@@ -394,6 +394,8 @@
       <Border CornerRadius="20" Background="{StaticResource AgCardSolid}" BorderBrush="#665EE7FF" BorderThickness="2" Height="200">
        <Grid>
         <Image x:Name="HeroArt" Stretch="UniformToFill"/>
+        <!-- muted trailer preview (MainWindow.TrailerPreview.cs); shown over the art once the trailer is running -->
+        <Grid x:Name="HeroPreviewHost" Visibility="Collapsed" IsHitTestVisible="False"/>
         <Rectangle>
          <Rectangle.Fill>
           <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
@@ -533,6 +535,9 @@
         <StackPanel x:Name="OptionsGamesTab" Spacing="12">
          <Border x:Name="ShowAllRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,14">
           <ToggleSwitch x:Name="ShowAllToggle" Header="SHOW UNSUPPORTED GAMES (THEY WON'T LAUNCH)" Toggled="ShowAllToggle_Toggled"/>
+         </Border>
+         <Border x:Name="TrailerPreviewRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,14">
+          <ToggleSwitch x:Name="TrailerPreviewToggle" Header="AUTOPLAY TRAILERS IN THE DETAILS PANEL (MUTED)" Toggled="TrailerPreviewToggle_Toggled" ToolTipService.ToolTip="Highlight a game that has a trailer and it plays, muted and looping, where the cover art goes"/>
          </Border>
          <Button x:Name="RefreshCatalogButton" Content="REFRESH GAME LIST" Click="RefreshCatalog_Click" HorizontalAlignment="Stretch" Margin="0,4,0,0"/>
         </StackPanel>

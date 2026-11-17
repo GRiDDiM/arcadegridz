@@ -13,6 +13,8 @@ public sealed class SettingsService
     public string Theme {get;set;}="neon";
     public bool HideScanlines {get;set;}
     public bool StillBackground {get;set;}
+    /// <summary>OPTIONS &gt; GAMES: play a game's trailer (muted, looping) in the details panel art spot. On by default.</summary>
+    public bool NoTrailerPreview {get;set;}
     public bool MusicOff {get;set;}
     public double MusicVolume {get;set;}=0.1;
     /// <summary>1 = music default lowered to 10 (v0.1.31); untouched 60% volumes get moved down once.</summary>
