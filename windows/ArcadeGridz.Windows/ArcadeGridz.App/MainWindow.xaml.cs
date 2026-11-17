@@ -15,7 +15,7 @@ namespace ArcadeGridz.App;
 
 public sealed partial class MainWindow : Window
 {
-    enum LauncherFocus { Categories, Games, Scores, Storyboards, Options, Testing, Exit, GameGrid, Play, SignIn, Player, Trailer }
+    enum LauncherFocus { Categories, Games, Scores, Storyboards, Options, Testing, Exit, GameGrid, Play, SignIn, Player, Trailer, Update }
     enum StartupFocus { Email, Google, Guest, Terms, Privacy }
     const string TermsUrl = "https://griddim.com/terms/";
     const string PrivacyUrl = "https://griddim.com/privacy/";
@@ -204,6 +204,7 @@ public sealed partial class MainWindow : Window
             ApplyCityLife();
             try { InitThemes(); } catch (Exception ex) { StartupLog.Exception("Themes init", ex); }
             try { InitTrailerPreview(); } catch (Exception ex) { StartupLog.Exception("Trailer preview init", ex); }
+            try { InitUpdateWatch(); } catch (Exception ex) { StartupLog.Exception("Update watch init", ex); }
             clockTimer = DispatcherQueue.CreateTimer();
             clockTimer.Interval = TimeSpan.FromSeconds(1);
             clockTimer.Tick += (_, _) => ClockText.Text = DateTime.Now.ToString("h:mm tt");
@@ -663,6 +664,7 @@ public sealed partial class MainWindow : Window
                 case LauncherFocus.Options: Options_Click(this, new RoutedEventArgs()); break;
                 case LauncherFocus.Testing: Testing_Click(this, new RoutedEventArgs()); break;
                 case LauncherFocus.Exit: Close(); break;
+                case LauncherFocus.Update: UpdateReady_Click(this, new RoutedEventArgs()); break;
                 case LauncherFocus.SignIn:
                     if (account is not null) Account_Click(this, new RoutedEventArgs());
                     else SignIn_Click(this, new RoutedEventArgs());
@@ -715,9 +717,16 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (launcherFocus == LauncherFocus.Update)
+        {
+            if (action is PadAction.Down or PadAction.Right) SetLauncherFocus(LauncherFocus.SignIn);
+            else if (action == PadAction.Left) SetLauncherFocus(LauncherFocus.Categories);
+            return;
+        }
         if (launcherFocus == LauncherFocus.SignIn)
         {
-            if (action == PadAction.Down) SetLauncherFocus(consoleMode ? LauncherFocus.Options : LauncherFocus.Exit);
+            if (action == PadAction.Up && UpdateReadyButton.Visibility == Visibility.Visible) SetLauncherFocus(LauncherFocus.Update);
+            else if (action == PadAction.Down) SetLauncherFocus(consoleMode ? LauncherFocus.Options : LauncherFocus.Exit);
             else if (action == PadAction.Left) SetLauncherFocus(LauncherFocus.Categories);
             return;
         }
@@ -791,6 +800,7 @@ public sealed partial class MainWindow : Window
             LauncherFocus.Testing => TestingButton,
             LauncherFocus.Exit => ExitButton,
             LauncherFocus.Play => PlayButton,
+            LauncherFocus.Update => UpdateReadyButton,
             LauncherFocus.Trailer => TrailerButton,
             LauncherFocus.SignIn => account is not null ? AccountButton : SignInButton,
             LauncherFocus.Player => PlayerControls[Math.Clamp(playerIndex, 0, PlayerControls.Length - 1)],
@@ -1149,6 +1159,7 @@ public sealed partial class MainWindow : Window
         {
             var result = await updates.CheckAsync();
             availableUpdate = result.Update;
+            ShowUpdateReady();
             UpdateStatus.Text = result.Status;
             InstallUpdateButton.IsEnabled = availableUpdate is not null;
             StartupLog.Write("update", $"Check completed; installed={result.InstalledVersion}; available={result.Update?.Version}");
@@ -2092,6 +2103,7 @@ public sealed partial class MainWindow : Window
             StartupLog.Write("update", $"Startup check; installed={result.InstalledVersion}; available={result.Update?.Version}");
             availableUpdate = result.Update;
             if (result.Update is not null) InstallUpdateButton.IsEnabled = true;
+            ShowUpdateReady();
             return result.Update;
         }
         catch (Exception ex)

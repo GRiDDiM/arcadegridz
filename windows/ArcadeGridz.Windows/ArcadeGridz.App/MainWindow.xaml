@@ -321,7 +321,19 @@
      <Button x:Name="NextCategoryButton" Content="RB" FontSize="11" Padding="14,10" CornerRadius="10" Click="NextCategory_Click"/>
     </StackPanel>
     <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="6">
-     <TextBlock x:Name="ClockText" Text="--:--" Foreground="{StaticResource AgText}" FontFamily="{StaticResource AgDisplay}" FontSize="30" HorizontalAlignment="Right"/>
+     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="14">
+      <!-- shown when a background check finds a newer release (MainWindow.UpdateWatch.cs) -->
+      <Button x:Name="UpdateReadyButton" Visibility="Collapsed" Padding="12,7" CornerRadius="12" BorderBrush="{StaticResource AgGold}" Click="UpdateReady_Click" VerticalAlignment="Center" ToolTipService.ToolTip="A new version of ArcadeGridz is ready to install">
+       <StackPanel Orientation="Horizontal" Spacing="9">
+        <FontIcon Glyph="&#xE896;" FontFamily="{StaticResource AgIcons}" FontSize="15" Foreground="{StaticResource AgGold}"/>
+        <StackPanel Spacing="2">
+         <TextBlock Text="UPDATE READY" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgGold}"/>
+         <TextBlock x:Name="UpdateReadyVersion" Style="{StaticResource PixelLabel}" FontSize="7" Foreground="{StaticResource AgDim}"/>
+        </StackPanel>
+       </StackPanel>
+      </Button>
+      <TextBlock x:Name="ClockText" Text="--:--" Foreground="{StaticResource AgText}" FontFamily="{StaticResource AgDisplay}" FontSize="30" VerticalAlignment="Center"/>
+     </StackPanel>
      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
       <Ellipse Width="9" Height="9" Fill="{StaticResource AgGreen}" VerticalAlignment="Center" Margin="0,0,8,0"/>
       <TextBlock x:Name="NetworkState" Text="SYNCING GRID..." Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgViolet}" Margin="0,0,6,0"/>
