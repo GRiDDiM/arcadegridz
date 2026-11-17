@@ -135,6 +135,28 @@ public sealed partial class MainWindow
         ReturnToLauncher();
     }
 
+    ScrollViewer? scoresListScroller;
+
+    /// <summary>Mouse wheel on HI-SCORES: over the game list it scrolls the list, anywhere else the board.</summary>
+    void ScoresWheel(Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(Root);
+        var delta = point.Properties.MouseWheelDelta;
+        if (delta == 0) return;
+        bool Over(FrameworkElement el) => el.TransformToVisual(Root)
+            .TransformBounds(new Windows.Foundation.Rect(0, 0, el.ActualWidth, el.ActualHeight)).Contains(point.Position);
+        e.Handled = true;
+        if (Over(ScoresGameList))
+        {
+            scoresListScroller ??= FindChild<ScrollViewer>(ScoresGameList);
+            if (scoresListScroller is not null && scoresListScroller.ScrollableHeight > 1)
+                scoresListScroller.ChangeView(null, Math.Clamp(scoresListScroller.VerticalOffset - delta / 120.0 * 120, 0, scoresListScroller.ScrollableHeight), null, false);
+            return;
+        }
+        if (ScoresBoardScroll.ScrollableHeight > 1)
+            ScoresBoardScroll.ChangeView(null, Math.Clamp(ScoresBoardScroll.VerticalOffset - delta / 120.0 * 120, 0, ScoresBoardScroll.ScrollableHeight), null, false);
+    }
+
     async Task HandleScoresAction(PadAction action)
     {
         var n = scoreGames.Count;

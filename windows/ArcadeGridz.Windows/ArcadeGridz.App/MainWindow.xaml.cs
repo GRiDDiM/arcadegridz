@@ -2028,6 +2028,7 @@ public sealed partial class MainWindow : Window
         if (!wheelLogged) { wheelLogged = true; StartupLog.Write("input", $"First wheel event: handled={e.Handled}; source={e.OriginalSource?.GetType().Name}"); }
         // the grid's own ScrollViewer already took it: don't scroll twice
         if (e.Handled && e.OriginalSource is DependencyObject src && FindAncestor<ScrollViewer>(src) is { } sv && ReferenceEquals(sv, gridScroller ??= FindChild<ScrollViewer>(GameGrid))) return;
+        if (ScoresLayer.Visibility == Visibility.Visible && !gameOpen) { ScoresWheel(e); return; }
         if (Launcher.Visibility != Visibility.Visible || Panel.Visibility == Visibility.Visible || gameOpen || DailyLayer.Visibility == Visibility.Visible) return;
         var point = e.GetCurrentPoint(Root);
         // bounds in Root coordinates (the launcher is scaled by a Viewbox, so ActualWidth/Height alone would be off)
