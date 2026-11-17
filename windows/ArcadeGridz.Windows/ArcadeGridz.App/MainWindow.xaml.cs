@@ -853,6 +853,12 @@ public sealed partial class MainWindow : Window
         return controls;
     }
 
+    Button[]? SideBySide(Button b)
+    {
+        Button[][] rows = [[CheckUpdateButton, InstallUpdateButton], [OptionsTermsButton, OptionsPrivacyButton]];
+        return rows.FirstOrDefault(r => r.Contains(b));
+    }
+
     async Task HandlePanelAction(PadAction action)
     {
         if (action == PadAction.B) { ReturnToLauncher(); return; }
@@ -864,6 +870,19 @@ public sealed partial class MainWindow : Window
         {
             var delta = action is PadAction.LB or PadAction.Left ? -1 : 1;
             SelectOptionsTab((optionsTab + delta + OptionsTabCount) % OptionsTabCount, keepFocusOnTabs: onTabs || action is PadAction.Left or PadAction.Right);
+            return;
+        }
+        // buttons laid out side by side (CHECK FOR UPDATES | INSTALL, TERMS | PRIVACY): left/right moves between them
+        if (action is PadAction.Left or PadAction.Right && current is Button side && SideBySide(side) is { } row)
+        {
+            var i = Array.IndexOf(row, side) + (action == PadAction.Left ? -1 : 1);
+            while (i >= 0 && i < row.Length && controls.IndexOf(row[i]) < 0) i += action == PadAction.Left ? -1 : 1; // skip disabled ones
+            if (i >= 0 && i < row.Length)
+            {
+                panelFocus = controls.IndexOf(row[i]);
+                FocusPanelControl(row[i]);
+                audio?.Play("move");
+            }
             return;
         }
         // theme cards: a 3x2 grid, d-pad moves in 2D and A applies the theme
