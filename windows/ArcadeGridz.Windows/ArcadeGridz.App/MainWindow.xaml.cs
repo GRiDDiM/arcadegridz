@@ -778,6 +778,7 @@ public sealed partial class MainWindow : Window
         launcherFocus = target;
         if (target != LauncherFocus.Player) SetVolumeAdjust(false);
         UpdateTileHighlight();
+        UpdateDetailsFocus(target is LauncherFocus.Play or LauncherFocus.Trailer);
         Control control = target switch
         {
             LauncherFocus.Categories => NextCategoryButton,

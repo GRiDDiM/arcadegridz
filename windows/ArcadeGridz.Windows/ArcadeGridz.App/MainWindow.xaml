@@ -366,8 +366,8 @@
          <Rectangle>
           <Rectangle.Fill>
            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Color="#00000000" Offset="0.45"/>
-            <GradientStop Color="#F2050312" Offset="1"/>
+            <GradientStop Color="#00000000" Offset="0.6"/>
+            <GradientStop Color="#B3050312" Offset="1"/>
            </LinearGradientBrush>
           </Rectangle.Fill>
          </Rectangle>
@@ -379,7 +379,11 @@
          </Border>
          <StackPanel VerticalAlignment="Bottom" Margin="14,0,14,14" Spacing="6">
           <TextBlock Text="{x:Bind local:UiTheme.Upper(Genre)}" Foreground="{StaticResource AgCyan}" FontFamily="{StaticResource AgPixel}" FontSize="7" TextTrimming="CharacterEllipsis"/>
-          <TextBlock Text="{x:Bind Name}" Foreground="White" FontFamily="{StaticResource AgDisplay}" FontSize="19" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"/>
+          <Grid>
+           <!-- drop shadow keeps the title readable over bright art -->
+           <TextBlock Text="{x:Bind Name}" Foreground="#E6000000" FontFamily="{StaticResource AgDisplay}" FontSize="19" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" Margin="2,2,-2,-2"/>
+           <TextBlock Text="{x:Bind Name}" Foreground="White" FontFamily="{StaticResource AgDisplay}" FontSize="19" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"/>
+          </Grid>
          </StackPanel>
         </Grid>
        </Border>
@@ -387,6 +391,12 @@
      </GridView.ItemTemplate>
     </GridView>
 
+    <!-- lights up when pad/keyboard focus is in the details panel (MainWindow.DetailsFocus.cs) -->
+    <Border x:Name="DetailsFrame" Grid.Column="1" Margin="10,-8,-12,-10" CornerRadius="28" BorderThickness="3" BorderBrush="{StaticResource AgCyan}" Background="#145EE7FF" Opacity="0" IsHitTestVisible="False">
+     <Border x:Name="DetailsHint" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-15,26,0" Background="{StaticResource AgInk}" BorderBrush="{StaticResource AgCyan}" BorderThickness="2" CornerRadius="8" Padding="10,5">
+      <TextBlock Text="A  PLAY   ·   ◀ ▶  CHOOSE   ·   B  BACK TO GAMES" Style="{StaticResource PixelLabel}" FontSize="8" Foreground="{StaticResource AgCyan}"/>
+     </Border>
+    </Border>
     <Grid Grid.Column="1" Margin="24,8,0,0">
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
      <Grid>
@@ -399,8 +409,8 @@
         <Rectangle>
          <Rectangle.Fill>
           <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-           <GradientStop Color="#00000000" Offset="0.55"/>
-           <GradientStop Color="#CC050312" Offset="1"/>
+           <GradientStop Color="#00000000" Offset="0.7"/>
+           <GradientStop Color="#99050312" Offset="1"/>
           </LinearGradientBrush>
          </Rectangle.Fill>
         </Rectangle>
