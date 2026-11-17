@@ -10,11 +10,13 @@ public sealed class CatalogService
     string CacheFile=>Path.Combine(AppPaths.Cache,"catalog.json");
     string EtagFile=>Path.Combine(AppPaths.Cache,"catalog.etag");
     // Changed is false when the server answered 304 (or we fell back to the cache), so callers can skip a rebuild.
-    public async Task<(LauncherCatalog Catalog,bool Offline,bool Changed)> LoadAsync(CancellationToken ct=default)
+    // token: the signed-in Network session. The owner (neb / SysOp) also gets the owner-only games (O.V. Frequency, Puzzle Box).
+    public async Task<(LauncherCatalog Catalog,bool Offline,bool Changed)> LoadAsync(string? token=null,CancellationToken ct=default)
     {
         AppPaths.Ensure();
         try {
             using var req=new HttpRequestMessage(HttpMethod.Get,Endpoint);
+            if(!string.IsNullOrWhiteSpace(token)) req.Headers.Authorization=new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer",token);
             if(File.Exists(EtagFile)) req.Headers.TryAddWithoutValidation("If-None-Match",await File.ReadAllTextAsync(EtagFile,ct));
             using var res=await http.SendAsync(req,ct);
             if(res.StatusCode==HttpStatusCode.NotModified)return (await ReadCache(ct),false,false);

@@ -267,13 +267,14 @@ public sealed partial class MainWindow : Window
 
     // quiet = background check: no rebuild when nothing changed (304), keeps the player's category and
     // selected game, and never replaces the screen with an error panel.
+    bool catalogSignedIn;
     async Task<CatalogRefresh> RefreshCatalog(bool quiet = false)
     {
         if (catalogBusy) return CatalogRefresh.Same;
         catalogBusy = true;
         try
         {
-            var result = await catalogs.LoadAsync();
+            var result = await catalogs.LoadAsync(web?.Token);
             lastCatalogCheck = DateTime.UtcNow;
             if (quiet && !result.Changed)
             {
@@ -1364,6 +1365,8 @@ public sealed partial class MainWindow : Window
     {
         account = a is null || string.IsNullOrWhiteSpace(a.Name) && string.IsNullOrWhiteSpace(a.Username) ? null : a;
         var signedIn = account is not null;
+        // Signing in or out can change the game list (owner-only games), so re-check the catalog.
+        if (signedIn != catalogSignedIn) { catalogSignedIn = signedIn; if (all.Count > 0) _ = RefreshCatalog(true); }
         SignInButton.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
         AccountButton.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
         if (signedIn)
