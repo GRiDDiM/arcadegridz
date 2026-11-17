@@ -260,6 +260,12 @@ public static class ThemeService
     static void Walk(DependencyObject d, AppTheme t)
     {
         if (d.GetValue(SkipProperty) is string) return;
+        // Tag="keepcolor": text/scrims drawn over cover art keep their light-on-dark colours in every theme (fonts still follow)
+        if (d is FrameworkElement { Tag: "keepcolor" } keep)
+        {
+            if (keep is TextBlock kt) MapFont(kt, TextBlock.FontFamilyProperty, TextBlock.FontSizeProperty, t);
+            return;
+        }
         switch (d)
         {
             case Control c:

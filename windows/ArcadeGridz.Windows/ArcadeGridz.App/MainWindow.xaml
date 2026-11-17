@@ -363,7 +363,7 @@
        <Border CornerRadius="18" BorderBrush="#335EE7FF" BorderThickness="2" Background="{StaticResource AgCardSolid}" Opacity="{x:Bind local:UiTheme.PlayableOpacity(Playable)}">
         <Grid>
          <Image Source="{x:Bind Art}" Stretch="UniformToFill"/>
-         <Rectangle>
+         <Rectangle Tag="keepcolor">
           <Rectangle.Fill>
            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
             <GradientStop Color="#00000000" Offset="0.6"/>
@@ -381,8 +381,8 @@
           <TextBlock Text="{x:Bind local:UiTheme.Upper(Genre)}" Foreground="{StaticResource AgCyan}" FontFamily="{StaticResource AgPixel}" FontSize="7" TextTrimming="CharacterEllipsis"/>
           <Grid>
            <!-- drop shadow keeps the title readable over bright art -->
-           <TextBlock Text="{x:Bind Name}" Foreground="#E6000000" FontFamily="{StaticResource AgDisplay}" FontSize="19" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" Margin="2,2,-2,-2"/>
-           <TextBlock Text="{x:Bind Name}" Foreground="White" FontFamily="{StaticResource AgDisplay}" FontSize="19" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"/>
+           <TextBlock Tag="keepcolor" Text="{x:Bind Name}" Foreground="#E6000000" FontFamily="{StaticResource AgDisplay}" FontSize="19" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" Margin="2,2,-2,-2"/>
+           <TextBlock Tag="keepcolor" Text="{x:Bind Name}" Foreground="White" FontFamily="{StaticResource AgDisplay}" FontSize="19" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"/>
           </Grid>
          </StackPanel>
         </Grid>
