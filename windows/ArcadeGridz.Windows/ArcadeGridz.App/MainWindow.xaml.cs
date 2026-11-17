@@ -408,7 +408,7 @@ public sealed partial class MainWindow : Window
 
     void GameGrid_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (GameGrid.SelectedItem is GameEntry g) _ = ShowHero(g); }
     // A mouse/touch click only picks the game; launching is the PLAY button's job
-    // (controller A / Enter still launch from the grid via HandleLauncherAction).
+    // (controller A / Enter on a tile moves focus to the details panel via HandleLauncherAction).
     void GameGrid_ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is not GameEntry g) return;
@@ -662,6 +662,9 @@ public sealed partial class MainWindow : Window
                     else SignIn_Click(this, new RoutedEventArgs());
                     break;
                 case LauncherFocus.GameGrid:
+                    // A on a tile opens its details panel (PLAY, TRAILER...); it never launches straight from the grid
+                    if (GameGrid.SelectedItem is GameEntry) { SetLauncherFocus(LauncherFocus.Play); audio?.Play("select"); }
+                    break;
                 case LauncherFocus.Play:
                     if (GameGrid.SelectedItem is GameEntry game) await Launch(game);
                     break;
