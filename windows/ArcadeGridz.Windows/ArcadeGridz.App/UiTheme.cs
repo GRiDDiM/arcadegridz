@@ -26,6 +26,10 @@ public static class UiTheme
         _ => Brush(0x8D, 0x95, 0xAD)
     };
 
+    /// <summary>HI-SCORES: the signed-in player's own rows get a gold wash.</summary>
+    public static Brush MineBrush(bool mine) => mine ? new SolidColorBrush(Windows.UI.Color.FromArgb(0x33, 0xFF, 0xC1, 0x4D)) : new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
+    public static Visibility MineVisibility(bool mine) => mine ? Visibility.Visible : Visibility.Collapsed;
+    public static double DimIfEmpty(bool has) => has ? 1.0 : 0.55;
     public static string Upper(string? value) => (value ?? "").ToUpperInvariant();
     public static double PlayableOpacity(bool playable) => playable ? 1.0 : 0.55;
     public static Visibility LockedVisibility(bool playable) => playable ? Visibility.Collapsed : Visibility.Visible;

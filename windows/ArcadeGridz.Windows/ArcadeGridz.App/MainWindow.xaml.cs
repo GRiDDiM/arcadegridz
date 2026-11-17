@@ -494,6 +494,7 @@ public sealed partial class MainWindow : Window
         StopStoryboard("CoverPulse");
         GameCover.Visibility = Visibility.Visible;
         Panel.Visibility = Visibility.Collapsed;
+        ScoresLayer.Visibility = Visibility.Collapsed;
         if (startupOpen && WelcomePanel.Visibility == Visibility.Visible)
         {
             // back on the floating sign-in card (e.g. cancelled email sign-in)
@@ -536,6 +537,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         if (gameOpen) return;
+        if (ScoresLayer.Visibility == Visibility.Visible) { await HandleScoresAction(action); return; }
         if (Panel.Visibility == Visibility.Visible) { await HandlePanelAction(action); return; }
         if (action == PadAction.LB) ChangeCategory(-1);
         else if (action == PadAction.RB) ChangeCategory(1);
@@ -1043,8 +1045,8 @@ public sealed partial class MainWindow : Window
                 if (startupOpen && WelcomePanel.Visibility == Visibility.Visible)
                     HandleStartupAction(action.Value);
                 else
-                    _ = Panel.Visibility == Visibility.Visible
-                        ? HandlePanelAction(action.Value)
+                    _ = ScoresLayer.Visibility == Visibility.Visible ? HandleScoresAction(action.Value)
+                        : Panel.Visibility == Visibility.Visible ? HandlePanelAction(action.Value)
                         : HandleLauncherAction(action.Value);
             }
         }
@@ -1077,7 +1079,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    void Scores_Click(object sender, RoutedEventArgs e) => ShowMessage("NETWORK SCORES", "Choose a game to see its live top five. A full cross-game score browser is planned after v0.1.");
     void Options_Click(object sender, RoutedEventArgs e)
     {
         PanelTitle.Text = "OPTIONS";

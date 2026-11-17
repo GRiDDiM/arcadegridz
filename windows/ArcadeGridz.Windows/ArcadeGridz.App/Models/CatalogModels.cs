@@ -42,3 +42,7 @@ public sealed class ScoreEntry
     public string Tag => Cheater ? "CHEATER" : Assisted ? "ASSISTED" : Verified ? "VERIFIED" : "UNVERIFIED";
 }
 public sealed record ScoreRow(string Rank, string Name, string ScoreText, string Tag);
+/// <summary>HI-SCORES screen: one game in the left list.</summary>
+public sealed record ScoreGameRow(GameEntry Game, string Name, string Art, string TopText, string CountText, bool HasScores);
+/// <summary>HI-SCORES screen: one leaderboard line (Mine = the signed-in player's score).</summary>
+public sealed record ScoreBoardRow(string Rank, string Name, string ScoreText, string Tag, bool Mine);
