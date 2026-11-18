@@ -383,7 +383,7 @@
       </Grid>
      </Viewbox>
     </Grid>
-    <GridView x:Name="GameGrid" Padding="12" IsItemClickEnabled="True" ItemClick="GameGrid_ItemClick" SelectionChanged="GameGrid_SelectionChanged" SelectionMode="Single" IsTabStop="True" UseSystemFocusVisuals="False" ItemContainerStyle="{StaticResource TileItemStyle}" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollMode="Enabled" ScrollViewer.IsVerticalRailEnabled="True">
+    <GridView x:Name="GameGrid" Padding="12" IsItemClickEnabled="True" ItemClick="GameGrid_ItemClick" DoubleTapped="GameGrid_DoubleTapped" SelectionChanged="GameGrid_SelectionChanged" SelectionMode="Single" IsTabStop="True" UseSystemFocusVisuals="False" ItemContainerStyle="{StaticResource TileItemStyle}" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollMode="Enabled" ScrollViewer.IsVerticalRailEnabled="True">
      <GridView.ItemsPanel><ItemsPanelTemplate><ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="4" ItemWidth="224" ItemHeight="300"/></ItemsPanelTemplate></GridView.ItemsPanel>
      <GridView.ItemTemplate>
       <DataTemplate x:DataType="m:GameEntry">

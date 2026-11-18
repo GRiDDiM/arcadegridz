@@ -32,7 +32,7 @@ public sealed class Album
 }
 
 /// <summary>
-/// The launcher's music player: Benjamin Campbell's album "GAME OVER - Insert Coin To Continue", served from
+/// The launcher's music player: BDC's album "GAME OVER - Insert Coin To Continue", served from
 /// arcadegridz.com/music/game-over/ (album.json lists tracks + precomputed L/R peak levels for the meter).
 /// Tracks are cached under %LOCALAPPDATA%\ArcadeGridz\music after first play. Pauses while a game runs.
 /// </summary>

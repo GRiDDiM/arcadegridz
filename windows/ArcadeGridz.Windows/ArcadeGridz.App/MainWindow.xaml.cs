@@ -422,6 +422,15 @@ public sealed partial class MainWindow : Window
         else _ = ShowHero(g);
     }
     async void Play_Click(object sender, RoutedEventArgs e) { if (GameGrid.SelectedItem is GameEntry g) await Launch(g); }
+    // double-click (or double-tap) a tile: play it straight away
+    async void GameGrid_DoubleTapped(object sender, Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)
+    {
+        var g = (e.OriginalSource as FrameworkElement)?.DataContext as GameEntry ?? GameGrid.SelectedItem as GameEntry;
+        if (g is null || gameOpen) return;
+        e.Handled = true;
+        if (!ReferenceEquals(GameGrid.SelectedItem, g)) GameGrid.SelectedItem = g;
+        await Launch(g);
+    }
     static bool HasTrailer(GameEntry g) => g.Trailer && g.Playable && g.Runtime.Type.Equals("web", StringComparison.OrdinalIgnoreCase);
     async void Trailer_Click(object sender, RoutedEventArgs e) { if (GameGrid.SelectedItem is GameEntry g) await LaunchTrailer(g); }
     // A trailer runs on the game itself: same web runtime and URL, plus trailer=1 (the site starts the trailer instead of the game)
