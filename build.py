@@ -10,7 +10,7 @@ for f in sorted(glob.glob("*.wav")):
     out = f"out/{slug}.mp3"
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", f, "-codec:a", "libmp3lame", "-b:a", "192k",
                     "-metadata", f"title={title}", "-metadata", "album=GAME OVER - Insert Coin To Continue",
-                    "-metadata", "artist=Benjamin Campbell", "-metadata", f"track={num}/11", out], check=True)
+                    "-metadata", "artist=BDC", "-metadata", f"track={num}/11", out], check=True)
     sr, x = wavfile.read(f)
     x = x.astype(np.float32) / 32768.0
     hop = sr // FPS
@@ -23,7 +23,7 @@ for f in sorted(glob.glob("*.wav")):
                    "fps": FPS, "peaksL": base64.b64encode(b[:, 0].tobytes()).decode(),
                    "peaksR": base64.b64encode(b[:, 1].tobytes()).decode()})
     print(num, title, os.path.getsize(out) // 1024, "KB")
-album = {"id": "game-over", "title": "GAME OVER", "subtitle": "Insert Coin To Continue", "artist": "Benjamin Campbell",
+album = {"id": "game-over", "title": "GAME OVER", "subtitle": "Insert Coin To Continue", "artist": "BDC",
          "base": "https://github.com/GRiDDiM/arcadegridz/releases/download/album-game-over-v1/", "tracks": tracks}
 json.dump(album, open("out/album.json", "w"))
 print("album.json", os.path.getsize("out/album.json") // 1024, "KB")
