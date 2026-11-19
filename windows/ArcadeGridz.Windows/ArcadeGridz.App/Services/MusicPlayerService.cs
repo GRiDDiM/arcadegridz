@@ -102,6 +102,20 @@ public sealed class MusicPlayerService : IDisposable
     /// <summary>Loads the album list, then the saved album (network first, cached copies if offline). Starts playback when autoPlay.</summary>
     public async Task LoadAsync(bool autoPlay)
     {
+        if (Loading) return;
+        Loading = true;
+        try { await LoadCoreAsync(autoPlay); }
+        catch (Exception ex) { StartupLog.Exception("Music load", ex); }
+        finally { Loading = false; LoadAttempts++; Changed?.Invoke(); }
+    }
+
+    /// <summary>True while the album list / an album is being fetched.</summary>
+    public bool Loading { get; private set; }
+    /// <summary>Finished load attempts (success or not); the UI shows a retry message after a failed one.</summary>
+    public int LoadAttempts { get; private set; }
+
+    async Task LoadCoreAsync(bool autoPlay)
+    {
         var root = Path.Combine(AppPaths.Root, "music");
         Directory.CreateDirectory(root);
         var idx = await FetchCachedAsync(IndexUrl, Path.Combine(root, "albums.json"));
@@ -121,7 +135,8 @@ public sealed class MusicPlayerService : IDisposable
     {
         try
         {
-            var json = await http.GetStringAsync(url);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var json = await http.GetStringAsync(url, cts.Token);
             await File.WriteAllTextAsync(cachePath, json);
             return json;
         }
@@ -163,10 +178,19 @@ public sealed class MusicPlayerService : IDisposable
     /// <summary>Switch to the next album in albums.json, from its first track; keeps playing if it was playing.</summary>
     public async Task NextAlbumAsync()
     {
-        if (switching || albums.Count < 2) return;
+        if (switching || Loading) return;
         switching = true;
         try
         {
+            if (Album is null || albums.Count < 2)
+            {
+                // the list never loaded (offline at startup): try again; this also loads the first album
+                switching = false;
+                if (Album is null) { await LoadAsync(autoPlay: true); return; }
+                await LoadAsync(autoPlay: IsPlaying);
+                switching = true;
+                if (albums.Count < 2) return;
+            }
             var cur = albums.FindIndex(a => a.Id == Album?.Id);
             var wasPlaying = IsPlaying || player.Source is null && !settings.MusicOff;
             pausedForGame = false;

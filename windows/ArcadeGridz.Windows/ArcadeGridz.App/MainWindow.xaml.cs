@@ -80,6 +80,16 @@ public sealed partial class MainWindow : Window
             audio = new AudioService(DispatcherQueue, !settings.SfxOff);
             music = new MusicPlayerService(DispatcherQueue, settings);
             music.Changed += UpdateMusicUi;
+            // keep trying until the album is in (the reveal-time load can miss: slow network, sign-in path, offline)
+            musicRetry = DispatcherQueue.CreateTimer();
+            musicRetry.Interval = TimeSpan.FromSeconds(12);
+            musicRetry.IsRepeating = true;
+            musicRetry.Tick += (_, _) =>
+            {
+                if (music is null || music.Album is not null) { musicRetry?.Stop(); return; }
+                if (!music.Loading) _ = music.LoadAsync(autoPlay: !settings.MusicOff && !gameOpen);
+            };
+            musicRetry.Start();
             BuildMeter();
             audio.Play("jingle"); // loading jingle over the splash
             // Load fullscreen but cloaked (invisible) behind the overlay splash; Reveal() uncloaks it once the
@@ -2245,6 +2255,8 @@ public sealed partial class MainWindow : Window
     Microsoft.UI.Dispatching.DispatcherQueueTimer? meterTimer;
     const int MeterSegments = 16;
 
+    Microsoft.UI.Dispatching.DispatcherQueueTimer? musicRetry;
+
     Control[] PlayerControls => [MusicPrevButton, MusicPlayButton, MusicNextButton, MusicAlbumButton, MusicShuffleButton, MusicRepeatButton, MusicMuteButton, MusicVolumeSlider];
 
     void PlayerMove(PadAction action)
@@ -2315,6 +2327,11 @@ public sealed partial class MainWindow : Window
             MusicTitle.Text = $"{t.Number:00}  ·  {t.Title.ToUpperInvariant()}";
             MusicAlbum.Text = string.Join("  ·  ", new[] { music.Album.Title, music.Album.Subtitle.ToUpperInvariant(), music.Album.Artist.ToUpperInvariant() }.Where(s => s.Length > 0));
             ToolTipService.SetToolTip(MusicAlbumButton, music.AlbumCount > 1 ? $"Switch album ({music.AlbumCount} albums)" : "Only one album");
+        }
+        else if (music.Album is null)
+        {
+            MusicTitle.Text = music.Loading || music.LoadAttempts == 0 ? "LOADING MUSIC..." : "MUSIC OFFLINE  ·  RETRYING";
+            ToolTipService.SetToolTip(MusicAlbumButton, "Load music");
         }
         MusicPlayIcon.Glyph = music.IsPlaying ? "" : "";
         MusicShuffleIcon.Foreground = music.Shuffle ? cyan : dim;
