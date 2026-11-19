@@ -463,7 +463,7 @@
      <Border Grid.Row="5" Margin="0,14,0,0" Background="#B30B0820" BorderBrush="#33FFC14D" BorderThickness="1" CornerRadius="14" Padding="18,12" VerticalAlignment="Stretch" MinHeight="96">
       <Grid RowSpacing="8">
        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-       <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE734;" FontFamily="{StaticResource AgIcons}" FontSize="14" Foreground="{StaticResource AgGold}"/><TextBlock Text="HIGH SCORES" Foreground="{StaticResource AgGold}" FontFamily="{StaticResource AgPixel}" FontSize="11" VerticalAlignment="Center"/></StackPanel>
+       <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10"><FontIcon x:Name="ScoreHeaderIcon" Glyph="&#xE734;" FontFamily="{StaticResource AgIcons}" FontSize="14" Foreground="{StaticResource AgGold}"/><TextBlock x:Name="ScoreHeader" Text="HIGH SCORES" Foreground="{StaticResource AgGold}" FontFamily="{StaticResource AgPixel}" FontSize="11" VerticalAlignment="Center"/></StackPanel>
        <TextBlock x:Name="ScoreEmpty" Grid.Row="1" Text="NO SCORES YET. BE THE FIRST." Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}" Visibility="Collapsed"/>
        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Hidden" VerticalScrollMode="Enabled">
        <ItemsControl x:Name="ScoreList">
@@ -474,7 +474,7 @@
            <TextBlock Text="{x:Bind Rank}" Foreground="{StaticResource AgGold}" FontFamily="{StaticResource AgPixel}" FontSize="10" VerticalAlignment="Center"/>
            <TextBlock Grid.Column="1" Text="{x:Bind Name}" Foreground="{StaticResource AgText}" FontFamily="{StaticResource AgBody}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
            <TextBlock Grid.Column="2" Text="{x:Bind ScoreText}" Foreground="White" FontFamily="{StaticResource AgPixel}" FontSize="10" Margin="12,0" VerticalAlignment="Center"/>
-           <Border Grid.Column="3" BorderBrush="{x:Bind local:UiTheme.TagBrush(Tag)}" BorderThickness="1" CornerRadius="4" Padding="5,3" VerticalAlignment="Center">
+           <Border Grid.Column="3" BorderBrush="{x:Bind local:UiTheme.TagBrush(Tag)}" BorderThickness="1" CornerRadius="4" Padding="5,3" VerticalAlignment="Center" Visibility="{x:Bind local:UiTheme.TagVisibility(Tag)}">
             <TextBlock Text="{x:Bind Tag}" Foreground="{x:Bind local:UiTheme.TagBrush(Tag)}" FontFamily="{StaticResource AgPixel}" FontSize="6"/>
            </Border>
           </Grid>
@@ -523,7 +523,7 @@
      </StackPanel>
      <!-- modes -->
      <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-      <Button x:Name="MusicAlbumButton" Height="44" Padding="12,0" CornerRadius="22" Click="MusicAlbumSwitch_Click" ToolTipService.ToolTip="Switch album">
+      <Button x:Name="MusicAlbumButton" Height="44" Padding="12,0" CornerRadius="22" Click="MusicAlbumSwitch_Click" ToolTipService.ToolTip="Browse albums in the game browser">
        <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE93C;" FontFamily="{StaticResource AgIcons}" FontSize="16" Foreground="{StaticResource AgMagenta}"/><TextBlock Text="ALBUM" FontFamily="{StaticResource AgPixel}" FontSize="8" VerticalAlignment="Center"/></StackPanel>
       </Button>
       <Button x:Name="MusicShuffleButton" Width="44" Height="44" Padding="0" CornerRadius="22" Click="MusicShuffle_Click" ToolTipService.ToolTip="Shuffle"><FontIcon x:Name="MusicShuffleIcon" Glyph="&#xE8B1;" FontFamily="{StaticResource AgIcons}" FontSize="16"/></Button>

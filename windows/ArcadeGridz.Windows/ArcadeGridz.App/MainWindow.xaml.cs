@@ -40,6 +40,12 @@ public sealed partial class MainWindow : Window
     // storyboards (interactive films) live in their own section, not in ALL GAMES or the genre list
     const string StoryboardCategory = "STORYBOARD";
     bool storyMode;
+    // ALBUMS view: the music player's ALBUM button swaps the game grid for BDC's albums (no nav button of its own)
+    bool albumMode;
+    readonly List<GameEntry> albumEntries = [];
+    const string AlbumRuntime = "album";
+    static bool IsAlbum(GameEntry g) => g.Runtime.Type == AlbumRuntime;
+    static string AlbumId(GameEntry g) => g.Id.StartsWith("album:") ? g.Id[6..] : g.Id;
     static bool IsStoryboard(GameEntry g) => g.Category.Equals(StoryboardCategory, StringComparison.OrdinalIgnoreCase);
     static bool IsLive(GameEntry g) => g.Status.Equals("live", StringComparison.OrdinalIgnoreCase);
     /// <summary>Launcher list rule: launchable (or SHOW UNSUPPORTED on) and LIVE (or BETAS &amp; ALPHAS toggled on next to OPTIONS).</summary>
@@ -80,6 +86,7 @@ public sealed partial class MainWindow : Window
             audio = new AudioService(DispatcherQueue, !settings.SfxOff);
             music = new MusicPlayerService(DispatcherQueue, settings);
             music.Changed += UpdateMusicUi;
+            music.AlbumsChanged += () => { BuildAlbumEntries(); if (albumMode) ApplyFilter(); };
             // keep trying until the album is in (the reveal-time load can miss: slow network, sign-in path, offline)
             musicRetry = DispatcherQueue.CreateTimer();
             musicRetry.Interval = TimeSpan.FromSeconds(12);
@@ -358,12 +365,15 @@ public sealed partial class MainWindow : Window
 
     void ApplyFilter()
     {
-        var cat = storyMode ? "STORYBOARDS" : categories.Count == 0 ? "ALL GAMES" : categories[categoryIndex];
+        var cat = albumMode ? "ALBUMS" : storyMode ? "STORYBOARDS" : categories.Count == 0 ? "ALL GAMES" : categories[categoryIndex];
         CategoryLabel.Text = cat;
         visible.Clear();
-        foreach (var g in all.Where(g => Listed(g) &&
+        if (albumMode) foreach (var g in albumEntries) visible.Add(g);
+        else foreach (var g in all.Where(g => Listed(g) &&
                  (storyMode ? IsStoryboard(g) : !IsStoryboard(g) && (cat == "ALL GAMES" || g.Category.Equals(cat, StringComparison.OrdinalIgnoreCase)))))
             visible.Add(g);
+        if (albumMode) MusicAlbumButton.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
+        else MusicAlbumButton.ClearValue(Control.BorderBrushProperty);
         if (storyMode) StoryboardsButton.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
         else StoryboardsButton.ClearValue(Control.BorderBrushProperty);
         if (visible.Count > 0) GameGrid.ScrollIntoView(visible[0]);
@@ -371,11 +381,12 @@ public sealed partial class MainWindow : Window
         else
         {
             GameGrid.SelectedIndex = -1;
-            HeroName.Text = "NO GAMES";
+            HeroName.Text = albumMode ? "LOADING ALBUMS" : "NO GAMES";
             HeroMeta.Text = "";
             HeroStatusChip.Visibility = Visibility.Collapsed;
             ScoreEmpty.Visibility = Visibility.Collapsed;
-            HeroDescription.Text = settings.ShowTesting
+            HeroDescription.Text = albumMode ? "The album list is still loading. It shows up here as soon as the music is in."
+                : settings.ShowTesting
                 ? "No catalog entries match this filter."
                 : "Nothing LIVE here yet. Turn on BETAS & ALPHAS (next to OPTIONS) to see games still in testing.";
             HeroArt.Source = null;
@@ -391,6 +402,11 @@ public sealed partial class MainWindow : Window
         heroLoad?.Dispose();
         heroLoad = new CancellationTokenSource();
         var cancellationToken = heroLoad.Token;
+
+        if (IsAlbum(g)) { await ShowAlbumHero(g, cancellationToken); return; }
+        ScoreHeader.Text = "HIGH SCORES";
+        ScoreHeaderIcon.Glyph = "\uE734";
+        ScoreEmpty.Text = "NO SCORES YET. BE THE FIRST.";
 
         // Update the selection immediately. Network score loading is debounced so
         // holding a direction never starts one request per repeated selection.
@@ -454,6 +470,13 @@ public sealed partial class MainWindow : Window
 
     async Task Launch(GameEntry g)
     {
+        if (IsAlbum(g))
+        {
+            if (music is null) return;
+            audio?.Play("select");
+            await music.PlayAlbumAsync(AlbumId(g));
+            return;
+        }
         try
         {
             if (!g.Playable)
@@ -1012,7 +1035,7 @@ public sealed partial class MainWindow : Window
     void ChangeCategory(int delta)
     {
         if (categories.Count == 0) return;
-        if (storyMode) { storyMode = false; ApplyFilter(); return; } // LB/RB from STORYBOARDS goes back to the games
+        if (storyMode || albumMode) { storyMode = false; albumMode = false; ApplyFilter(); return; } // LB/RB from STORYBOARDS / ALBUMS goes back to the games
         categoryIndex = (categoryIndex + delta + categories.Count) % categories.Count;
         ApplyFilter();
     }
@@ -1139,8 +1162,9 @@ public sealed partial class MainWindow : Window
 
     void ShowSection(bool storyboards)
     {
-        var changed = storyMode != storyboards;
+        var changed = storyMode != storyboards || albumMode;
         storyMode = storyboards;
+        albumMode = false;
         ReturnToLauncher();
         if (changed) ApplyFilter();
         SetLauncherFocus(LauncherFocus.GameGrid);
@@ -2281,7 +2305,7 @@ public sealed partial class MainWindow : Window
             case 0: music?.Previous(); break;
             case 1: music?.TogglePlay(); break;
             case 2: music?.Next(); break;
-            case 3: if (music is not null) _ = music.NextAlbumAsync(); break;
+            case 3: ToggleAlbumsView(fromPad: true); break;
             case 4: music?.ToggleShuffle(); break;
             case 5: music?.CycleRepeat(); break;
             case 6: music?.ToggleMute(); break;
@@ -2298,7 +2322,91 @@ public sealed partial class MainWindow : Window
     void MusicPrev_Click(object sender, RoutedEventArgs e) => music?.Previous();
     void MusicPlay_Click(object sender, RoutedEventArgs e) => music?.TogglePlay();
     void MusicNext_Click(object sender, RoutedEventArgs e) => music?.Next();
-    void MusicAlbumSwitch_Click(object sender, RoutedEventArgs e) { if (music is not null) _ = music.NextAlbumAsync(); }
+    void MusicAlbumSwitch_Click(object sender, RoutedEventArgs e) => ToggleAlbumsView(fromPad: false);
+
+    /// <summary>ALBUM button: show BDC's albums in the game browser (press again, GAMES, or LB/RB to go back).</summary>
+    void ToggleAlbumsView(bool fromPad)
+    {
+        albumMode = !albumMode;
+        if (albumMode) storyMode = false;
+        if (Launcher.Visibility != Visibility.Visible) ReturnToLauncher();
+        if (albumEntries.Count == 0) BuildAlbumEntries();
+        if (music is not null && music.Album is null && !music.Loading) _ = music.LoadAsync(autoPlay: false);
+        audio?.Play(albumMode ? "open" : "back");
+        ApplyFilter();
+        if (fromPad && albumMode) SetLauncherFocus(LauncherFocus.GameGrid);
+    }
+
+    void BuildAlbumEntries()
+    {
+        albumEntries.Clear();
+        if (music is null) return;
+        foreach (var r in music.AlbumRefs)
+        {
+            if (string.IsNullOrEmpty(r.Title)) continue; // only the fallback entry (album list not loaded yet)
+            var genre = string.Join("  ·  ", new[] { r.Genre, r.Year > 0 ? r.Year.ToString() : "", r.Artist }.Where(s => !string.IsNullOrEmpty(s)));
+            albumEntries.Add(new GameEntry
+            {
+                Id = "album:" + r.Id, Name = r.Title, Category = "ALBUM", Genre = genre, Status = "ALBUM",
+                Description = r.Description, Art = r.Cover, Playable = true, Tone = "magenta",
+                Runtime = new RuntimeSpec { Type = AlbumRuntime }
+            });
+        }
+    }
+
+    GameEntry? shownAlbum;
+    Album? shownAlbumData;
+
+    async Task ShowAlbumHero(GameEntry g, CancellationToken ct)
+    {
+        shownAlbum = g;
+        shownAlbumData = null;
+        HeroName.Text = g.Name;
+        HeroDescription.Text = g.Description;
+        TrailerButton.Visibility = Visibility.Collapsed;
+        if (launcherFocus == LauncherFocus.Trailer) SetLauncherFocus(LauncherFocus.Play);
+        QueueTrailerPreview(g); // albums have no trailer: this just stops any running preview
+        ScoreHeader.Text = "TRACKS";
+        ScoreHeaderIcon.Glyph = "\uE8D6";
+        ScoreList.ItemsSource = null;
+        ScoreEmpty.Text = "LOADING TRACKS...";
+        ScoreEmpty.Visibility = Visibility.Visible;
+        HeroMeta.Text = g.Genre.ToUpperInvariant();
+        try { HeroArt.Source = string.IsNullOrEmpty(g.Art) ? null : new BitmapImage(new Uri(g.Art)); } catch { HeroArt.Source = null; }
+        UpdateAlbumHeroState();
+        if (music is null) return;
+        var a = await music.GetAlbumAsync(AlbumId(g));
+        if (ct.IsCancellationRequested || !ReferenceEquals(shownAlbum, g)) return;
+        shownAlbumData = a;
+        if (a is null) { ScoreEmpty.Text = "COULDN'T LOAD THE TRACK LIST."; return; }
+        var total = TimeSpan.FromSeconds(a.Tracks.Sum(t => t.Duration));
+        HeroMeta.Text = $"{g.Genre.ToUpperInvariant()}  ·  {a.Tracks.Count} TRACKS  ·  {(int)total.TotalMinutes} MIN";
+        UpdateAlbumHeroState();
+    }
+
+    /// <summary>Refresh the album details (now-playing chip, PLAY label, playing track) without reloading art.</summary>
+    void UpdateAlbumHeroState()
+    {
+        if (music is null || shownAlbum is null || !albumMode || !ReferenceEquals(GameGrid.SelectedItem, shownAlbum)) return;
+        var id = AlbumId(shownAlbum);
+        var current = music.Album?.Id == id;
+        var playing = current && music.IsPlaying;
+        HeroStatus.Text = playing ? "NOW PLAYING" : current ? "PAUSED" : "ALBUM";
+        var brush = playing ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"] : UiTheme.StatusBrush("album");
+        HeroStatus.Foreground = brush;
+        HeroStatusChip.BorderBrush = brush;
+        HeroStatusChip.Visibility = Visibility.Visible;
+        PlayButton.IsEnabled = true; // pressing it while the album plays is a no-op; keeps pad focus stable
+        PlayLabel.Text = playing ? "NOW PLAYING" : current ? "RESUME" : "PLAY ALBUM";
+        if (shownAlbumData is { } a)
+        {
+            var now = current ? music.Current?.Number ?? -1 : -1;
+            ScoreList.ItemsSource = a.Tracks.Select(t => new ScoreRow(t.Number.ToString("00"), t.Title,
+                TimeSpan.FromSeconds(t.Duration).ToString(t.Duration >= 3600 ? @"h\:mm\:ss" : @"m\:ss"),
+                t.Number == now ? "PLAYING" : "")).ToList();
+            ScoreEmpty.Visibility = Visibility.Collapsed;
+        }
+    }
     void MusicShuffle_Click(object sender, RoutedEventArgs e) => music?.ToggleShuffle();
     void MusicRepeat_Click(object sender, RoutedEventArgs e) => music?.CycleRepeat();
     void MusicMute_Click(object sender, RoutedEventArgs e) => music?.ToggleMute();
@@ -2318,6 +2426,7 @@ public sealed partial class MainWindow : Window
     void UpdateMusicUi()
     {
         if (music is null) return;
+        UpdateAlbumHeroState();
         var t = music.Current;
         var cyan = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgCyan"];
         var white = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgText"];

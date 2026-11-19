@@ -23,6 +23,7 @@ public static class UiTheme
         "VERIFIED" => Brush(0x3A, 0xFF, 0x9A),
         "ASSISTED" => Brush(0xFF, 0xB0, 0x70),
         "CHEATER" => Brush(0xFF, 0x4D, 0x6D),
+        "PLAYING" => Brush(0xFF, 0x4D, 0xD2),
         _ => Brush(0x8D, 0x95, 0xAD)
     };
 
@@ -33,4 +34,5 @@ public static class UiTheme
     public static string Upper(string? value) => (value ?? "").ToUpperInvariant();
     public static double PlayableOpacity(bool playable) => playable ? 1.0 : 0.55;
     public static Visibility LockedVisibility(bool playable) => playable ? Visibility.Collapsed : Visibility.Visible;
+    public static Visibility TagVisibility(string? tag) => string.IsNullOrEmpty(tag) ? Visibility.Collapsed : Visibility.Visible;
 }

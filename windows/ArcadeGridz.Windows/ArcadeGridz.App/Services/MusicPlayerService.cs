@@ -25,6 +25,13 @@ public sealed class AlbumRef
 {
     [JsonPropertyName("id")] public string Id { get; set; } = "";
     [JsonPropertyName("url")] public string Url { get; set; } = "";
+    [JsonPropertyName("title")] public string Title { get; set; } = "";
+    [JsonPropertyName("subtitle")] public string Subtitle { get; set; } = "";
+    [JsonPropertyName("artist")] public string Artist { get; set; } = "";
+    [JsonPropertyName("cover")] public string Cover { get; set; } = "";
+    [JsonPropertyName("genre")] public string Genre { get; set; } = "";
+    [JsonPropertyName("year")] public int Year { get; set; }
+    [JsonPropertyName("description")] public string Description { get; set; } = "";
 }
 
 public sealed class AlbumIndex
@@ -54,6 +61,11 @@ public sealed class MusicPlayerService : IDisposable
     static readonly List<AlbumRef> FallbackAlbums = [new() { Id = "game-over", Url = "https://arcadegridz.com/music/game-over/album.json" }];
     List<AlbumRef> albums = FallbackAlbums;
     public int AlbumCount => albums.Count;
+    /// <summary>The album list from albums.json (for the launcher's ALBUMS view).</summary>
+    public IReadOnlyList<AlbumRef> AlbumRefs => albums;
+    /// <summary>Raised on the UI thread when the album list (re)loads.</summary>
+    public event Action? AlbumsChanged;
+    readonly Dictionary<string, Album> loadedAlbums = [];
     static readonly HttpClient http = new() { Timeout = TimeSpan.FromMinutes(5) };
 
     readonly Microsoft.UI.Dispatching.DispatcherQueue dispatcher;
@@ -125,6 +137,7 @@ public sealed class MusicPlayerService : IDisposable
             if (list is { Count: > 0 }) albums = list;
         }
         catch (Exception ex) { StartupLog.Exception("Album index", ex); }
+        AlbumsChanged?.Invoke();
         var at = albums.FindIndex(a => a.Id == settings.MusicAlbum);
         await LoadAlbumAsync(at < 0 ? 0 : at, autoPlay, Math.Max(0, settings.MusicTrack));
     }
@@ -147,30 +160,57 @@ public sealed class MusicPlayerService : IDisposable
         }
     }
 
-    async Task LoadAlbumAsync(int index, bool play, int startTrack)
+    /// <summary>Fetches (or returns the already parsed) album.json for an album in the list.</summary>
+    public async Task<Album?> GetAlbumAsync(string id)
     {
-        var r = albums[index];
+        if (loadedAlbums.TryGetValue(id, out var have)) return have;
+        var r = albums.FirstOrDefault(a => a.Id == id);
+        if (r is null) return null;
         var cacheDir = Path.Combine(AppPaths.Root, "music", SafeId(r.Id));
         Directory.CreateDirectory(cacheDir);
         var json = await FetchCachedAsync(r.Url, Path.Combine(cacheDir, "album.json"));
-        if (json is null) return;
+        if (json is null) return null;
         try
         {
             var a = JsonSerializer.Deserialize<Album>(json);
-            if (a is null || a.Tracks.Count == 0) return;
+            if (a is null || a.Tracks.Count == 0) return null;
             if (string.IsNullOrEmpty(a.Id)) a.Id = r.Id;
             a.Tracks.Sort((x, y) => x.Number.CompareTo(y.Number));
             foreach (var t in a.Tracks)
             {
                 try { t.L = Convert.FromBase64String(t.PeaksL); t.R = Convert.FromBase64String(t.PeaksR); } catch { }
             }
-            Album = a;
-            settings.MusicAlbum = r.Id;
-            BuildOrder(Math.Clamp(startTrack, 0, a.Tracks.Count - 1));
-            StartupLog.Write("music", $"Album '{a.Title}' loaded: {a.Tracks.Count} tracks; play={play}");
-            Load(play: play);
+            loadedAlbums[r.Id] = a;
+            return a;
         }
-        catch (Exception ex) { StartupLog.Exception("Album load", ex); }
+        catch (Exception ex) { StartupLog.Exception("Album parse " + r.Id, ex); return null; }
+    }
+
+    async Task LoadAlbumAsync(int index, bool play, int startTrack)
+    {
+        var r = albums[index];
+        var a = await GetAlbumAsync(r.Id);
+        if (a is null) return;
+        Album = a;
+        settings.MusicAlbum = r.Id;
+        BuildOrder(Math.Clamp(startTrack, 0, a.Tracks.Count - 1));
+        StartupLog.Write("music", $"Album '{a.Title}' loaded: {a.Tracks.Count} tracks; play={play}");
+        Load(play: play);
+    }
+
+    /// <summary>Play an album from the ALBUMS view (from track 1, or resume if it's already the current album).</summary>
+    public async Task PlayAlbumAsync(string id, int track = 0)
+    {
+        pausedForGame = false;
+        if (Album?.Id == id && track == 0)
+        {
+            if (!IsPlaying) { if (player.Source is null) Load(play: true); else player.Play(); }
+            Changed?.Invoke();
+            return;
+        }
+        var i = albums.FindIndex(a => a.Id == id);
+        if (i < 0) return;
+        await LoadAlbumAsync(i, play: true, track);
     }
 
     bool switching;
