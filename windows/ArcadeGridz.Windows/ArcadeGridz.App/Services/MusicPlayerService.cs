@@ -21,6 +21,17 @@ public sealed class AlbumTrack
     [JsonIgnore] public byte[]? R { get; set; }
 }
 
+public sealed class AlbumRef
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("url")] public string Url { get; set; } = "";
+}
+
+public sealed class AlbumIndex
+{
+    [JsonPropertyName("albums")] public List<AlbumRef> Albums { get; set; } = [];
+}
+
 public sealed class Album
 {
     [JsonPropertyName("id")] public string Id { get; set; } = "";
@@ -32,13 +43,17 @@ public sealed class Album
 }
 
 /// <summary>
-/// The launcher's music player: BDC's album "GAME OVER - Insert Coin To Continue", served from
-/// arcadegridz.com/music/game-over/ (album.json lists tracks + precomputed L/R peak levels for the meter).
-/// Tracks are cached under %LOCALAPPDATA%\ArcadeGridz\music after first play. Pauses while a game runs.
+/// The launcher's music player: BDC's albums, listed in arcadegridz.com/music/albums.json (GAME OVER first,
+/// then 8-BIT ROCKETSHIP, more to come). Each album.json lists tracks + precomputed L/R peak levels for the meter.
+/// The album button cycles albums (choice saved). Tracks are cached under %LOCALAPPDATA%\ArcadeGridz\music\<album id>
+/// after first play. Pauses while a game runs.
 /// </summary>
 public sealed class MusicPlayerService : IDisposable
 {
-    const string AlbumUrl = "https://arcadegridz.com/music/game-over/album.json";
+    const string IndexUrl = "https://arcadegridz.com/music/albums.json";
+    static readonly List<AlbumRef> FallbackAlbums = [new() { Id = "game-over", Url = "https://arcadegridz.com/music/game-over/album.json" }];
+    List<AlbumRef> albums = FallbackAlbums;
+    public int AlbumCount => albums.Count;
     static readonly HttpClient http = new() { Timeout = TimeSpan.FromMinutes(5) };
 
     readonly Microsoft.UI.Dispatching.DispatcherQueue dispatcher;
@@ -84,38 +99,80 @@ public sealed class MusicPlayerService : IDisposable
         cm.PreviousReceived += (_, a) => { a.Handled = true; dispatcher.TryEnqueue(Previous); };
     }
 
-    /// <summary>Loads the album (network first, cached copy if offline). Starts playback when autoPlay.</summary>
+    /// <summary>Loads the album list, then the saved album (network first, cached copies if offline). Starts playback when autoPlay.</summary>
     public async Task LoadAsync(bool autoPlay)
     {
-        var cacheDir = Path.Combine(AppPaths.Root, "music", "game-over");
-        Directory.CreateDirectory(cacheDir);
-        var cachedJson = Path.Combine(cacheDir, "album.json");
-        string? json = null;
+        var root = Path.Combine(AppPaths.Root, "music");
+        Directory.CreateDirectory(root);
+        var idx = await FetchCachedAsync(IndexUrl, Path.Combine(root, "albums.json"));
         try
         {
-            json = await http.GetStringAsync(AlbumUrl);
-            await File.WriteAllTextAsync(cachedJson, json);
+            var list = idx is null ? null : JsonSerializer.Deserialize<AlbumIndex>(idx)?.Albums.Where(a => a.Id.Length > 0 && a.Url.Length > 0).ToList();
+            if (list is { Count: > 0 }) albums = list;
+        }
+        catch (Exception ex) { StartupLog.Exception("Album index", ex); }
+        var at = albums.FindIndex(a => a.Id == settings.MusicAlbum);
+        await LoadAlbumAsync(at < 0 ? 0 : at, autoPlay, Math.Max(0, settings.MusicTrack));
+    }
+
+    static string SafeId(string id) => string.Concat(id.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_'));
+
+    async Task<string?> FetchCachedAsync(string url, string cachePath)
+    {
+        try
+        {
+            var json = await http.GetStringAsync(url);
+            await File.WriteAllTextAsync(cachePath, json);
+            return json;
         }
         catch (Exception ex)
         {
-            StartupLog.Write("music", $"Album list offline ({ex.GetType().Name}); using cache: {File.Exists(cachedJson)}");
-            if (File.Exists(cachedJson)) json = await File.ReadAllTextAsync(cachedJson);
+            StartupLog.Write("music", $"{url} offline ({ex.GetType().Name}); using cache: {File.Exists(cachePath)}");
+            return File.Exists(cachePath) ? await File.ReadAllTextAsync(cachePath) : null;
         }
+    }
+
+    async Task LoadAlbumAsync(int index, bool play, int startTrack)
+    {
+        var r = albums[index];
+        var cacheDir = Path.Combine(AppPaths.Root, "music", SafeId(r.Id));
+        Directory.CreateDirectory(cacheDir);
+        var json = await FetchCachedAsync(r.Url, Path.Combine(cacheDir, "album.json"));
         if (json is null) return;
         try
         {
-            Album = JsonSerializer.Deserialize<Album>(json);
-            if (Album is null || Album.Tracks.Count == 0) { Album = null; return; }
-            Album.Tracks.Sort((a, b) => a.Number.CompareTo(b.Number));
-            foreach (var t in Album.Tracks)
+            var a = JsonSerializer.Deserialize<Album>(json);
+            if (a is null || a.Tracks.Count == 0) return;
+            if (string.IsNullOrEmpty(a.Id)) a.Id = r.Id;
+            a.Tracks.Sort((x, y) => x.Number.CompareTo(y.Number));
+            foreach (var t in a.Tracks)
             {
                 try { t.L = Convert.FromBase64String(t.PeaksL); t.R = Convert.FromBase64String(t.PeaksR); } catch { }
             }
-            BuildOrder(Math.Clamp(settings.MusicTrack, 0, Album.Tracks.Count - 1));
-            StartupLog.Write("music", $"Album '{Album.Title}' loaded: {Album.Tracks.Count} tracks; autoplay={autoPlay}");
-            Load(play: autoPlay);
+            Album = a;
+            settings.MusicAlbum = r.Id;
+            BuildOrder(Math.Clamp(startTrack, 0, a.Tracks.Count - 1));
+            StartupLog.Write("music", $"Album '{a.Title}' loaded: {a.Tracks.Count} tracks; play={play}");
+            Load(play: play);
         }
-        catch (Exception ex) { StartupLog.Exception("Album load", ex); Album = null; }
+        catch (Exception ex) { StartupLog.Exception("Album load", ex); }
+    }
+
+    bool switching;
+
+    /// <summary>Switch to the next album in albums.json, from its first track; keeps playing if it was playing.</summary>
+    public async Task NextAlbumAsync()
+    {
+        if (switching || albums.Count < 2) return;
+        switching = true;
+        try
+        {
+            var cur = albums.FindIndex(a => a.Id == Album?.Id);
+            var wasPlaying = IsPlaying || player.Source is null && !settings.MusicOff;
+            pausedForGame = false;
+            await LoadAlbumAsync((cur + 1) % albums.Count, wasPlaying, 0);
+        }
+        finally { switching = false; }
     }
 
     void BuildOrder(int startTrack)
@@ -132,7 +189,7 @@ public sealed class MusicPlayerService : IDisposable
         else pos = startTrack;
     }
 
-    string CachePath(AlbumTrack t) => Path.Combine(AppPaths.Root, "music", "game-over", t.File);
+    string CachePath(AlbumTrack t) => Path.Combine(AppPaths.Root, "music", SafeId(Album?.Id ?? "game-over"), t.File);
 
     void Load(bool play)
     {
@@ -148,7 +205,7 @@ public sealed class MusicPlayerService : IDisposable
         props.Type = MediaPlaybackType.Music;
         props.MusicProperties.Title = t.Title;
         props.MusicProperties.Artist = Album.Artist;
-        props.MusicProperties.AlbumTitle = $"{Album.Title} - {Album.Subtitle}";
+        props.MusicProperties.AlbumTitle = string.IsNullOrEmpty(Album.Subtitle) ? Album.Title : $"{Album.Title} - {Album.Subtitle}";
         props.MusicProperties.TrackNumber = (uint)t.Number;
         item.ApplyDisplayProperties(props);
         player.Source = item;

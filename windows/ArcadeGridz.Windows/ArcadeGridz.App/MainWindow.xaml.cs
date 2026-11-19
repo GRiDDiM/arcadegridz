@@ -2236,7 +2236,7 @@ public sealed partial class MainWindow : Window
     }
 
     // ======== music player (bottom bar) ========
-    int playerIndex = 1;          // 0 prev, 1 play, 2 next, 3 shuffle, 4 repeat, 5 mute, 6 volume
+    int playerIndex = 1;          // 0 prev, 1 play, 2 next, 3 album, 4 shuffle, 5 repeat, 6 mute, 7 volume
     bool volumeAdjust;            // A on the volume slider: left/right change volume until A/B
     bool syncingVolume;
     readonly List<Microsoft.UI.Xaml.Shapes.Rectangle> segL = [], segR = [];
@@ -2245,7 +2245,7 @@ public sealed partial class MainWindow : Window
     Microsoft.UI.Dispatching.DispatcherQueueTimer? meterTimer;
     const int MeterSegments = 16;
 
-    Control[] PlayerControls => [MusicPrevButton, MusicPlayButton, MusicNextButton, MusicShuffleButton, MusicRepeatButton, MusicMuteButton, MusicVolumeSlider];
+    Control[] PlayerControls => [MusicPrevButton, MusicPlayButton, MusicNextButton, MusicAlbumButton, MusicShuffleButton, MusicRepeatButton, MusicMuteButton, MusicVolumeSlider];
 
     void PlayerMove(PadAction action)
     {
@@ -2269,10 +2269,11 @@ public sealed partial class MainWindow : Window
             case 0: music?.Previous(); break;
             case 1: music?.TogglePlay(); break;
             case 2: music?.Next(); break;
-            case 3: music?.ToggleShuffle(); break;
-            case 4: music?.CycleRepeat(); break;
-            case 5: music?.ToggleMute(); break;
-            case 6: SetVolumeAdjust(!volumeAdjust); break;
+            case 3: if (music is not null) _ = music.NextAlbumAsync(); break;
+            case 4: music?.ToggleShuffle(); break;
+            case 5: music?.CycleRepeat(); break;
+            case 6: music?.ToggleMute(); break;
+            case 7: SetVolumeAdjust(!volumeAdjust); break;
         }
     }
 
@@ -2285,6 +2286,7 @@ public sealed partial class MainWindow : Window
     void MusicPrev_Click(object sender, RoutedEventArgs e) => music?.Previous();
     void MusicPlay_Click(object sender, RoutedEventArgs e) => music?.TogglePlay();
     void MusicNext_Click(object sender, RoutedEventArgs e) => music?.Next();
+    void MusicAlbumSwitch_Click(object sender, RoutedEventArgs e) { if (music is not null) _ = music.NextAlbumAsync(); }
     void MusicShuffle_Click(object sender, RoutedEventArgs e) => music?.ToggleShuffle();
     void MusicRepeat_Click(object sender, RoutedEventArgs e) => music?.CycleRepeat();
     void MusicMute_Click(object sender, RoutedEventArgs e) => music?.ToggleMute();
@@ -2311,7 +2313,8 @@ public sealed partial class MainWindow : Window
         if (t is not null && music.Album is not null)
         {
             MusicTitle.Text = $"{t.Number:00}  ·  {t.Title.ToUpperInvariant()}";
-            MusicAlbum.Text = $"{music.Album.Title}  ·  {music.Album.Subtitle.ToUpperInvariant()}  ·  {music.Album.Artist.ToUpperInvariant()}";
+            MusicAlbum.Text = string.Join("  ·  ", new[] { music.Album.Title, music.Album.Subtitle.ToUpperInvariant(), music.Album.Artist.ToUpperInvariant() }.Where(s => s.Length > 0));
+            ToolTipService.SetToolTip(MusicAlbumButton, music.AlbumCount > 1 ? $"Switch album ({music.AlbumCount} albums)" : "Only one album");
         }
         MusicPlayIcon.Glyph = music.IsPlaying ? "" : "";
         MusicShuffleIcon.Foreground = music.Shuffle ? cyan : dim;

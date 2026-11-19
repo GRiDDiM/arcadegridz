@@ -23,6 +23,7 @@ public sealed class SettingsService
     public bool MusicShuffle {get;set;}
     public RepeatMode MusicRepeat {get;set;}=RepeatMode.All;
     public int MusicTrack {get;set;}
+    public string MusicAlbum {get;set;}="game-over";
     public bool SfxOff {get;set;}
     /// <summary>Turns off GPU acceleration in the game view (troubleshooting); applies next launch.</summary>
     public bool DisableGpu {get;set;}
