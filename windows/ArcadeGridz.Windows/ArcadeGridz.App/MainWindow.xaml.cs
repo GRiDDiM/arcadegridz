@@ -2340,10 +2340,11 @@ public sealed partial class MainWindow : Window
         foreach (var r in music.AlbumRefs)
         {
             if (string.IsNullOrEmpty(r.Title)) continue; // only the fallback entry (album list not loaded yet)
-            var genre = string.Join("  ·  ", new[] { r.Genre, r.Year > 0 ? r.Year.ToString() : "", r.Artist }.Where(s => !string.IsNullOrEmpty(s)));
+            // the tile's corner chip (Status) shows the album's genre; the line under the title says what it is
+            var genre = string.Join("  ·  ", new[] { "ALBUM", r.Year > 0 ? r.Year.ToString() : "", r.Artist }.Where(s => !string.IsNullOrEmpty(s)));
             albumEntries.Add(new GameEntry
             {
-                Id = "album:" + r.Id, Name = r.Title, Category = "ALBUM", Genre = genre, Status = "ALBUM",
+                Id = "album:" + r.Id, Name = r.Title, Category = "ALBUM", Genre = genre, Status = string.IsNullOrWhiteSpace(r.Genre) ? "ALBUM" : r.Genre.ToUpperInvariant(),
                 Description = r.Description, Art = r.Cover, Playable = true, Tone = "magenta",
                 Runtime = new RuntimeSpec { Type = AlbumRuntime }
             });
@@ -2387,7 +2388,7 @@ public sealed partial class MainWindow : Window
         var id = AlbumId(shownAlbum);
         var current = music.Album?.Id == id;
         var playing = current && music.IsPlaying;
-        HeroStatus.Text = playing ? "NOW PLAYING" : current ? "PAUSED" : "ALBUM";
+        HeroStatus.Text = playing ? "NOW PLAYING" : current ? "PAUSED" : shownAlbum.Status;
         var brush = playing ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"] : UiTheme.StatusBrush("album");
         HeroStatus.Foreground = brush;
         HeroStatusChip.BorderBrush = brush;
