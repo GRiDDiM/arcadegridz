@@ -494,15 +494,8 @@
      <Grid.ColumnDefinitions>
       <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
      </Grid.ColumnDefinitions>
-     <!-- L/R peak meter (segments built in code) -->
-     <Grid VerticalAlignment="Center" RowSpacing="5" ColumnSpacing="6">
-      <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <TextBlock Text="L" Style="{StaticResource PixelLabel}" FontSize="7" VerticalAlignment="Center"/>
-      <StackPanel x:Name="MeterL" Grid.Column="1" Orientation="Horizontal" Spacing="2"/>
-      <TextBlock Grid.Row="1" Text="R" Style="{StaticResource PixelLabel}" FontSize="7" VerticalAlignment="Center"/>
-      <StackPanel x:Name="MeterR" Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="2"/>
-     </Grid>
+     <!-- spectrum visualizer: 16 bands x 10 segments, built in code (precomputed per track, see MusicPlayerService.Spectrum) -->
+     <Canvas x:Name="SpectrumCanvas" Width="142" Height="58" VerticalAlignment="Center" ToolTipService.ToolTip="Spectrum: bass on the left, treble on the right"/>
      <!-- now playing + seek -->
      <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="5" MinWidth="200">
       <TextBlock x:Name="MusicTitle" Text="LOADING MUSIC..." FontFamily="{StaticResource AgDisplay}" FontSize="17" Foreground="White" TextTrimming="CharacterEllipsis"/>

@@ -17,12 +17,22 @@ public sealed class AlbumTrack
     [JsonPropertyName("fps")] public int Fps { get; set; } = 25;
     [JsonPropertyName("peaksL")] public string PeaksL { get; set; } = "";
     [JsonPropertyName("peaksR")] public string PeaksR { get; set; } = "";
+    [JsonIgnore] public byte[]? Spec { get; set; } // frames x bands spectrum (see SpectrumInfo), loaded on play
     [JsonIgnore] public byte[]? L { get; set; }
     [JsonIgnore] public byte[]? R { get; set; }
 }
 
+/// <summary>Precomputed visualizer data: one &lt;track&gt;&lt;ext&gt; file per track, uint8 frames x bands at fps.</summary>
+public sealed class SpectrumInfo
+{
+    [JsonPropertyName("bands")] public int Bands { get; set; } = 16;
+    [JsonPropertyName("fps")] public int Fps { get; set; } = 25;
+    [JsonPropertyName("ext")] public string Ext { get; set; } = ".spec";
+}
+
 public sealed class AlbumRef
 {
+    [JsonPropertyName("spectrum")] public SpectrumInfo? Spectrum { get; set; }
     [JsonPropertyName("id")] public string Id { get; set; } = "";
     [JsonPropertyName("url")] public string Url { get; set; } = "";
     [JsonPropertyName("title")] public string Title { get; set; } = "";
@@ -47,6 +57,7 @@ public sealed class Album
     [JsonPropertyName("artist")] public string Artist { get; set; } = "";
     [JsonPropertyName("base")] public string Base { get; set; } = "";
     [JsonPropertyName("tracks")] public List<AlbumTrack> Tracks { get; set; } = [];
+    [JsonIgnore] public SpectrumInfo? Spectrum { get; set; }
 }
 
 /// <summary>
@@ -175,6 +186,7 @@ public sealed class MusicPlayerService : IDisposable
             var a = JsonSerializer.Deserialize<Album>(json);
             if (a is null || a.Tracks.Count == 0) return null;
             if (string.IsNullOrEmpty(a.Id)) a.Id = r.Id;
+            a.Spectrum = r.Spectrum is { Bands: > 0 and <= 64, Fps: > 0 } ? r.Spectrum : null;
             a.Tracks.Sort((x, y) => x.Number.CompareTo(y.Number));
             foreach (var t in a.Tracks)
             {
@@ -264,6 +276,7 @@ public sealed class MusicPlayerService : IDisposable
         var cached = CachePath(t);
         var uri = File.Exists(cached) ? new Uri(cached) : new Uri(Album.Base + t.File);
         if (!File.Exists(cached)) _ = CacheAsync(t);
+        if (t.Spec is null && Album.Spectrum is not null) _ = LoadSpectrumAsync(Album, t);
         var item = new MediaPlaybackItem(MediaSource.CreateFromUri(uri));
         var props = item.GetDisplayProperties();
         props.Type = MediaPlaybackType.Music;
@@ -394,6 +407,54 @@ public sealed class MusicPlayerService : IDisposable
         pausedForGame = false;
         player.Play();
         Changed?.Invoke();
+    }
+
+    readonly HashSet<string> specLoading = [];
+
+    async Task LoadSpectrumAsync(Album album, AlbumTrack t)
+    {
+        var info = album.Spectrum!;
+        var key = album.Id + "/" + t.File;
+        if (!specLoading.Add(key)) return;
+        try
+        {
+            var file = Path.ChangeExtension(t.File, info.Ext);
+            var cache = Path.Combine(AppPaths.Root, "music", SafeId(album.Id), file);
+            byte[] data;
+            if (File.Exists(cache)) data = await File.ReadAllBytesAsync(cache);
+            else
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                data = await http.GetByteArrayAsync(album.Base + file, cts.Token);
+                await File.WriteAllBytesAsync(cache, data);
+            }
+            if (data.Length >= info.Bands) t.Spec = data;
+        }
+        catch (Exception ex) { StartupLog.Write("music", $"Spectrum {t.File} unavailable: {ex.GetType().Name}"); }
+        finally { specLoading.Remove(key); }
+    }
+
+    /// <summary>Visualizer bands 0..1 (low to high) for the current position, interpolated between frames.
+    /// False when there is no spectrum data for this track (the UI then falls back to the L/R peaks).</summary>
+    public bool Spectrum(double[] bands)
+    {
+        var t = Current;
+        var info = Album?.Spectrum;
+        if (t?.Spec is not { } spec || info is null) return false;
+        if (!IsPlaying || settings.MusicMuted) { Array.Clear(bands); return true; }
+        var n = info.Bands;
+        var frames = spec.Length / n;
+        var pos = player.PlaybackSession.Position.TotalSeconds * info.Fps;
+        var i = (int)pos;
+        if (i < 0 || i >= frames) { Array.Clear(bands); return true; }
+        var j = Math.Min(i + 1, frames - 1);
+        var f = pos - i;
+        for (int b = 0; b < bands.Length; b++)
+        {
+            var src = Math.Min(n - 1, b * n / bands.Length);
+            bands[b] = (spec[i * n + src] * (1 - f) + spec[j * n + src] * f) / 255.0;
+        }
+        return true;
     }
 
     /// <summary>Current L/R peak level 0..1 from the precomputed meter data (0 when paused or muted).</summary>

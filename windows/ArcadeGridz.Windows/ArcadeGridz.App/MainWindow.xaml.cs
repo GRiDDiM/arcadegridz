@@ -2273,11 +2273,7 @@ public sealed partial class MainWindow : Window
     int playerIndex = 1;          // 0 prev, 1 play, 2 next, 3 album, 4 shuffle, 5 repeat, 6 mute, 7 volume
     bool volumeAdjust;            // A on the volume slider: left/right change volume until A/B
     bool syncingVolume;
-    readonly List<Microsoft.UI.Xaml.Shapes.Rectangle> segL = [], segR = [];
-    double levelL, levelR, holdL, holdR;
-    long holdLAt, holdRAt;
     Microsoft.UI.Dispatching.DispatcherQueueTimer? meterTimer;
-    const int MeterSegments = 16;
 
     Microsoft.UI.Dispatching.DispatcherQueueTimer? musicRetry;
 
@@ -2454,19 +2450,40 @@ public sealed partial class MainWindow : Window
         syncingVolume = false;
     }
 
+    const int SpecBands = 16, SpecRows = 10, SpecSegW = 7, SpecSegH = 4, SpecGap = 2;
+    readonly Microsoft.UI.Xaml.Shapes.Rectangle[,] specSegs = new Microsoft.UI.Xaml.Shapes.Rectangle[SpecBands, SpecRows];
+    readonly double[] specIn = new double[SpecBands], specLevel = new double[SpecBands], specHold = new double[SpecBands];
+    readonly long[] specHoldAt = new long[SpecBands];
+    readonly int[] specLit = new int[SpecBands], specCap = new int[SpecBands];
+
+    // bottom rows cyan, middle magenta, top gold; caps (peak hold) white
+    static Microsoft.UI.Xaml.Media.SolidColorBrush SpecRowBrush(int row)
+    {
+        static byte Mix(byte a, byte b, double f) => (byte)Math.Round(a + (b - a) * f);
+        var f = row / (double)(SpecRows - 1);
+        (byte r, byte g, byte b) c = f < 0.6
+            ? (Mix(0x5E, 0xFF, f / 0.6), Mix(0xE7, 0x4D, f / 0.6), Mix(0xFF, 0xD2, f / 0.6))
+            : (Mix(0xFF, 0xFF, (f - 0.6) / 0.4), Mix(0x4D, 0xD9, (f - 0.6) / 0.4), Mix(0xD2, 0x3A, (f - 0.6) / 0.4));
+        return new(Microsoft.UI.ColorHelper.FromArgb(255, c.r, c.g, c.b));
+    }
+    static readonly Microsoft.UI.Xaml.Media.SolidColorBrush[] specOn = Enumerable.Range(0, SpecRows).Select(SpecRowBrush).ToArray();
+    static readonly Microsoft.UI.Xaml.Media.SolidColorBrush specOff = new(Microsoft.UI.ColorHelper.FromArgb(255, 0x1E, 0x1A, 0x33));
+    static readonly Microsoft.UI.Xaml.Media.SolidColorBrush specCapBrush = new(Microsoft.UI.ColorHelper.FromArgb(255, 0xF4, 0xF0, 0xFF));
+
     void BuildMeter()
     {
-        foreach (var (panel, list) in new[] { (MeterL, segL), (MeterR, segR) })
-        {
-            panel.Children.Clear();
-            list.Clear();
-            for (int i = 0; i < MeterSegments; i++)
+        SpectrumCanvas.Children.Clear();
+        for (int b = 0; b < SpecBands; b++)
+            for (int r = 0; r < SpecRows; r++)
             {
-                var r = new Microsoft.UI.Xaml.Shapes.Rectangle { Width = 6, Height = 11, RadiusX = 1.5, RadiusY = 1.5, Fill = SegBrush(i, false) };
-                panel.Children.Add(r);
-                list.Add(r);
+                var seg = new Microsoft.UI.Xaml.Shapes.Rectangle { Width = SpecSegW, Height = SpecSegH, RadiusX = 1, RadiusY = 1, Fill = specOff };
+                Canvas.SetLeft(seg, b * (SpecSegW + SpecGap));
+                Canvas.SetTop(seg, (SpecRows - 1 - r) * (SpecSegH + SpecGap));
+                SpectrumCanvas.Children.Add(seg);
+                specSegs[b, r] = seg;
             }
-        }
+        Array.Fill(specLit, -1);
+        Array.Fill(specCap, -1);
         meterTimer = DispatcherQueue.CreateTimer();
         meterTimer.Interval = TimeSpan.FromMilliseconds(33);
         meterTimer.IsRepeating = true;
@@ -2474,36 +2491,41 @@ public sealed partial class MainWindow : Window
         meterTimer.Tick += (_, _) =>
         {
             if (music is null || Launcher.Visibility != Visibility.Visible) return;
-            var (l, r) = music.Levels();
+            if (!music.Spectrum(specIn))
+            {
+                // no spectrum file for this track: spread the L/R peaks over the bands with a little shimmer
+                var (l, r) = music.Levels();
+                for (int b = 0; b < SpecBands; b++)
+                {
+                    var side = b < SpecBands / 2 ? l : r;
+                    specIn[b] = side * (0.75 + 0.25 * Math.Sin(Environment.TickCount64 / 90.0 + b * 1.7));
+                }
+            }
             var now = Environment.TickCount64;
-            // fast attack, smooth release, peak hold ~0.7 s
-            levelL = l > levelL ? l : Math.Max(l, levelL - 0.045);
-            levelR = r > levelR ? r : Math.Max(r, levelR - 0.045);
-            if (levelL >= holdL || now - holdLAt > 700) { holdL = levelL; holdLAt = now; }
-            if (levelR >= holdR || now - holdRAt > 700) { holdR = levelR; holdRAt = now; }
-            PaintMeter(segL, levelL, holdL);
-            PaintMeter(segR, levelR, holdR);
+            for (int b = 0; b < SpecBands; b++)
+            {
+                var v = Math.Clamp(specIn[b], 0, 1);
+                // instant attack, quick release (~0.35 s full fall), peak caps hold 0.5 s then drop
+                specLevel[b] = v > specLevel[b] ? v : Math.Max(v, specLevel[b] - 0.09);
+                if (specLevel[b] >= specHold[b] || now - specHoldAt[b] > 500)
+                {
+                    if (specLevel[b] >= specHold[b]) specHoldAt[b] = now;
+                    specHold[b] = Math.Max(specLevel[b], specHold[b] - 0.05);
+                }
+                var lit = (int)Math.Round(specLevel[b] * SpecRows) - 1;
+                var cap = specHold[b] > 0.08 ? Math.Min(SpecRows - 1, (int)Math.Round(specHold[b] * SpecRows) - 1) : -1;
+                if (lit == specLit[b] && cap == specCap[b]) continue;
+                specLit[b] = lit;
+                specCap[b] = cap;
+                for (int r = 0; r < SpecRows; r++)
+                {
+                    var brush = r <= lit ? specOn[r] : r == cap ? specCapBrush : specOff;
+                    if (!ReferenceEquals(specSegs[b, r].Fill, brush)) specSegs[b, r].Fill = brush;
+                }
+            }
             if (++tick % 8 == 0) UpdateMusicTime();
         };
         meterTimer.Start();
-    }
-
-    static readonly Microsoft.UI.Xaml.Media.SolidColorBrush[] segOn = Enumerable.Range(0, MeterSegments).Select(i => new Microsoft.UI.Xaml.Media.SolidColorBrush(
-        i < 10 ? Microsoft.UI.ColorHelper.FromArgb(255, 0x3A, 0xFF, 0x9A) : i < 13 ? Microsoft.UI.ColorHelper.FromArgb(255, 0xFF, 0xD9, 0x3A) : Microsoft.UI.ColorHelper.FromArgb(255, 0xFF, 0x3B, 0x4E))).ToArray();
-    static readonly Microsoft.UI.Xaml.Media.SolidColorBrush segOff = new(Microsoft.UI.ColorHelper.FromArgb(255, 0x1E, 0x1A, 0x33));
-
-    static Microsoft.UI.Xaml.Media.Brush SegBrush(int i, bool on) => on ? segOn[i] : segOff;
-
-    static void PaintMeter(List<Microsoft.UI.Xaml.Shapes.Rectangle> segs, double level, double hold)
-    {
-        var lit = (int)Math.Round(level * MeterSegments);
-        var holdSeg = (int)Math.Round(hold * MeterSegments) - 1;
-        for (int i = 0; i < segs.Count; i++)
-        {
-            var on = i < lit || (i == holdSeg && hold > 0.05);
-            var b = SegBrush(i, on);
-            if (!ReferenceEquals(segs[i].Fill, b)) segs[i].Fill = b;
-        }
     }
 
     void UpdateMusicTime()

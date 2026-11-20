@@ -20,6 +20,8 @@ public sealed class BannerEntry
     [JsonPropertyName("image")] public string Image { get; set; } = "";
     [JsonPropertyName("url")] public string Url { get; set; } = "";
     [JsonPropertyName("alt")] public string Alt { get; set; } = "";
+    /// <summary>Catalog id: the app shows that game's details (or plays it) instead of opening the browser.</summary>
+    [JsonPropertyName("game")] public string Game { get; set; } = "";
 }
 
 /// <summary>
@@ -108,7 +110,9 @@ public sealed partial class MainWindow
         var outgoing = bannerOnA ? BannerImageA : BannerImageB;
         bannerOnA = !bannerOnA;
         try { incoming.Source = new BitmapImage(new Uri(b.Image)); } catch { return; }
-        ToolTipService.SetToolTip(BannerHit, string.IsNullOrWhiteSpace(b.Alt) ? "Opens in your web browser" : $"{b.Alt} (opens in your web browser)");
+        var inApp = !string.IsNullOrEmpty(b.Game) && all.Any(g => g.Id == b.Game);
+        ToolTipService.SetToolTip(BannerHit, inApp ? $"{b.Alt} (click to check it out)"
+            : string.IsNullOrWhiteSpace(b.Alt) ? "Opens in your web browser" : $"{b.Alt} (opens in your web browser)");
         var sb = new Storyboard();
         foreach (var (target, to) in new[] { (incoming, 1.0), (outgoing, 0.0) })
         {
@@ -122,9 +126,38 @@ public sealed partial class MainWindow
 
     async void Banner_Tapped(object sender, TappedRoutedEventArgs e)
     {
+        if (bannerShown is not null && !string.IsNullOrEmpty(bannerShown.Game) && all.FirstOrDefault(g => g.Id == bannerShown.Game) is { } game)
+        {
+            StartupLog.Write("banners", $"Opened game {game.Id} from banner");
+            audio?.Play("select");
+            await ShowGameFromBanner(game);
+            return;
+        }
         if (bannerShown is null || !Uri.TryCreate(bannerShown.Url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps) return;
         StartupLog.Write("banners", $"Opened {bannerShown.Id} -> {uri}");
         audio?.Play("select");
         try { await Windows.System.Launcher.LaunchUriAsync(uri); } catch (Exception ex) { StartupLog.Exception("Banner link", ex); }
+    }
+
+    /// <summary>Banner click: show the game's tile + details (switching to ALL GAMES, and to betas/alphas if it's
+    /// hidden by LIVE ONLY); if it still isn't listed, just play it.</summary>
+    async Task ShowGameFromBanner(GameEntry game)
+    {
+        if (Launcher.Visibility != Visibility.Visible) ReturnToLauncher();
+        if (!visible.Contains(game))
+        {
+            storyMode = IsStoryboard(game);
+            albumMode = false;
+            if (!storyMode) categoryIndex = 0; // ALL GAMES
+            if (!Listed(game) && !settings.ShowTesting) Testing_Click(this, new RoutedEventArgs());
+            ApplyFilter();
+        }
+        if (visible.Contains(game))
+        {
+            GameGrid.SelectedItem = game;
+            GameGrid.ScrollIntoView(game);
+            SetLauncherFocus(LauncherFocus.Play);
+        }
+        else await Launch(game);
     }
 }
