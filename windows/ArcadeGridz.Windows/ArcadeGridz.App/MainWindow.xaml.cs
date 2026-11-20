@@ -2069,6 +2069,13 @@ public sealed partial class MainWindow : Window
     void Root_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
         if (!wheelLogged) { wheelLogged = true; StartupLog.Write("input", $"First wheel event: handled={e.Handled}; source={e.OriginalSource?.GetType().Name}"); }
+        // in a game: wheel input that landed on the host instead of the WebView goes to the page (games zoom with it)
+        if (gameOpen && web is not null && GameLayer.Visibility == Visibility.Visible)
+        {
+            var gp = e.GetCurrentPoint(WebViewHost);
+            if (gp.Properties.MouseWheelDelta != 0) { web.PostHostWheel(gp.Properties.MouseWheelDelta, gp.Position.X, gp.Position.Y); e.Handled = true; }
+            return;
+        }
         // the grid's own ScrollViewer already took it: don't scroll twice
         if (e.Handled && e.OriginalSource is DependencyObject src && FindAncestor<ScrollViewer>(src) is { } sv && ReferenceEquals(sv, gridScroller ??= FindChild<ScrollViewer>(GameGrid))) return;
         if (ScoresLayer.Visibility == Visibility.Visible && !gameOpen) { ScoresWheel(e); return; }

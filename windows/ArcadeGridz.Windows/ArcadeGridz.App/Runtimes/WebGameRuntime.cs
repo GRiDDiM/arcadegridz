@@ -261,6 +261,15 @@ public sealed class WebGameRuntime(WebView2 view, bool disableGpu = false, strin
         catch (Exception ex) { StartupLog.Exception("Open system menu", ex); }
     }
 
+    /// <summary>Hands a mouse-wheel notch the XAML layer caught over the game to the page (WebView2 sometimes delivers wheel input to the
+    /// host instead of Chromium). The page's apphost.js re-dispatches it as a wheel event on whatever is under the pointer.</summary>
+    public void PostHostWheel(double delta, double x, double y)
+    {
+        if (!ready) return;
+        try { view.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "host-wheel", delta, x, y })); }
+        catch (Exception ex) { StartupLog.Exception("Forward wheel to game", ex); }
+    }
+
     public async Task ExitAsync()
     {
         if (!ready) { Exited?.Invoke(this, EventArgs.Empty); return; }
