@@ -542,7 +542,7 @@
 
   <!-- ===== Options / message panel ===== -->
   <Grid x:Name="Panel" Visibility="Collapsed" Background="#D907051A">
-   <ScrollViewer VerticalScrollBarVisibility="Auto">
+   <ScrollViewer x:Name="PanelScroll" VerticalScrollBarVisibility="Auto">
     <Grid MaxWidth="880" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40">
      <Border Margin="-8" CornerRadius="32" BorderThickness="8" BorderBrush="#1F5EE7FF"/>
      <Border x:Name="PanelCard" Background="{StaticResource AgCard}" BorderBrush="#665EE7FF" BorderThickness="2" CornerRadius="26" Padding="44,30">

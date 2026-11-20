@@ -2072,6 +2072,17 @@ public sealed partial class MainWindow : Window
         // the grid's own ScrollViewer already took it: don't scroll twice
         if (e.Handled && e.OriginalSource is DependencyObject src && FindAncestor<ScrollViewer>(src) is { } sv && ReferenceEquals(sv, gridScroller ??= FindChild<ScrollViewer>(GameGrid))) return;
         if (ScoresLayer.Visibility == Visibility.Visible && !gameOpen) { ScoresWheel(e); return; }
+        if (Panel.Visibility == Visibility.Visible && !gameOpen)
+        {
+            // options and other panels: the wheel scrolls the panel (tall tabs on small/scaled screens)
+            var d = e.GetCurrentPoint(Root).Properties.MouseWheelDelta;
+            if (d != 0 && PanelScroll.ScrollableHeight > 1)
+            {
+                PanelScroll.ChangeView(null, Math.Clamp(PanelScroll.VerticalOffset - d, 0, PanelScroll.ScrollableHeight), null, false);
+                e.Handled = true;
+            }
+            return;
+        }
         if (Launcher.Visibility != Visibility.Visible || Panel.Visibility == Visibility.Visible || gameOpen || DailyLayer.Visibility == Visibility.Visible) return;
         var point = e.GetCurrentPoint(Root);
         // bounds in Root coordinates (the launcher is scaled by a Viewbox, so ActualWidth/Height alone would be off)

@@ -123,9 +123,9 @@ public sealed partial class MainWindow
         for (int i = 0; i < ThemeService.All.Length; i++)
         {
             var t = ThemeService.All[i];
-            var preview = new Grid { Height = 92, CornerRadius = new CornerRadius(10), Background = PreviewBackground(t), BorderBrush = new SolidColorBrush(t.Cyan), BorderThickness = new Thickness(t.IsNeon ? 2 : t.Light ? 1 : 2) };
+            var preview = new Grid { Height = 66, CornerRadius = new CornerRadius(10), Background = PreviewBackground(t), BorderBrush = new SolidColorBrush(t.Cyan), BorderThickness = new Thickness(t.IsNeon ? 2 : t.Light ? 1 : 2) };
             ThemeService.Exclude(preview);
-            var swatches = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(10, 0, 0, 10) };
+            var swatches = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(10, 0, 0, 8) };
             foreach (var c in t.Swatches.Skip(1))
                 swatches.Children.Add(new Ellipse { Width = 14, Height = 14, Fill = new SolidColorBrush(c), Stroke = new SolidColorBrush(Color.FromArgb(0x55, t.Text.R, t.Text.G, t.Text.B)), StrokeThickness = 1 });
             preview.Children.Add(swatches);
@@ -141,7 +141,7 @@ public sealed partial class MainWindow
                 Margin = new Thickness(12, 10, 10, 0), VerticalAlignment = VerticalAlignment.Top, TextTrimming = TextTrimming.CharacterEllipsis
             });
 
-            var tagline = new TextBlock { Text = t.Tagline, FontFamily = (FontFamily)Application.Current.Resources["AgBody"], FontSize = 13, TextWrapping = TextWrapping.Wrap, Height = 36, Margin = new Thickness(2, 8, 2, 0) };
+            var tagline = new TextBlock { Text = t.Tagline, FontFamily = (FontFamily)Application.Current.Resources["AgBody"], FontSize = 12, TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis, Height = 32, Margin = new Thickness(2, 6, 2, 0) };
             var active = new TextBlock { Text = "", Style = (Style)Application.Current.Resources["PixelLabel"], FontSize = 8, Margin = new Thickness(2, 4, 2, 0) };
             var body = new StackPanel();
             body.Children.Add(preview);
@@ -149,7 +149,7 @@ public sealed partial class MainWindow
             body.Children.Add(active);
             var card = new Button
             {
-                Tag = t.Id, Content = body, Padding = new Thickness(10), Margin = new Thickness(0),
+                Tag = t.Id, Content = body, Padding = new Thickness(8), Margin = new Thickness(0),
                 HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Top
             };
             ToolTipService.SetToolTip(card, $"{t.Name}: {t.Tagline}");
@@ -203,7 +203,12 @@ public sealed partial class MainWindow
         {
             var on = (card.Tag as string) == current.Id;
             if (on) card.BorderBrush = pink; else card.ClearValue(Control.BorderBrushProperty);
-            if (themeActiveTags.TryGetValue(card, out var tag)) tag.Text = on ? "✓ ACTIVE THEME" : "PRESS A TO APPLY";
+            if (themeActiveTags.TryGetValue(card, out var tag))
+            {
+                // only the active card carries a status line, so the grid stays short enough for 720p screens
+                tag.Text = on ? "✓ ACTIVE THEME" : "";
+                tag.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+            }
         }
         ThemeStatus.Text = $"ACTIVE: {current.Name}  ·  SAVED FOR NEXT TIME";
     }
