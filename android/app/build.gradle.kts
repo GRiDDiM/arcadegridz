@@ -1,10 +1,12 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
 
 // Version lives in version.properties so CI and the in-app updater agree on it.
-val versionProps = java.util.Properties().apply { file("../version.properties").inputStream().use { load(it) } }
+val versionProps = Properties().apply { file("../version.properties").inputStream().use { load(it) } }
 val agVersionName: String = versionProps.getProperty("versionName")
 val agVersionCode: Int = versionProps.getProperty("versionCode").toInt()
 
