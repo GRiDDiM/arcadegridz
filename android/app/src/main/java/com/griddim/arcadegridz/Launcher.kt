@@ -160,6 +160,7 @@ fun MainActivity.buildLauncher() {
     refreshHeader()
     refreshMusic()
     if (isTablet) loadBanners()
+    mainHandler.post { restoreFocus() }
 }
 
 private fun MainActivity.logoView(heightDp: Int): ImageView {
@@ -240,7 +241,7 @@ private fun MainActivity.navButtons(row: LinearLayout, sp: Float, withExit: Bool
     val testing = Ui.button(this, "LIVE ONLY", "◎", t.green, sp) { toggleTesting() }
     v.testing = testing
     row.addView(testing, lp(WRAP, WRAP).margins(r = dp(10)))
-    if (withExit) row.addView(Ui.button(this, "EXIT", "⏻", t.danger, sp) { finishAffinity() }, lp(WRAP, WRAP))
+    if (withExit) row.addView(Ui.button(this, "EXIT", "✕", t.danger, sp) { finishAffinity() }, lp(WRAP, WRAP))
 }
 
 private fun MainActivity.buildGrid(columns: Int): GridView {
@@ -294,6 +295,10 @@ private fun MainActivity.buildTablet(col: LinearLayout) {
     r1.orientation = LinearLayout.HORIZONTAL
     r1.gravity = Gravity.CENTER_VERTICAL or Gravity.END
     r1.addView(updateChip(), lp(WRAP, WRAP).margins(r = dp(12)))
+    r1.addView(neonDot(t.green), lp(dp(8), dp(8)).margins(r = dp(7)))
+    val net = Ui.oneLine(Ui.text(this, "SYNCING GRID...", 7f, t.violet, Font.PIXEL))
+    v.network = net
+    r1.addView(net, lp(WRAP, WRAP).margins(r = dp(14)))
     val clock = Ui.text(this, "--:--", 26f, t.text, Font.DISPLAY, glow = true)
     v.clock = clock
     r1.addView(clock)
@@ -301,10 +306,6 @@ private fun MainActivity.buildTablet(col: LinearLayout) {
     val r2 = LinearLayout(this)
     r2.orientation = LinearLayout.HORIZONTAL
     r2.gravity = Gravity.CENTER_VERTICAL or Gravity.END
-    r2.addView(neonDot(t.green), lp(dp(8), dp(8)).margins(r = dp(7)))
-    val net = Ui.oneLine(Ui.text(this, "SYNCING GRID...", 8f, t.violet, Font.PIXEL))
-    v.network = net
-    r2.addView(net, lp(WRAP, WRAP).margins(r = dp(10)))
     r2.addView(accountButtons(compact = false))
     right.addView(r2, lp(MATCH, WRAP).margins(t = dp(4)))
     header.addView(right, lp(0, WRAP, 1f))

@@ -11,6 +11,7 @@ rot() { adb shell settings put system accelerometer_rotation 0; adb shell settin
 
 adb install -r "$APK" || { echo "install failed"; exit 1; }
 adb logcat -c
+adb shell settings put secure immersive_mode_confirmations confirmed
 rot 0
 start; sleep 22; shot 01-phone-welcome
 start --es agSmoke guest; sleep 22; shot 02-phone-launcher
@@ -22,6 +23,9 @@ start --es agPlay hyperball; sleep 40; shot 05-game-hyperball
 adb shell input keyevent KEYCODE_BACK; sleep 4; shot 06-game-systemmenu
 adb shell wm size 2560x1600; adb shell wm density 320; rot 0
 start --es agTheme neon; sleep 25; shot 07-tablet-neon
+adb shell input keyevent KEYCODE_BUTTON_START; sleep 3; shot 07b-tablet-options
+adb shell input keyevent KEYCODE_BACK; sleep 2
+adb shell input tap 1600 120; sleep 3; shot 07c-tablet-after-back
 start --es agTheme acid; sleep 15; shot 08-tablet-acid
 start --es agTheme happy; sleep 15; shot 09-tablet-happy
 start --es agTheme console; sleep 15; shot 10-tablet-console
