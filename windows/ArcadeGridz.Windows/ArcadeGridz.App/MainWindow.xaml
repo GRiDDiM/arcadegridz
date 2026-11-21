@@ -697,6 +697,12 @@
         <Button x:Name="AddCoverButton" Click="AddCover_Click" HorizontalAlignment="Stretch" ToolTipService.ToolTip="Pick a cover image (PNG, JPG, WEBP). Tall 3:4 art looks best">
          <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xEB9F;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock Text="PICK COVER"/></StackPanel>
         </Button>
+        <Button x:Name="AddCoverWebButton" Click="AddCoverWeb_Click" HorizontalAlignment="Stretch" ToolTipService.ToolTip="Look the cover up online by name (games: Steam store art, albums: iTunes)">
+         <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE721;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock Text="FIND ONLINE"/></StackPanel>
+        </Button>
+        <Button x:Name="AddCoverGenButton" Click="AddCoverGen_Click" HorizontalAlignment="Stretch" ToolTipService.ToolTip="Make a cover from the program's icon and its name">
+         <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE790;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock x:Name="AddCoverGenLabel" Text="MAKE FROM ICON"/></StackPanel>
+        </Button>
         <Button x:Name="AddCoverClearButton" Click="AddCoverClear_Click" HorizontalAlignment="Stretch" ToolTipService.ToolTip="Use the default cover">
          <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE894;" FontFamily="{StaticResource AgIcons}" FontSize="14"/><TextBlock Text="DEFAULT COVER"/></StackPanel>
         </Button>

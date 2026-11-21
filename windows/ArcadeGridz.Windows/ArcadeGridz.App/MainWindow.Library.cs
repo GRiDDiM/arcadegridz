@@ -358,10 +358,61 @@ public sealed partial class MainWindow
 
     void AddCoverClear_Click(object sender, RoutedEventArgs e) { coverSource = ""; UpdateCoverPreview(); }
 
+    string CoverName() => AddNameBox.Text.Trim().Length > 0 ? AddNameBox.Text.Trim()
+        : AddPathBox.Text.Trim().Length == 0 ? "" : editKind == LocalLibraryService.KindAlbum ? Path.GetFileName(AddPathBox.Text.Trim().TrimEnd('\\', '/')) : SuggestName(AddPathBox.Text.Trim().Trim('"'));
+
+    void ShowAddInfo(string text) { AddStatus.Text = text.ToUpperInvariant(); AddStatus.Visibility = Visibility.Visible; }
+
+    bool coverBusy;
+    async void AddCoverWeb_Click(object sender, RoutedEventArgs e)
+    {
+        if (coverBusy) return;
+        var name = CoverName();
+        if (name.Length == 0) { ShowAddStatus("Type the name first (or pick the file)."); return; }
+        coverBusy = true;
+        ShowAddInfo("Searching for a cover...");
+        try
+        {
+            var found = editKind == LocalLibraryService.KindAlbum
+                ? await CoverService.FindAlbumAsync(name, AddArtistBox.Text.Trim(), strict: false)
+                : await CoverService.FindGameAsync(name, strict: false);
+            if (found is { } f) { coverSource = f.Path; UpdateCoverPreview(); ShowAddInfo($"Found: {f.Title}"); audio?.Play("select"); }
+            else ShowAddStatus(editKind == LocalLibraryService.KindAlbum ? "No album art found online. Try MAKE FROM ICON or pick one." : "Not found on Steam. Try MAKE FROM ICON or pick one.");
+        }
+        catch (Exception ex) { StartupLog.Exception("Cover search", ex); ShowAddStatus("Couldn't reach the cover search. Check the connection."); }
+        finally { coverBusy = false; }
+    }
+
+    async void AddCoverGen_Click(object sender, RoutedEventArgs e)
+    {
+        if (coverBusy) return;
+        coverBusy = true;
+        try { coverSource = await MakeCover(CoverName()); UpdateCoverPreview(); AddStatus.Visibility = Visibility.Collapsed; audio?.Play("select"); }
+        catch (Exception ex) { StartupLog.Exception("Cover generate", ex); ShowAddStatus("Couldn't make a cover."); }
+        finally { coverBusy = false; }
+    }
+
+    /// <summary>Icon cover: the program's icon (a ROM uses its emulator's), or the name's initials.</summary>
+    async Task<string> MakeCover(string name)
+    {
+        var path = AddPathBox.Text.Trim().Trim('"');
+        string? iconFrom = editKind switch
+        {
+            LocalLibraryService.KindApp => path,
+            LocalLibraryService.KindRom when AddEmuCombo.SelectedIndex >= 0 && AddEmuCombo.SelectedIndex < library.Data.Emulators.Count => library.Data.Emulators[AddEmuCombo.SelectedIndex].Exe,
+            _ => null
+        };
+        using var icon = iconFrom is null ? null : await CoverService.IconAsync(iconFrom);
+        var label = editKind == LocalLibraryService.KindRom ? "MY LIBRARY · ROM" : editKind == LocalLibraryService.KindAlbum ? "MY LIBRARY · ALBUM" : "MY LIBRARY · PC";
+        return CoverService.Generate(name, label, icon);
+    }
+
     void ShowAddStatus(string text) { AddStatus.Text = text.ToUpperInvariant(); AddStatus.Visibility = Visibility.Visible; audio?.Play("error"); }
 
-    void AddSave_Click(object sender, RoutedEventArgs e)
+    bool saving;
+    async void AddSave_Click(object sender, RoutedEventArgs e)
     {
+        if (saving || coverBusy) return;
         var path = AddPathBox.Text.Trim().Trim('"');
         bool album = editKind == LocalLibraryService.KindAlbum, rom = editKind == LocalLibraryService.KindRom;
         if (path.Length == 0) { ShowAddStatus(album ? "Pick the music folder first." : rom ? "Pick the ROM file first." : "Pick the game file (or paste a link) first."); return; }
@@ -381,6 +432,25 @@ public sealed partial class MainWindow
         var name = AddNameBox.Text.Trim();
         if (name.Length == 0) name = album ? Path.GetFileName(path.TrimEnd('\\', '/')) : SuggestName(path);
 
+        // no cover picked: look it up online (exact name match only), else make one from the icon
+        if (string.IsNullOrEmpty(coverSource) && !(album && LocalLibraryService.FindFolderCover(path) is not null))
+        {
+            saving = true;
+            AddSaveButton.IsEnabled = false;
+            ShowAddInfo("Getting a cover...");
+            try
+            {
+                var found = album ? await CoverService.FindAlbumAsync(name, AddArtistBox.Text.Trim(), strict: true) : await CoverService.FindGameAsync(name, strict: true);
+                coverSource = found?.Path ?? await MakeCover(name);
+            }
+            catch (Exception ex)
+            {
+                StartupLog.Write("library", "Online cover lookup skipped: " + ex.Message);
+                try { coverSource = await MakeCover(name); } catch (Exception gx) { StartupLog.Exception("Cover generate", gx); }
+            }
+            finally { saving = false; AddSaveButton.IsEnabled = true; }
+            if (AddLayer.Visibility != Visibility.Visible) return; // closed while it worked
+        }
         var item = editId is null ? new LocalItem() : library.Get(editId) ?? new LocalItem();
         item.Kind = editKind;
         item.Path = path;
@@ -539,7 +609,7 @@ public sealed partial class MainWindow
             if (EmuForm.Visibility == Visibility.Visible) { Add(EmuNameBox); Add(EmuExeBox); Add(EmuBrowseButton); Add(EmuArgsBox); Add(EmuExtBox); Add(EmuSaveButton); Add(EmuCancelButton); Add(EmuDeleteButton); }
         }
         Add(AddArgsBox); Add(AddNameBox); Add(AddArtistBox); Add(AddTagsBox); Add(AddDescBox);
-        Add(AddCoverButton); Add(AddCoverClearButton);
+        Add(AddCoverButton); Add(AddCoverWebButton); Add(AddCoverGenButton); Add(AddCoverClearButton);
         Add(AddSaveButton); Add(AddCancelButton); Add(AddRemoveButton);
         return list;
     }
@@ -595,6 +665,8 @@ public sealed partial class MainWindow
         else if (b == EmuDeleteButton) EmuDelete_Click(b, e);
         else if (b == AddCoverButton) AddCover_Click(b, e);
         else if (b == AddCoverClearButton) AddCoverClear_Click(b, e);
+        else if (b == AddCoverWebButton) AddCoverWeb_Click(b, e);
+        else if (b == AddCoverGenButton) AddCoverGen_Click(b, e);
         else if (b == AddSaveButton) AddSave_Click(b, e);
         else if (b == AddCancelButton) AddCancel_Click(b, e);
         else if (b == AddRemoveButton) AddRemove_Click(b, e);
