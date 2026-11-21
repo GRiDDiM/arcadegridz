@@ -31,8 +31,9 @@ start --es agTheme console; sleep 15; shot 10-tablet-console
 A shell wm size reset; A shell wm density reset
 rot 0
 # the game goes last: a WebGL game under the software GPU can stall the CI emulator
-start --es agPlay hyperball; sleep 30; shot 05-game-hyperball
-A shell input keyevent KEYCODE_BACK; sleep 4; shot 06-game-systemmenu
+start --es agSheet 2diso-shift --es agTrailer 1; sleep 35; shot 05-sheet-trailer
+A shell input keyevent KEYCODE_BACK; sleep 3; shot 06-game-menu
+start --es agSheet 2diso-shift; sleep 35; shot 07-sheet-play
 A logcat -d -v time -t 30000 > "$OUT/logcat-full.txt" || true
 grep -E "ArcadeGridz|AndroidRuntime|chromium|FATAL" "$OUT/logcat-full.txt" > "$OUT/logcat.txt" || true
 if grep -q "FATAL EXCEPTION" "$OUT/logcat-full.txt"; then

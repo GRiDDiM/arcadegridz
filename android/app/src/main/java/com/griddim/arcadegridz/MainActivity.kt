@@ -84,6 +84,9 @@ class MainActivity : Activity() {
     var bannerIndex = 0
     var lastTileClick = 0L
     var smokePlay: String? = null
+    var smokeSheet: String? = null
+    var smokeTrailer = false
+    var gameMenu: View? = null
 
     val isTablet get() = resources.configuration.smallestScreenWidthDp >= 600
     val isLandscape get() = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -95,6 +98,8 @@ class MainActivity : Activity() {
         intent?.getStringExtra("agTheme")?.let { settings.theme = it }
         if (intent?.getStringExtra("agSmoke") == "guest") { settings.guest = true; settings.showTesting = true }
         smokePlay = intent?.getStringExtra("agPlay")
+        smokeSheet = intent?.getStringExtra("agSheet")
+        smokeTrailer = intent?.getStringExtra("agTrailer") != null
         Themes.current = Themes.get(settings.theme)
         Net.userAgent = "ArcadeGridz-Android/${BuildConfig.VERSION_NAME}"
         Images.init(this)
@@ -231,6 +236,15 @@ class MainActivity : Activity() {
         if (pendingUpdatePrompt) { pendingUpdatePrompt = false; showUpdatePrompt() }
         runDaily(force = false)
         startClock()
+        smokeSheet?.let { id ->
+            smokeSheet = null
+            mainHandler.postDelayed({
+                all.firstOrNull { it.id == id }?.let { g ->
+                    if (!isTablet) showDetailsSheet(g) else selectGame(g)
+                    mainHandler.postDelayed({ launch(g, trailer = smokeTrailer) }, 9000)
+                }
+            }, 5000)
+        }
         smokePlay?.let { id ->
             smokePlay = null
             mainHandler.postDelayed({ all.firstOrNull { it.id == id }?.let { launch(it) } }, 6000)
@@ -324,6 +338,8 @@ class MainActivity : Activity() {
             }
             "started" -> if (running != null) {
                 gameStarted = true
+                hideGameMenu()
+                nudgeGameView()
                 gameTimeout?.let { mainHandler.removeCallbacks(it) }
                 gameCover?.animate()?.alpha(0f)?.setDuration(250)?.withEndAction { gameCover?.visibility = View.GONE }?.start()
                 host.view.requestFocus()
@@ -346,6 +362,7 @@ class MainActivity : Activity() {
         if (g.album != null) { music.selectAlbum(g.album); toast("NOW PLAYING: ${g.name}"); return }
         if (!g.playable || g.url == null) { Sfx.play("error"); toast("THIS GAME CAN'T LAUNCH YET"); return }
         stopPreview()
+        preview?.destroy(); preview = null
         running = g
         gameStarted = false
         Sfx.play("launch")
@@ -363,8 +380,8 @@ class MainActivity : Activity() {
         host.view.requestFocus()
         immersive()
         gameTimeout = Runnable {
-            if (running == g && !gameStarted) { toast("THE GAME TOOK TOO LONG TO START"); closeGame() }
-        }.also { mainHandler.postDelayed(it, 30000) }
+            if (running == g && !gameStarted) showGameMenu("THE GAME IS TAKING A WHILE TO START")
+        }.also { mainHandler.postDelayed(it, 20000) }
     }
 
     private fun showGameCover(g: GameEntry) {
@@ -394,6 +411,7 @@ class MainActivity : Activity() {
 
     fun closeGame() {
         val g = running ?: return
+        hideGameMenu()
         running = null
         gameStarted = false
         gameTimeout?.let { mainHandler.removeCallbacks(it) }
@@ -447,7 +465,7 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Java")
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        if (running != null) { host.systemMenu(); return }
+        if (running != null) { toggleGameMenu(); return }
         if (panels.isNotEmpty()) { closePanel(); return }
         if (storyMode || albumMode) { storyMode = false; albumMode = false; applyFilter(); Sfx.play("back"); return }
         if (!inLauncher) super.onBackPressed() else moveTaskToBack(true)
@@ -542,6 +560,7 @@ class MainActivity : Activity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        if (running != null) nudgeGameView()
         if (inLauncher) buildLauncher()
         immersive()
     }
