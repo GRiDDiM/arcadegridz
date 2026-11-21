@@ -457,7 +457,7 @@
       <StackPanel Orientation="Horizontal" Spacing="14"><FontIcon Glyph="&#xE768;" FontFamily="{StaticResource AgIcons}" FontSize="20"/><TextBlock x:Name="PlayLabel" Text="PLAY" VerticalAlignment="Center"/></StackPanel>
      </Button>
      <Button x:Name="TrailerButton" Style="{StaticResource NeonButton}" Visibility="Collapsed" MinWidth="170" Click="Trailer_Click" BorderBrush="{StaticResource AgMagenta}">
-      <StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE714;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="TRAILER" VerticalAlignment="Center"/></StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="12"><FontIcon x:Name="TrailerIcon" Glyph="&#xE714;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock x:Name="TrailerLabel" Text="TRAILER" VerticalAlignment="Center"/></StackPanel>
      </Button>
      </StackPanel>
      <Border Grid.Row="5" Margin="0,14,0,0" Background="#B30B0820" BorderBrush="#33FFC14D" BorderThickness="1" CornerRadius="14" Padding="18,12" VerticalAlignment="Stretch" MinHeight="96">
@@ -572,6 +572,9 @@
          <Border x:Name="TrailerPreviewRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,14">
           <ToggleSwitch x:Name="TrailerPreviewToggle" Header="AUTOPLAY TRAILERS IN THE DETAILS PANEL (MUTED)" Toggled="TrailerPreviewToggle_Toggled" ToolTipService.ToolTip="Highlight a game that has a trailer and it plays, muted and looping, where the cover art goes"/>
          </Border>
+         <Border x:Name="AddCardRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,14">
+          <ToggleSwitch x:Name="AddCardToggle" Header="SHOW THE ADD GAME / ADD ALBUM CARD (YOUR OWN PC GAMES, ROMS AND MUSIC)" Toggled="AddCardToggle_Toggled" ToolTipService.ToolTip="Puts an ADD card first in the browser so you can add games, apps, emulator ROMs and music folders from this PC to the launcher"/>
+         </Border>
          <Button x:Name="RefreshCatalogButton" Content="REFRESH GAME LIST" Click="RefreshCatalog_Click" HorizontalAlignment="Stretch" Margin="0,4,0,0"/>
         </StackPanel>
         <!-- DISPLAY: which screen, fullscreen/windowed, graphics -->
@@ -677,6 +680,95 @@
   </Grid>
 
   <!-- ===== Running game (WebView2) + loading cover ===== -->
+  <!-- ADD / EDIT a library item: PC game or app, emulator ROM, or music folder (MainWindow.Library.cs) -->
+  <Grid x:Name="AddLayer" Visibility="Collapsed" Background="#E607051A">
+   <ScrollViewer x:Name="AddScroll" VerticalScrollBarVisibility="Auto">
+    <Grid MaxWidth="980" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40,30">
+     <Border Margin="-8" CornerRadius="32" BorderThickness="8" BorderBrush="#1F5EE7FF"/>
+     <Border Background="{StaticResource AgCard}" BorderBrush="#665EE7FF" BorderThickness="2" CornerRadius="26" Padding="40,26">
+      <Grid ColumnSpacing="30">
+       <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+       <!-- cover -->
+       <StackPanel Spacing="10">
+        <TextBlock Text="COVER" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}"/>
+        <Border CornerRadius="16" BorderBrush="#665EE7FF" BorderThickness="2" Width="220" Height="294" Background="{StaticResource AgCardSolid}">
+         <Image x:Name="AddCoverImage" Stretch="UniformToFill"/>
+        </Border>
+        <Button x:Name="AddCoverButton" Click="AddCover_Click" HorizontalAlignment="Stretch" ToolTipService.ToolTip="Pick a cover image (PNG, JPG, WEBP). Tall 3:4 art looks best">
+         <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xEB9F;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock Text="PICK COVER"/></StackPanel>
+        </Button>
+        <Button x:Name="AddCoverClearButton" Click="AddCoverClear_Click" HorizontalAlignment="Stretch" ToolTipService.ToolTip="Use the default cover">
+         <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE894;" FontFamily="{StaticResource AgIcons}" FontSize="14"/><TextBlock Text="DEFAULT COVER"/></StackPanel>
+        </Button>
+       </StackPanel>
+       <!-- fields -->
+       <StackPanel Grid.Column="1" Spacing="10">
+        <Rectangle Height="4" RadiusX="2" RadiusY="2" Width="120" HorizontalAlignment="Left" Fill="{StaticResource AgNeonGradient}"/>
+        <TextBlock x:Name="AddTitle" Text="ADD GAME" FontFamily="{StaticResource AgDisplay}" FontSize="38" Foreground="{StaticResource AgNeonGradient}"/>
+        <StackPanel x:Name="AddKindRow" Orientation="Horizontal" Spacing="10">
+         <Button x:Name="AddKindAppButton" Click="AddKindApp_Click" ToolTipService.ToolTip="A game or app on this PC: an .exe, a shortcut, or a store link like steam://rungameid/...">
+          <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE7FC;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock Text="PC GAME / APP"/></StackPanel>
+         </Button>
+         <Button x:Name="AddKindRomButton" Click="AddKindRom_Click" ToolTipService.ToolTip="A ROM file you own, played through an emulator you installed. ArcadeGridz doesn't supply emulators or ROMs">
+          <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE7F8;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock Text="EMULATOR ROM"/></StackPanel>
+         </Button>
+        </StackPanel>
+        <TextBlock x:Name="AddPathLabel" Text="GAME FILE" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}"/>
+        <Grid ColumnSpacing="10">
+         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+         <TextBox x:Name="AddPathBox" PlaceholderText="C:\Games\MyGame\game.exe  or  steam://rungameid/..." FontFamily="{StaticResource AgBody}" TextChanged="AddPathBox_TextChanged"/>
+         <Button x:Name="AddBrowseButton" Grid.Column="1" Click="AddBrowse_Click">
+          <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xED25;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock x:Name="AddBrowseLabel" Text="BROWSE"/></StackPanel>
+         </Button>
+        </Grid>
+        <!-- ROMs: which emulator runs it -->
+        <StackPanel x:Name="AddEmuRow" Spacing="8" Visibility="Collapsed">
+         <TextBlock Text="EMULATOR (YOUR OWN — ARCADEGRIDZ DOESN'T SUPPLY EMULATORS OR ROMS)" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}"/>
+         <Grid ColumnSpacing="10">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <ComboBox x:Name="AddEmuCombo" HorizontalAlignment="Stretch" PlaceholderText="Add an emulator first"/>
+          <Button x:Name="AddEmuNewButton" Grid.Column="1" Click="AddEmuNew_Click" ToolTipService.ToolTip="Set up an emulator installed on this PC"><TextBlock Text="+ NEW"/></Button>
+          <Button x:Name="AddEmuEditButton" Grid.Column="2" Click="AddEmuEdit_Click" ToolTipService.ToolTip="Change the selected emulator"><TextBlock Text="EDIT"/></Button>
+         </Grid>
+         <Border x:Name="EmuForm" Visibility="Collapsed" Background="#660C0A26" BorderBrush="#665EE7FF" BorderThickness="2" CornerRadius="14" Padding="16,12">
+          <StackPanel Spacing="8">
+           <TextBlock x:Name="EmuFormTitle" Text="NEW EMULATOR" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgCyan}"/>
+           <TextBox x:Name="EmuNameBox" Header="NAME" PlaceholderText="e.g. SNES (my emulator)" FontFamily="{StaticResource AgBody}"/>
+           <Grid ColumnSpacing="10">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBox x:Name="EmuExeBox" Header="EMULATOR PROGRAM (.EXE)" PlaceholderText="C:\Emulators\...\emulator.exe" FontFamily="{StaticResource AgBody}"/>
+            <Button x:Name="EmuBrowseButton" Grid.Column="1" VerticalAlignment="Bottom" Click="EmuBrowse_Click"><TextBlock Text="BROWSE"/></Button>
+           </Grid>
+           <TextBox x:Name="EmuArgsBox" Header="LAUNCH ARGUMENTS ({rom} = the ROM file)" Text="&quot;{rom}&quot;" FontFamily="{StaticResource AgBody}" ToolTipService.ToolTip="How the emulator wants the ROM passed. Most take just &quot;{rom}&quot;; some need a core or a fullscreen switch. {romdir} and {romname} also work"/>
+           <TextBox x:Name="EmuExtBox" Header="ROM FILE TYPES IT RUNS (optional, picks it automatically)" PlaceholderText=".sfc .smc" FontFamily="{StaticResource AgBody}"/>
+           <StackPanel Orientation="Horizontal" Spacing="10">
+            <Button x:Name="EmuSaveButton" Click="EmuSave_Click"><TextBlock Text="SAVE EMULATOR"/></Button>
+            <Button x:Name="EmuCancelButton" Click="EmuCancel_Click"><TextBlock Text="CANCEL"/></Button>
+            <Button x:Name="EmuDeleteButton" Click="EmuDelete_Click" BorderBrush="{StaticResource AgRed}"><TextBlock x:Name="EmuDeleteLabel" Text="DELETE"/></Button>
+           </StackPanel>
+          </StackPanel>
+         </Border>
+        </StackPanel>
+        <TextBox x:Name="AddArgsBox" Header="LAUNCH OPTIONS (OPTIONAL)" PlaceholderText="e.g. -fullscreen" FontFamily="{StaticResource AgBody}"/>
+        <TextBox x:Name="AddNameBox" Header="NAME" PlaceholderText="What it's called in the launcher" FontFamily="{StaticResource AgBody}"/>
+        <TextBox x:Name="AddArtistBox" Header="ARTIST" PlaceholderText="Who made it (optional)" FontFamily="{StaticResource AgBody}" Visibility="Collapsed"/>
+        <TextBox x:Name="AddTagsBox" Header="GENRE TAGS (COMMA SEPARATED)" PlaceholderText="e.g. RPG, ACTION, CO-OP" FontFamily="{StaticResource AgBody}"/>
+        <TextBox x:Name="AddDescBox" Header="DESCRIPTION" PlaceholderText="A line or two about it" FontFamily="{StaticResource AgBody}" AcceptsReturn="True" TextWrapping="Wrap" Height="96"/>
+        <TextBlock x:Name="AddStatus" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgRed}" TextWrapping="Wrap" Visibility="Collapsed"/>
+        <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,6,0,0">
+         <Button x:Name="AddSaveButton" Style="{StaticResource PlayButton}" Click="AddSave_Click" MinWidth="200">
+          <StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE74E;" FontFamily="{StaticResource AgIcons}" FontSize="17"/><TextBlock x:Name="AddSaveLabel" Text="ADD TO LIBRARY" VerticalAlignment="Center"/></StackPanel>
+         </Button>
+         <Button x:Name="AddCancelButton" Click="AddCancel_Click" MinWidth="130"><TextBlock Text="CANCEL"/></Button>
+         <Button x:Name="AddRemoveButton" Click="AddRemove_Click" BorderBrush="{StaticResource AgRed}" Visibility="Collapsed"><TextBlock x:Name="AddRemoveLabel" Text="REMOVE"/></Button>
+        </StackPanel>
+       </StackPanel>
+      </Grid>
+     </Border>
+    </Grid>
+   </ScrollViewer>
+  </Grid>
+
   <!-- HI-SCORES: every game's Network leaderboard (MainWindow.Scores.cs) -->
   <Grid x:Name="ScoresLayer" Visibility="Collapsed" Background="#E607051A">
    <Grid MaxWidth="1500" Margin="56,34,56,26" RowSpacing="18">

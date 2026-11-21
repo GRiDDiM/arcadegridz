@@ -58,6 +58,8 @@ public sealed class Album
     [JsonPropertyName("base")] public string Base { get; set; } = "";
     [JsonPropertyName("tracks")] public List<AlbumTrack> Tracks { get; set; } = [];
     [JsonIgnore] public SpectrumInfo? Spectrum { get; set; }
+    /// <summary>An album the player added from a folder on their PC (tracks are full file paths, never cached/streamed).</summary>
+    [JsonIgnore] public bool IsLocal { get; set; }
 }
 
 /// <summary>
@@ -77,6 +79,55 @@ public sealed class MusicPlayerService : IDisposable
     /// <summary>Raised on the UI thread when the album list (re)loads.</summary>
     public event Action? AlbumsChanged;
     readonly Dictionary<string, Album> loadedAlbums = [];
+    // the player's own albums (folders added with ADD ALBUM): id -> folder; listed after BDC's albums
+    List<AlbumRef> localRefs = [];
+    readonly Dictionary<string, string> localFolders = [];
+    public const string LocalPrefix = "local-";
+    public static bool IsLocalId(string id) => id.StartsWith(LocalPrefix);
+
+    /// <summary>Registers the player's own album folders (call again whenever the library changes).</summary>
+    public void SetLocalAlbums(IEnumerable<(string Id, string Title, string Artist, string Genre, string Description, string Cover, string Folder)> items)
+    {
+        localFolders.Clear();
+        localRefs = [];
+        foreach (var i in items)
+        {
+            var id = LocalPrefix + i.Id;
+            localFolders[id] = i.Folder;
+            loadedAlbums.Remove(id); // folder contents may have changed
+            localRefs.Add(new AlbumRef { Id = id, Url = "local", Title = i.Title, Artist = i.Artist, Genre = i.Genre, Description = i.Description, Cover = i.Cover });
+        }
+        albums = albums.Where(a => !IsLocalId(a.Id)).Concat(localRefs).ToList();
+        AlbumsChanged?.Invoke();
+    }
+
+    async Task<Album?> LoadLocalAlbumAsync(AlbumRef r, string folder)
+    {
+        if (!Directory.Exists(folder)) { StartupLog.Write("music", $"Local album folder missing: {folder}"); return null; }
+        var files = Directory.EnumerateFiles(folder)
+            .Where(f => LocalLibraryService.AudioExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
+            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase).Take(400).ToList();
+        if (files.Count == 0) return null;
+        var a = new Album { Id = r.Id, Title = r.Title, Artist = r.Artist, IsLocal = true };
+        for (int i = 0; i < files.Count; i++)
+        {
+            var title = Path.GetFileNameWithoutExtension(files[i]);
+            title = System.Text.RegularExpressions.Regex.Replace(title, @"^\s*\d{1,3}\s*[-._)\s]\s*", ""); // "01 - Song" -> "Song"
+            var t = new AlbumTrack { Number = i + 1, Title = title.Length > 0 ? title : Path.GetFileNameWithoutExtension(files[i]), File = files[i] };
+            try
+            {
+                var sf = await Windows.Storage.StorageFile.GetFileFromPathAsync(files[i]);
+                var mp = await sf.Properties.GetMusicPropertiesAsync();
+                t.Duration = mp.Duration.TotalSeconds;
+                if (!string.IsNullOrWhiteSpace(mp.Title)) t.Title = mp.Title;
+                if (string.IsNullOrWhiteSpace(a.Artist) && !string.IsNullOrWhiteSpace(mp.Artist)) a.Artist = mp.Artist;
+            }
+            catch { }
+            a.Tracks.Add(t);
+        }
+        loadedAlbums[r.Id] = a;
+        return a;
+    }
     static readonly HttpClient http = new() { Timeout = TimeSpan.FromMinutes(5) };
 
     readonly Microsoft.UI.Dispatching.DispatcherQueue dispatcher;
@@ -145,7 +196,7 @@ public sealed class MusicPlayerService : IDisposable
         try
         {
             var list = idx is null ? null : JsonSerializer.Deserialize<AlbumIndex>(idx)?.Albums.Where(a => a.Id.Length > 0 && a.Url.Length > 0).ToList();
-            if (list is { Count: > 0 }) albums = list;
+            if (list is { Count: > 0 }) albums = list.Concat(localRefs).ToList();
         }
         catch (Exception ex) { StartupLog.Exception("Album index", ex); }
         AlbumsChanged?.Invoke();
@@ -177,6 +228,7 @@ public sealed class MusicPlayerService : IDisposable
         if (loadedAlbums.TryGetValue(id, out var have)) return have;
         var r = albums.FirstOrDefault(a => a.Id == id);
         if (r is null) return null;
+        if (localFolders.TryGetValue(id, out var folder)) return await LoadLocalAlbumAsync(r, folder);
         var cacheDir = Path.Combine(AppPaths.Root, "music", SafeId(r.Id));
         Directory.CreateDirectory(cacheDir);
         var json = await FetchCachedAsync(r.Url, Path.Combine(cacheDir, "album.json"));
@@ -273,6 +325,7 @@ public sealed class MusicPlayerService : IDisposable
         if (t is null || Album is null) return;
         settings.MusicTrack = order[pos];
         settings.Save();
+        if (Album.IsLocal) { _ = LoadLocalTrackAsync(Album, t, play); return; }
         var cached = CachePath(t);
         var uri = File.Exists(cached) ? new Uri(cached) : new Uri(Album.Base + t.File);
         if (!File.Exists(cached)) _ = CacheAsync(t);
@@ -288,6 +341,32 @@ public sealed class MusicPlayerService : IDisposable
         player.Source = item;
         if (play) player.Play();
         StartupLog.Write("music", $"Track {t.Number} {t.Title} ({(uri.IsFile ? "cache" : "stream")}); play={play}");
+        Changed?.Invoke();
+    }
+
+    async Task LoadLocalTrackAsync(Album album, AlbumTrack t, bool play)
+    {
+        try
+        {
+            var sf = await Windows.Storage.StorageFile.GetFileFromPathAsync(t.File);
+            if (!ReferenceEquals(Album, album) || !ReferenceEquals(Current, t)) return; // skipped on meanwhile
+            var item = new MediaPlaybackItem(MediaSource.CreateFromStorageFile(sf));
+            var props = item.GetDisplayProperties();
+            props.Type = MediaPlaybackType.Music;
+            props.MusicProperties.Title = t.Title;
+            props.MusicProperties.Artist = album.Artist;
+            props.MusicProperties.AlbumTitle = album.Title;
+            props.MusicProperties.TrackNumber = (uint)t.Number;
+            item.ApplyDisplayProperties(props);
+            player.Source = item;
+            if (play) player.Play();
+            StartupLog.Write("music", $"Local track {t.Number} {t.Title}; play={play}");
+        }
+        catch (Exception ex)
+        {
+            StartupLog.Write("music", $"Local track failed: {t.File}: {ex.GetType().Name}");
+            if (album.Tracks.Count > 1 && ReferenceEquals(Album, album)) { Next(auto: true); return; }
+        }
         Changed?.Invoke();
     }
 

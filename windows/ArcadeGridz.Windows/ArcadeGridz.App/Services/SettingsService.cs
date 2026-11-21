@@ -13,6 +13,8 @@ public sealed class SettingsService
     public string Theme {get;set;}="neon";
     public bool HideScanlines {get;set;}
     public bool StillBackground {get;set;}
+    /// <summary>OPTIONS &gt; GAMES: ADD GAME / ADD ALBUM card first in the browser (the player's own PC games, ROMs, music). Off by default.</summary>
+    public bool ShowAddCard {get;set;}
     /// <summary>OPTIONS &gt; GAMES: play a game's trailer (muted, looping) in the details panel art spot. On by default.</summary>
     public bool NoTrailerPreview {get;set;}
     public bool MusicOff {get;set;}

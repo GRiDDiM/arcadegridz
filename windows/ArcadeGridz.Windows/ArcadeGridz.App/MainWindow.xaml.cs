@@ -49,7 +49,7 @@ public sealed partial class MainWindow : Window
     static bool IsStoryboard(GameEntry g) => g.Category.Equals(StoryboardCategory, StringComparison.OrdinalIgnoreCase);
     static bool IsLive(GameEntry g) => g.Status.Equals("live", StringComparison.OrdinalIgnoreCase);
     /// <summary>Launcher list rule: launchable (or SHOW UNSUPPORTED on) and LIVE (or BETAS &amp; ALPHAS toggled on next to OPTIONS).</summary>
-    bool Listed(GameEntry g) => (settings.ShowAll || (g.Potato && g.Playable)) && (settings.ShowTesting || IsLive(g));
+    bool Listed(GameEntry g) => LocalLibraryService.IsLocal(g) || (settings.ShowAll || (g.Potato && g.Playable)) && (settings.ShowTesting || IsLive(g));
     bool gameOpen;
     UpdateInfo? availableUpdate;
     LauncherFocus launcherFocus = LauncherFocus.GameGrid;
@@ -168,6 +168,7 @@ public sealed partial class MainWindow : Window
     void OnActivated(object sender, WindowActivatedEventArgs e)
     {
         if (e.WindowActivationState != WindowActivationState.Deactivated) { QueueCatalogCheck(); CheckDailyRewards(); }
+        LibraryOnActivated(e.WindowActivationState != WindowActivationState.Deactivated);
         // the music player keeps playing when the app loses focus (it only stops for games)
         try
         {
@@ -211,6 +212,7 @@ public sealed partial class MainWindow : Window
             ScanlinesToggle.IsOn = !settings.HideScanlines;
             CityLifeToggle.IsOn = !settings.StillBackground;
             TrailerPreviewToggle.IsOn = !settings.NoTrailerPreview;
+            try { InitLibrary(); } catch (Exception ex) { StartupLog.Exception("Library init", ex); }
             MusicToggle.IsOn = !settings.MusicOff;
             SfxToggle.IsOn = !settings.SfxOff;
             GpuToggle.IsOn = !settings.DisableGpu;
@@ -309,6 +311,7 @@ public sealed partial class MainWindow : Window
             // Keep the complete live catalog. The options toggle controls visibility;
             // Playable controls launch authorization and is checked again at launch.
             all.AddRange(result.Catalog.Games);
+            all.AddRange(library.GameEntries()); // the player's own PC games / ROMs (MY LIBRARY)
             if (!quiet) NetworkState.Text = result.Offline ? "OFFLINE CACHE" : "GRID ONLINE • " + result.Catalog.Version;
             StartupLog.Write("catalog", $"Loaded version={result.Catalog.Version}; games={result.Catalog.Games.Count}; offline={result.Offline}; quiet={quiet}");
             BuildCategories();
@@ -372,12 +375,15 @@ public sealed partial class MainWindow : Window
         else foreach (var g in all.Where(g => Listed(g) &&
                  (storyMode ? IsStoryboard(g) : !IsStoryboard(g) && (cat == "ALL GAMES" || g.Category.Equals(cat, StringComparison.OrdinalIgnoreCase)))))
             visible.Add(g);
+        InsertAddCard();
         if (albumMode) MusicAlbumButton.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
         else MusicAlbumButton.ClearValue(Control.BorderBrushProperty);
         if (storyMode) StoryboardsButton.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
         else StoryboardsButton.ClearValue(Control.BorderBrushProperty);
         if (visible.Count > 0) GameGrid.ScrollIntoView(visible[0]);
-        if (visible.Count > 0) { GameGrid.SelectedIndex = 0; _ = ShowHero(visible[0]); }
+        // the ADD card leads the row, but the first real tile stays the default pick
+        var first = visible.Count > 1 && IsAddCard(visible[0]) ? 1 : 0;
+        if (visible.Count > 0) { GameGrid.SelectedIndex = first; _ = ShowHero(visible[first]); }
         else
         {
             GameGrid.SelectedIndex = -1;
@@ -404,6 +410,8 @@ public sealed partial class MainWindow : Window
         var cancellationToken = heroLoad.Token;
 
         if (IsAlbum(g)) { await ShowAlbumHero(g, cancellationToken); return; }
+        if (IsAddCard(g)) { ShowAddHero(g); return; }
+        SetTrailerAsEdit(false);
         ScoreHeader.Text = "HIGH SCORES";
         ScoreHeaderIcon.Glyph = "\uE734";
         ScoreEmpty.Text = "NO SCORES YET. BE THE FIRST.";
@@ -426,6 +434,7 @@ public sealed partial class MainWindow : Window
         ScoreEmpty.Visibility = Visibility.Collapsed;
         try { HeroArt.Source = new BitmapImage(new Uri(g.Art)); } catch { HeroArt.Source = null; }
         QueueTrailerPreview(g);
+        if (LocalLibraryService.IsLocal(g)) { ShowLocalHero(g); return; } // no network scores for the player's own games
 
         try
         {
@@ -458,7 +467,12 @@ public sealed partial class MainWindow : Window
         await Launch(g);
     }
     static bool HasTrailer(GameEntry g) => g.Trailer && g.Playable && g.Runtime.Type.Equals("web", StringComparison.OrdinalIgnoreCase);
-    async void Trailer_Click(object sender, RoutedEventArgs e) { if (GameGrid.SelectedItem is GameEntry g) await LaunchTrailer(g); }
+    async void Trailer_Click(object sender, RoutedEventArgs e)
+    {
+        if (GameGrid.SelectedItem is not GameEntry g) return;
+        if (IsLibraryItem(g)) { OpenEditor(g); return; } // TRAILER is EDIT on library items
+        await LaunchTrailer(g);
+    }
     // A trailer runs on the game itself: same web runtime and URL, plus trailer=1 (the site starts the trailer instead of the game)
     async Task LaunchTrailer(GameEntry g)
     {
@@ -470,6 +484,8 @@ public sealed partial class MainWindow : Window
 
     async Task Launch(GameEntry g)
     {
+        if (IsAddCard(g)) { OpenNewEditor(album: ReferenceEquals(g, AddAlbumCard)); return; }
+        if (LocalLibraryService.IsLocal(g)) { LaunchLocal(g); return; }
         if (IsAlbum(g))
         {
             if (music is null) return;
@@ -581,6 +597,8 @@ public sealed partial class MainWindow : Window
             return;
         }
         if (gameOpen) return;
+        if (localRunning && !windowActive) return; // a library game is in front: the pad is its
+        if (AddLayer.Visibility == Visibility.Visible) { HandleEditorAction(action); return; }
         if (ScoresLayer.Visibility == Visibility.Visible) { await HandleScoresAction(action); return; }
         if (Panel.Visibility == Visibility.Visible) { await HandlePanelAction(action); return; }
         if (action == PadAction.LB) ChangeCategory(-1);
@@ -721,7 +739,7 @@ public sealed partial class MainWindow : Window
                     break;
                 case LauncherFocus.Player: PlayerActivate(); break;
                 case LauncherFocus.Trailer:
-                    if (GameGrid.SelectedItem is GameEntry tg) await LaunchTrailer(tg);
+                    if (GameGrid.SelectedItem is GameEntry tg) { if (IsLibraryItem(tg)) OpenEditor(tg); else await LaunchTrailer(tg); }
                     break;
             }
             return;
@@ -865,6 +883,7 @@ public sealed partial class MainWindow : Window
                 case 0:
                     controls.Add(ShowAllToggle);
                     controls.Add(TrailerPreviewToggle);
+                    controls.Add(AddCardToggle);
                     controls.Add(RefreshCatalogButton);
                     break;
                 case 1:
@@ -966,6 +985,7 @@ public sealed partial class MainWindow : Window
             else if (control == ScanlinesToggle) ScanlinesToggle.IsOn = !ScanlinesToggle.IsOn;
             else if (control == CityLifeToggle) CityLifeToggle.IsOn = !CityLifeToggle.IsOn;
             else if (control == TrailerPreviewToggle) TrailerPreviewToggle.IsOn = !TrailerPreviewToggle.IsOn;
+            else if (control == AddCardToggle) AddCardToggle.IsOn = !AddCardToggle.IsOn;
             else if (control == GpuToggle) GpuToggle.IsOn = !GpuToggle.IsOn;
             else if (control == DailyButton) { Daily_Click(this, new RoutedEventArgs()); return; }
             else if (control == RefreshCatalogButton) { if (RefreshCatalogButton.IsEnabled) RefreshCatalog_Click(this, new RoutedEventArgs()); return; }
@@ -999,6 +1019,7 @@ public sealed partial class MainWindow : Window
         ScanlinesRow.BorderBrush = control == ScanlinesToggle ? cyan : line;
         CityLifeRow.BorderBrush = control == CityLifeToggle ? cyan : line;
         TrailerPreviewRow.BorderBrush = control == TrailerPreviewToggle ? cyan : line;
+        AddCardRow.BorderBrush = control == AddCardToggle ? cyan : line;
         GpuRow.BorderBrush = control == GpuToggle ? cyan : line;
     }
 
@@ -1046,6 +1067,12 @@ public sealed partial class MainWindow : Window
     void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (consoleMode) { e.Handled = true; return; }
+        if (AddLayer.Visibility == Visibility.Visible && !gameOpen)
+        {
+            // the add/edit form takes typing: only Escape is ours (closes the emulator form, then the editor)
+            if (e.Key == VirtualKey.Escape) { HandleEditorAction(PadAction.B); e.Handled = true; }
+            return;
+        }
         if (updatePromptOpen)
         {
             // Enter/Space activate the focused button natively; Esc = not now, arrows move between the two
@@ -2078,6 +2105,12 @@ public sealed partial class MainWindow : Window
         }
         // the grid's own ScrollViewer already took it: don't scroll twice
         if (e.Handled && e.OriginalSource is DependencyObject src && FindAncestor<ScrollViewer>(src) is { } sv && ReferenceEquals(sv, gridScroller ??= FindChild<ScrollViewer>(GameGrid))) return;
+        if (AddLayer.Visibility == Visibility.Visible && !gameOpen)
+        {
+            if (!e.Handled) AddScroll.ChangeView(null, AddScroll.VerticalOffset - e.GetCurrentPoint(Root).Properties.MouseWheelDelta, null);
+            e.Handled = true;
+            return;
+        }
         if (ScoresLayer.Visibility == Visibility.Visible && !gameOpen) { ScoresWheel(e); return; }
         if (Panel.Visibility == Visibility.Visible && !gameOpen)
         {
@@ -2378,8 +2411,10 @@ public sealed partial class MainWindow : Window
         shownAlbumData = null;
         HeroName.Text = g.Name;
         HeroDescription.Text = g.Description;
-        TrailerButton.Visibility = Visibility.Collapsed;
-        if (launcherFocus == LauncherFocus.Trailer) SetLauncherFocus(LauncherFocus.Play);
+        // the player's own album folders get EDIT where a trailer would be
+        SetTrailerAsEdit(IsLocalAlbum(g));
+        TrailerButton.Visibility = IsLocalAlbum(g) ? Visibility.Visible : Visibility.Collapsed;
+        if (launcherFocus == LauncherFocus.Trailer && !IsLocalAlbum(g)) SetLauncherFocus(LauncherFocus.Play);
         QueueTrailerPreview(g); // albums have no trailer: this just stops any running preview
         ScoreHeader.Text = "TRACKS";
         ScoreHeaderIcon.Glyph = "\uE8D6";

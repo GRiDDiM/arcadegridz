@@ -31,7 +31,7 @@ public sealed partial class MainWindow
 
     bool TrailerPreviewAllowed(GameEntry? g) =>
         g is not null && !settings.NoTrailerPreview && HasTrailer(g) && !gameOpen &&
-        GameLayer.Visibility != Visibility.Visible && ScoresLayer.Visibility != Visibility.Visible && Panel.Visibility != Visibility.Visible && Launcher.Visibility == Visibility.Visible;
+        GameLayer.Visibility != Visibility.Visible && ScoresLayer.Visibility != Visibility.Visible && AddLayer.Visibility != Visibility.Visible && Panel.Visibility != Visibility.Visible && Launcher.Visibility == Visibility.Visible;
 
     void InitTrailerPreview()
     {
@@ -46,6 +46,7 @@ public sealed partial class MainWindow
         Launcher.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, Changed);
         GameLayer.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, Changed);
         ScoresLayer.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, Changed);
+        AddLayer.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, Changed);
     }
 
     /// <summary>Called whenever the highlighted game changes: show its art now, start its trailer after a short pause.</summary>
