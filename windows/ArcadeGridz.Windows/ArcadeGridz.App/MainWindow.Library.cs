@@ -141,6 +141,9 @@ public sealed partial class MainWindow
         if (item is null) return;
         try
         {
+            var bnet = IsBattleNet(item);
+            var bnetWasRunning = bnet && Process.GetProcessesByName("Battle.net").Length > 0;
+            var before = bnet ? Process.GetProcesses().Select(x => x.Id).ToHashSet() : null;
             var p = library.Launch(item);
             audio?.Play("launch");
             music?.PauseForGame();
@@ -153,12 +156,66 @@ public sealed partial class MainWindow
                 try { p.EnableRaisingEvents = true; p.Exited += (_, _) => DispatcherQueue.TryEnqueue(() => OnLocalExited(p)); }
                 catch { localProc = null; } // already gone (a launcher handed off), handled on re-activation
             }
+            if (bnet) _ = FollowBattleNet(item, before!, resend: !bnetWasRunning);
         }
         catch (Exception ex)
         {
             StartupLog.Exception("Library launch", ex);
             audio?.Play("error");
             ShowMessage("COULDN'T START IT", ex.Message + "\n\nUse EDIT to fix the path or the emulator.");
+        }
+    }
+
+    static bool IsBattleNet(LocalItem item) =>
+        item.Kind == LocalLibraryService.KindApp && item.Args.Contains("--exec", StringComparison.OrdinalIgnoreCase) &&
+        Path.GetFileName(item.Path).StartsWith("Battle.net", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Battle.net --exec="launch X": a cold-started Battle.net only opens the game's page (the command is dropped while it
+    /// loads), so resend it until the game shows up. Once the game's window appears, the session follows the game
+    /// (Battle.net itself stays open), so the music comes back when the game closes.
+    /// </summary>
+    async Task FollowBattleNet(LocalItem item, HashSet<int> before, bool resend)
+    {
+        var started = localStarted;
+        for (var i = 1; i <= 18 && localRunning && localStarted == started; i++) // ~2.5 minutes
+        {
+            await Task.Delay(8000);
+            if (!localRunning || localStarted != started) return;
+            var game = Process.GetProcesses().FirstOrDefault(x =>
+            {
+                try
+                {
+                    if (before.Contains(x.Id) || x.MainWindowHandle == IntPtr.Zero) return false;
+                    var n = x.ProcessName;
+                    return !(n.Contains("Battle.net", StringComparison.OrdinalIgnoreCase) || n.Contains("Blizzard", StringComparison.OrdinalIgnoreCase) ||
+                             n.Equals("Agent", StringComparison.OrdinalIgnoreCase) || n.Contains("webview", StringComparison.OrdinalIgnoreCase) ||
+                             n.Contains("crashpad", StringComparison.OrdinalIgnoreCase) || n.Equals("ArcadeGridz", StringComparison.OrdinalIgnoreCase));
+                }
+                catch { return false; }
+            });
+            if (game is not null)
+            {
+                StartupLog.Write("library", $"Battle.net started {game.ProcessName}");
+                try
+                {
+                    localProc = game;
+                    localKind = LocalLibraryService.KindRom; // a real game now: its exit ends the session
+                    game.EnableRaisingEvents = true;
+                    game.Exited += (_, _) => DispatcherQueue.TryEnqueue(() => OnLocalExited(game));
+                }
+                catch { localProc = null; }
+                return;
+            }
+            if (resend && i % 2 == 1 && i <= 9)
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo(item.Path, item.Args) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(item.Path) ?? "" });
+                    StartupLog.Write("library", "Resent the Battle.net launch command");
+                }
+                catch (Exception ex) { StartupLog.Exception("Battle.net resend", ex); return; }
+            }
         }
     }
 
