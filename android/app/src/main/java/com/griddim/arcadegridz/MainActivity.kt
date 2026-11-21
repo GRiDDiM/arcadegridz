@@ -130,6 +130,7 @@ class MainActivity : Activity() {
 
         showSplash()
         startup()
+        mainHandler.postDelayed({ handleAuthIntent(intent) }, 2500)
     }
 
     // ------------------------------------------------------------------ startup
@@ -272,17 +273,22 @@ class MainActivity : Activity() {
         auth?.cancel()
         val a = LoopbackAuth(this)
         auth = a
-        a.start(status) { result, error ->
-            auth = null
-            if (result == null) { status(if (error == "CANCELLED") "" else "GOOGLE SIGN-IN FAILED: ${error ?: ""}".uppercase()); done(false); return@start }
-            status("SIGNING IN AS ${result.name.uppercase()}...")
-            pendingDesktopToken = result.token
-            desktopDone = { ok ->
-                if (!ok) { status("SIGN-IN FAILED. TRY AGAIN.") }
-                done(ok)
+        wireAuth(a, status, done)
+        a.start()
+    }
+
+    fun wireAuth(a: LoopbackAuth, status: (String) -> Unit, done: (Boolean) -> Unit) {
+        a.onStatus = status
+        a.onDone = { result, error ->
+            if (auth === a) auth = null
+            if (result == null) { status(if (error == "CANCELLED") "" else "GOOGLE SIGN-IN FAILED: ${error ?: ""}".uppercase()); done(false) }
+            else {
+                status("SIGNING IN AS ${result.name.uppercase()}...")
+                pendingDesktopToken = result.token
+                desktopDone = { ok -> if (!ok) status("SIGN-IN FAILED. TRY AGAIN."); done(ok) }
+                host.navigate("$SITE/?host=winapp&mode=desktop-complete")
+                mainHandler.postDelayed({ desktopDone?.let { pendingDesktopToken = null; desktopDone = null; it(false) } }, 25000)
             }
-            host.navigate("$SITE/?host=winapp&mode=desktop-complete")
-            mainHandler.postDelayed({ desktopDone?.let { pendingDesktopToken = null; desktopDone = null; it(false) } }, 25000)
         }
     }
 
@@ -348,6 +354,7 @@ class MainActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (Build.VERSION.SDK_INT >= 28) window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES }
         showGameCover(g)
+        overlay.visibility = View.INVISIBLE // the phone details sheet lives in the overlay; it comes back on exit
         gameLayer.visibility = View.VISIBLE
         launcherHost.visibility = View.INVISIBLE
         backdrop.visibility = View.INVISIBLE
@@ -394,6 +401,7 @@ class MainActivity : Activity() {
         gameCover?.let { gameLayer.removeView(it) }
         gameCover = null
         gameLayer.visibility = View.INVISIBLE
+        overlay.visibility = View.VISIBLE
         launcherHost.visibility = View.VISIBLE
         backdrop.visibility = View.VISIBLE
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -505,6 +513,26 @@ class MainActivity : Activity() {
                 View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleAuthIntent(intent)
+    }
+
+    /** arcadegridz://auth?code=..&state=.. from the browser (Android sign-in return). */
+    fun handleAuthIntent(i: Intent?) {
+        val d = i?.data ?: return
+        if (d.scheme != "arcadegridz" || d.host != "auth") return
+        val code = d.getQueryParameter("code") ?: return
+        val state = d.getQueryParameter("state") ?: return
+        val a = auth ?: LoopbackAuth(this).also { la ->
+            auth = la
+            la.resumeFromPrefs(settings)
+            // the app was restarted while the browser was open: finish the sign-in and open the arcade
+            wireAuth(la, { s -> if (s.isNotBlank()) toast(s) }) { ok -> if (ok) { closeAllPanelsSilently(); if (!inLauncher) enterLauncher() else toast("SIGNED IN") } }
+        }
+        a.completeWithCode(code, state)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
