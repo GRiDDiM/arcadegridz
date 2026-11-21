@@ -1,0 +1,101 @@
+name: Android app
+on:
+  push:
+    branches: ["android/**"]
+    paths: ["android/**", ".github/workflows/arcadegridz-android.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.11.1" }
+      - name: Fetch launcher brand art, fonts and menu sounds (hash-pinned, same as the Windows app)
+        run: |
+          set -euo pipefail
+          A=app/build/agassets; mkdir -p "$A/fonts" "$A/audio"
+          fetch() { curl -fsSL --retry 3 "$1" -o "$2"; echo "$3  $2" | sha256sum -c - ; }
+          F=https://raw.githubusercontent.com/google/fonts/6c1dbe27dcf7d817d4b62cec033ba77fa8e2a5ec
+          fetch https://arcadegridz.com/assets/arcadegridz-logo-header.png "$A/logo.png" 80afb67e42ffdb8122bef08a497410027e73e05ab0ba12e69caa4488ac5865ff
+          fetch https://arcadegridz.com/assets/arcadegridz-80s-hall-full.jpg "$A/hall.jpg" 3f86929bc0f453c7a752cef1edccda1d0fd7b706069158f570350ceb3cd062da
+          fetch $F/ofl/bungee/Bungee-Regular.ttf "$A/fonts/Bungee-Regular.ttf" c4f5361ce120af3e6b9156d0bf379fa19cda2ea0cd18ac01fd99596c6bf66e3f
+          fetch $F/ofl/pressstart2p/PressStart2P-Regular.ttf "$A/fonts/PressStart2P-Regular.ttf" 034c77f1f05ec89421e4a63f0e3a4ca1ecf852cc6d2bf611f126f275728e017d
+          fetch $F/ofl/creepster/Creepster-Regular.ttf "$A/fonts/Creepster-Regular.ttf" 402aeb734586c74aecd3dbdc454589b1fb12e2e1c71f782fd019ae68066d9f44
+          fetch $F/ofl/metalmania/MetalMania-Regular.ttf "$A/fonts/MetalMania-Regular.ttf" 4b95f0e55b291990c26a7b68818b20c1b728a8be05a34982b7bb4736c46c19ea
+          fetch $F/ofl/bebasneue/BebasNeue-Regular.ttf "$A/fonts/BebasNeue-Regular.ttf" 08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73
+          fetch $F/apache/chewy/Chewy-Regular.ttf "$A/fonts/Chewy-Regular.ttf" 7cf75ea288f82fd20badea8ab4da7a656a96a7277c170811e813b3d3d6294147
+          cp ../windows/ArcadeGridz.Windows/ArcadeGridz.App/Assets/Audio/*.wav "$A/audio/"
+          ls -la "$A" "$A/fonts" "$A/audio"
+      - name: App icon from the official favicon
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 https://arcadegridz.com/assets/favicon_arcadegridz_090826.png -o /tmp/fav.png
+          echo "d71dcc6a80734f409e7833c21b5e6a9a517252277df5652f9ad7b2ffea60a4cf  /tmp/fav.png" | sha256sum -c -
+          python3 -m pip install --quiet --disable-pip-version-check pillow
+          python3 ci/icons.py /tmp/fav.png app/src/main/res
+      - name: Build release APK
+        run: |
+          set -o pipefail
+          gradle --no-daemon --console=plain assembleRelease 2>&1 | tee build.log
+          VERSION=$(grep '^versionName=' version.properties | cut -d= -f2)
+          echo "AG_VERSION=$VERSION" >> "$GITHUB_ENV"
+          cp app/build/outputs/apk/release/app-release.apk "ArcadeGridz-Android.apk"
+          cp app/build/outputs/apk/release/app-release.apk "ArcadeGridz-Android-v$VERSION.apk"
+          ls -la *.apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Smoke test on an emulator (phone, landscape, game, tablet, theme)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          working-directory: android
+          script: bash ci/smoke.sh smoke
+      - name: Publish build log and smoke screenshots (branch android-ci-log)
+        if: always()
+        run: |
+          cd ..
+          mkdir -p /tmp/cilog
+          cp android/build.log /tmp/cilog/ 2>/dev/null || true
+          cp -r android/smoke /tmp/cilog/ 2>/dev/null || true
+          echo "run ${{ github.run_id }} ${{ github.sha }} ${{ job.status }}" > /tmp/cilog/RUN.txt
+          git config user.name "ArcadeGridz CI"
+          git config user.email "ci@arcadegridz.com"
+          git switch --orphan android-ci-log-tmp
+          rm -rf ci-log && mkdir ci-log && cp -r /tmp/cilog/. ci-log/
+          git add -f ci-log
+          git commit -qm "Android CI log for ${{ github.sha }}"
+          git push -f origin HEAD:refs/heads/android-ci-log
+      - name: Publish GitHub release (android-vX.Y.Z, never marked latest so the Windows updater is unaffected)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-v${{ env.AG_VERSION }}
+          name: ArcadeGridz for Android v${{ env.AG_VERSION }}
+          target_commitish: ${{ github.sha }}
+          make_latest: "false"
+          prerelease: false
+          body: |
+            ArcadeGridz for Android phones and tablets (test build).
+            Install: open this page on your phone, tap ArcadeGridz-Android.apk, then allow your browser to install apps when Android asks.
+          files: |
+            android/ArcadeGridz-Android.apk
+            android/ArcadeGridz-Android-v${{ env.AG_VERSION }}.apk
