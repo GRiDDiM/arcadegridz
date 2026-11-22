@@ -183,6 +183,12 @@ public sealed partial class MainWindow : Window
             }
             // the sign-in card floats as its own small window; everything else is fullscreen (or windowed if chosen)
             if (!floating && !dragging && !presenterApplied) ApplyMainPresenter();
+            else if (e.WindowActivationState != WindowActivationState.Deactivated && !applyingPresenter && !floating && !dragging && !settings.Windowed
+                     && appWindow.Presenter.Kind != AppWindowPresenterKind.FullScreen)
+            {
+                StartupLog.Write("window", "Fullscreen setting but presenter is " + appWindow.Presenter.Kind + "; restoring fullscreen");
+                ApplyMainPresenter();
+            }
         }
         catch (Exception ex)
         {
@@ -1066,6 +1072,10 @@ public sealed partial class MainWindow : Window
 
     void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // Alt+Enter or F11 = toggle fullscreen / windowed (anywhere except the floating sign-in card)
+        if (!floating && (e.Key == VirtualKey.F11 || (e.Key == VirtualKey.Enter &&
+            Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down))))
+        { ToggleWindowed(); e.Handled = true; return; }
         if (consoleMode) { e.Handled = true; return; }
         if (AddLayer.Visibility == Visibility.Visible && !gameOpen)
         {
@@ -1615,7 +1625,7 @@ public sealed partial class MainWindow : Window
     void WelcomeClose_Click(object sender, RoutedEventArgs e) => CloseWelcome();
 
     // ======== screens: fullscreen / windowed on the chosen monitor or TV ========
-    bool presenterApplied, dragging, initializingDisplay;
+    bool presenterApplied, applyingPresenter, dragging, initializingDisplay;
     List<ScreenInfo> screens = [];
 
     AppWindow MainAppWindow() =>
@@ -1638,6 +1648,7 @@ public sealed partial class MainWindow : Window
     void ApplyMainPresenter(ScreenInfo? target = null)
     {
         presenterApplied = true; // set first: switching presenters can re-raise Activated
+        applyingPresenter = true;
         try
         {
             var appWindow = MainAppWindow();
@@ -1666,6 +1677,7 @@ public sealed partial class MainWindow : Window
             if (OptionsDisplayTab.Visibility == Visibility.Visible) DispatcherQueue.TryEnqueue(RefreshScreens);
         }
         catch (Exception ex) { StartupLog.Exception("Apply presenter", ex); }
+        finally { DispatcherQueue.TryEnqueue(() => applyingPresenter = false); }
     }
 
     void MoveToNextScreen(int delta)
@@ -1700,6 +1712,16 @@ public sealed partial class MainWindow : Window
         var target = screens[ScreenCombo.SelectedIndex];
         ApplyMainPresenter(target);
         DisplayStatus.Text = $"NOW PLAYING ON {target.Name}.";
+    }
+
+    void ToggleWindowed()
+    {
+        settings.Windowed = !settings.Windowed;
+        settings.Save();
+        StartupLog.Write("window", "Alt+Enter/F11 toggle -> " + (settings.Windowed ? "Windowed" : "Fullscreen"));
+        ApplyMainPresenter(ScreenOfWindow(MainAppWindow()));
+        initializingDisplay = true;
+        try { DisplayModeCombo.SelectedIndex = settings.Windowed ? 1 : 0; } finally { initializingDisplay = false; }
     }
 
     void DisplayModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
