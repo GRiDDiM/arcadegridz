@@ -1,0 +1,122 @@
+
+Welcome to Gradle 8.11.1!
+
+Here are the highlights of this release:
+ - Parallel load and store for Configuration Cache
+ - Java compilation errors at the end of the build output
+ - Consolidated report for warnings and deprecations
+
+For more details see https://docs.gradle.org/8.11.1/release-notes.html
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.11.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preArcadegridzReleaseBuild UP-TO-DATE
+> Task :app:mergeArcadegridzReleaseJniLibFolders
+> Task :app:mergeArcadegridzReleaseNativeLibs NO-SOURCE
+> Task :app:stripArcadegridzReleaseDebugSymbols NO-SOURCE
+> Task :app:extractArcadegridzReleaseNativeSymbolTables NO-SOURCE
+> Task :app:mergeArcadegridzReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:mergeArcadegridzReleaseArtProfile
+> Task :app:desugarArcadegridzReleaseFileDependencies
+> Task :app:buildKotlinToolingMetadata
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:generateArcadegridzReleaseBuildConfig
+> Task :app:generateArcadegridzReleaseResValues
+> Task :app:checkArcadegridzReleaseAarMetadata
+> Task :app:mapArcadegridzReleaseSourceSetPaths
+> Task :app:generateArcadegridzReleaseResources
+> Task :app:packageArcadegridzReleaseResources
+> Task :app:mergeArcadegridzReleaseResources
+> Task :app:createArcadegridzReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksArcadegridzRelease
+> Task :app:parseArcadegridzReleaseLocalResources
+> Task :app:processArcadegridzReleaseMainManifest
+> Task :app:processArcadegridzReleaseManifest
+> Task :app:processArcadegridzReleaseManifestForPackage
+> Task :app:javaPreCompileArcadegridzRelease
+> Task :app:mergeArcadegridzReleaseStartupProfile
+> Task :app:checkArcadegridzReleaseDuplicateClasses
+> Task :app:mergeArcadegridzReleaseShaders
+> Task :app:processArcadegridzReleaseResources
+> Task :app:mergeExtDexArcadegridzRelease
+> Task :app:compileArcadegridzReleaseShaders NO-SOURCE
+> Task :app:generateArcadegridzReleaseAssets UP-TO-DATE
+> Task :app:mergeArcadegridzReleaseAssets
+> Task :app:compressArcadegridzReleaseAssets
+> Task :app:extractArcadegridzReleaseVersionControlInfo
+> Task :app:collectArcadegridzReleaseDependencies
+> Task :app:sdkArcadegridzReleaseDependencyData
+> Task :app:optimizeArcadegridzReleaseResources
+> Task :app:validateSigningArcadegridzRelease
+> Task :app:writeArcadegridzReleaseAppMetadata
+> Task :app:writeArcadegridzReleaseSigningConfigVersions
+> Task :app:preNhameoReleaseBuild UP-TO-DATE
+> Task :app:mergeNhameoReleaseJniLibFolders
+> Task :app:mergeNhameoReleaseNativeLibs NO-SOURCE
+> Task :app:stripNhameoReleaseDebugSymbols NO-SOURCE
+> Task :app:extractNhameoReleaseNativeSymbolTables NO-SOURCE
+> Task :app:mergeNhameoReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:checkNhameoReleaseDuplicateClasses
+> Task :app:generateNhameoReleaseBuildConfig
+> Task :app:checkNhameoReleaseAarMetadata
+> Task :app:generateNhameoReleaseResValues
+> Task :app:mapNhameoReleaseSourceSetPaths
+> Task :app:generateNhameoReleaseResources
+> Task :app:packageNhameoReleaseResources
+> Task :app:parseNhameoReleaseLocalResources
+> Task :app:createNhameoReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksNhameoRelease
+> Task :app:processNhameoReleaseMainManifest
+> Task :app:processNhameoReleaseManifest
+> Task :app:javaPreCompileNhameoRelease
+> Task :app:processNhameoReleaseManifestForPackage
+> Task :app:desugarNhameoReleaseFileDependencies
+> Task :app:mergeNhameoReleaseStartupProfile
+> Task :app:mergeNhameoReleaseArtProfile
+> Task :app:mergeNhameoReleaseShaders
+> Task :app:mergeNhameoReleaseResources
+> Task :app:compileNhameoReleaseShaders NO-SOURCE
+> Task :app:generateNhameoReleaseAssets UP-TO-DATE
+> Task :app:mergeNhameoReleaseAssets
+> Task :app:processNhameoReleaseResources
+> Task :app:compressNhameoReleaseAssets
+> Task :app:extractNhameoReleaseVersionControlInfo
+> Task :app:mergeExtDexNhameoRelease
+> Task :app:collectNhameoReleaseDependencies
+> Task :app:sdkNhameoReleaseDependencyData
+> Task :app:optimizeNhameoReleaseResources
+> Task :app:validateSigningNhameoRelease
+> Task :app:writeNhameoReleaseAppMetadata
+> Task :app:writeNhameoReleaseSigningConfigVersions
+
+> Task :app:compileArcadegridzReleaseKotlin
+w: file:///home/runner/work/arcadegridz/arcadegridz/android/app/src/main/java/com/griddim/arcadegridz/MainActivity.kt:524:20 'fun setDecorFitsSystemWindows(p0: Boolean): Unit' is deprecated. Deprecated in Java.
+
+> Task :app:compileNhameoReleaseKotlin
+w: file:///home/runner/work/arcadegridz/arcadegridz/android/app/src/main/java/com/griddim/arcadegridz/MainActivity.kt:524:20 'fun setDecorFitsSystemWindows(p0: Boolean): Unit' is deprecated. Deprecated in Java.
+
+> Task :app:compileArcadegridzReleaseJavaWithJavac
+> Task :app:dexBuilderArcadegridzRelease
+> Task :app:mergeArcadegridzReleaseGlobalSynthetics
+> Task :app:processArcadegridzReleaseJavaRes
+> Task :app:mergeArcadegridzReleaseJavaResource
+> Task :app:compileNhameoReleaseJavaWithJavac
+> Task :app:mergeDexArcadegridzRelease
+> Task :app:dexBuilderNhameoRelease
+> Task :app:compileArcadegridzReleaseArtProfile
+> Task :app:mergeNhameoReleaseGlobalSynthetics
+> Task :app:processNhameoReleaseJavaRes
+> Task :app:mergeNhameoReleaseJavaResource
+> Task :app:packageArcadegridzRelease
+> Task :app:createArcadegridzReleaseApkListingFileRedirect
+> Task :app:assembleArcadegridzRelease
+> Task :app:mergeDexNhameoRelease
+> Task :app:compileNhameoReleaseArtProfile
+> Task :app:packageNhameoRelease
+> Task :app:createNhameoReleaseApkListingFileRedirect
+> Task :app:assembleNhameoRelease
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_3-1795443920283.json
+
+BUILD SUCCESSFUL in 1m 9s
+83 actionable tasks: 83 executed
