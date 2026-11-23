@@ -30,15 +30,17 @@ start --es agTheme happy; sleep 15; shot 09-tablet-happy
 start --es agTheme console; sleep 15; shot 10-tablet-console
 A shell wm size reset; A shell wm density reset
 rot 0
+# solo app: Nhà Mèo boots straight into its game (before the WebGL launcher games, which can take the CI emulator down)
+if timeout 120 adb install -r app/build/outputs/apk/nhameo/release/app-nhameo-release.apk; then
+  A shell am start -n com.griddim.nhameo/com.griddim.arcadegridz.MainActivity >/dev/null; sleep 12; shot 20-solo-splash
+  sleep 30; shot 21-solo-nhameo
+  A shell input keyevent KEYCODE_BACK; sleep 3; shot 22-solo-menu
+  A shell am force-stop com.griddim.nhameo
+else echo "WARN solo install failed"; fi
 # the game goes last: a WebGL game under the software GPU can stall the CI emulator
 start --es agSheet 2diso-shift --es agTrailer 1; sleep 35; shot 05-sheet-trailer
 A shell input keyevent KEYCODE_BACK; sleep 3; shot 06-game-menu
 start --es agSheet 2diso-shift; sleep 35; shot 07-sheet-play
-# solo app: Nhà Mèo boots straight into its game
-adb install -r app/build/outputs/apk/nhameo/release/app-nhameo-release.apk || { echo "solo install failed"; exit 1; }
-A shell am start -n com.griddim.nhameo/com.griddim.arcadegridz.MainActivity >/dev/null; sleep 40; shot 20-solo-nhameo
-A shell input keyevent KEYCODE_BACK; sleep 3; shot 21-solo-menu
-A shell am force-stop com.griddim.nhameo
 A logcat -d -v time -t 30000 > "$OUT/logcat-full.txt" || true
 grep -E "ArcadeGridz|AndroidRuntime|chromium|FATAL" "$OUT/logcat-full.txt" > "$OUT/logcat.txt" || true
 if grep -q "FATAL EXCEPTION" "$OUT/logcat-full.txt"; then
