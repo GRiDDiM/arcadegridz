@@ -96,7 +96,7 @@ public sealed partial class MainWindow : Window
                 if (music is null || music.Album is not null) { musicRetry?.Stop(); return; }
                 if (!music.Loading) _ = music.LoadAsync(autoPlay: !settings.MusicOff && !gameOpen);
             };
-            musicRetry.Start();
+            // started by EnterLauncher: no music over the splash, the update prompt or the sign-in card
             BuildMeter();
             audio.Play("jingle"); // loading jingle over the splash
             // Load fullscreen but cloaked (invisible) behind the overlay splash; Reveal() uncloaks it once the
@@ -643,6 +643,23 @@ public sealed partial class MainWindow : Window
         SetLauncherFocus(LauncherFocus.GameGrid);
         StartupLog.Write("window", guest ? "Entered launcher as guest" : "Entered launcher signed in");
         TryShowDaily();
+        StartMusicOnce();
+    }
+
+    // The music starts once the launcher itself is up (a beat after it appears), never on the splash / update / sign-in screens.
+    Microsoft.UI.Dispatching.DispatcherQueueTimer? musicStartTimer;
+    void StartMusicOnce()
+    {
+        if (musicStartTimer is not null) return;
+        musicStartTimer = DispatcherQueue.CreateTimer();
+        musicStartTimer.Interval = TimeSpan.FromMilliseconds(1200);
+        musicStartTimer.IsRepeating = false;
+        musicStartTimer.Tick += (_, _) =>
+        {
+            if (music is not null && music.Album is null && !music.Loading) _ = music.LoadAsync(autoPlay: !settings.MusicOff && !gameOpen);
+            musicRetry?.Start(); // keeps trying if the first load misses (slow network / offline)
+        };
+        musicStartTimer.Start();
     }
 
     void HandleStartupAction(PadAction action)
@@ -1458,22 +1475,31 @@ public sealed partial class MainWindow : Window
         if (revealed) return;
         revealed = true;
         revealFailsafe?.Stop();
-        // give XAML one frame to lay out the launcher / sign-in card before it appears
-        var t = DispatcherQueue.CreateTimer();
-        t.Interval = TimeSpan.FromMilliseconds(60);
-        t.IsRepeating = false;
-        t.Tick += (_, _) =>
-        {
-            if (cloaked) SetCloaked(false);
-            Activate();
-            var m = DispatcherQueue.CreateTimer();
-            m.Interval = TimeSpan.FromMilliseconds(1600);
-            m.IsRepeating = false;
-            m.Tick += (_, _) => { if (music is not null && music.Album is null) _ = music.LoadAsync(autoPlay: !settings.MusicOff && !gameOpen); };
-            m.Start();
-            SplashWindow.FadeOutAndClose(DispatcherQueue);
-        };
-        t.Start();
+        // give XAML one frame to lay out the launcher / sign-in card before it appears. The timer lives in a field:
+        // a local DispatcherQueueTimer can be garbage collected before it fires, which left the window cloaked behind
+        // the splash logo forever (seen on the first start after an update).
+        revealTimer = DispatcherQueue.CreateTimer();
+        revealTimer.Interval = TimeSpan.FromMilliseconds(60);
+        revealTimer.IsRepeating = false;
+        revealTimer.Tick += (_, _) => FinishReveal();
+        revealTimer.Start();
+        // belt and braces: if that tick still never comes, uncloak anyway
+        revealBackstop = DispatcherQueue.CreateTimer();
+        revealBackstop.Interval = TimeSpan.FromSeconds(2);
+        revealBackstop.IsRepeating = false;
+        revealBackstop.Tick += (_, _) => { if (!revealDone) { StartupLog.Write("window", "Reveal backstop fired"); FinishReveal(); } };
+        revealBackstop.Start();
+    }
+
+    Microsoft.UI.Dispatching.DispatcherQueueTimer? revealTimer, revealBackstop;
+    bool revealDone;
+    void FinishReveal()
+    {
+        if (revealDone) return;
+        revealDone = true;
+        try { if (cloaked) SetCloaked(false); Activate(); }
+        catch (Exception ex) { StartupLog.Exception("Reveal", ex); }
+        if (SplashWindow.IsOpen) SplashWindow.FadeOutAndClose(DispatcherQueue);
     }
 
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
