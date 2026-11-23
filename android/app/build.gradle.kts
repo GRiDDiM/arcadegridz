@@ -9,6 +9,9 @@ plugins {
 val versionProps = Properties().apply { file("../version.properties").inputStream().use { load(it) } }
 val agVersionName: String = versionProps.getProperty("versionName")
 val agVersionCode: Int = versionProps.getProperty("versionCode").toInt()
+// solo builds (one game as its own app) carry their own version line
+val nmVersionName: String = versionProps.getProperty("nhameo.versionName", "0.1.0")
+val nmVersionCode: Int = versionProps.getProperty("nhameo.versionCode", "1").toInt()
 
 android {
     namespace = "com.griddim.arcadegridz"
@@ -20,6 +23,28 @@ android {
         targetSdk = 35
         versionCode = agVersionCode
         versionName = agVersionName
+    }
+
+    // "arcadegridz" = the ag app (launcher). Other flavors are solo releases: one game, booting straight into it.
+    flavorDimensions += "app"
+    productFlavors {
+        create("arcadegridz") {
+            dimension = "app"
+            buildConfigField("String", "SOLO_GAME", "\"\"")
+            buildConfigField("String", "SOLO_NAME", "\"\"")
+            manifestPlaceholders["appLabel"] = "ArcadeGridz"
+            manifestPlaceholders["appScheme"] = "arcadegridz"
+        }
+        create("nhameo") {
+            dimension = "app"
+            applicationId = "com.griddim.nhameo"
+            versionCode = nmVersionCode
+            versionName = nmVersionName
+            buildConfigField("String", "SOLO_GAME", "\"nha-meo-mobile\"")
+            buildConfigField("String", "SOLO_NAME", "\"NHÀ MÈO\"")
+            manifestPlaceholders["appLabel"] = "Nhà Mèo"
+            manifestPlaceholders["appScheme"] = "nhameo"
+        }
     }
 
     signingConfigs {

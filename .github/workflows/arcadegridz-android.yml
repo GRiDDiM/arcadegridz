@@ -45,14 +45,22 @@ jobs:
           echo "d71dcc6a80734f409e7833c21b5e6a9a517252277df5652f9ad7b2ffea60a4cf  /tmp/fav.png" | sha256sum -c -
           python3 -m pip install --quiet --disable-pip-version-check pillow
           python3 ci/icons.py /tmp/fav.png app/src/main/res
+          # solo app: Nhà Mèo (nhameo flavor)
+          curl -fsSL --retry 3 https://arcadegridz.com/nhameo/icon-512.png -o /tmp/nm.png
+          echo "e80259f320cdd34cc8560d8e5c99bc3ad2ccfb6c89dc4278e772c24cb1c1efa2  /tmp/nm.png" | sha256sum -c -
+          python3 ci/icons.py /tmp/nm.png app/src/nhameo/res fff0f7
       - name: Build release APK
         run: |
           set -o pipefail
-          gradle --no-daemon --console=plain assembleRelease 2>&1 | tee build.log
+          gradle --no-daemon --console=plain assembleArcadegridzRelease assembleNhameoRelease 2>&1 | tee build.log
           VERSION=$(grep '^versionName=' version.properties | cut -d= -f2)
+          NMV=$(grep '^nhameo.versionName=' version.properties | cut -d= -f2)
           echo "AG_VERSION=$VERSION" >> "$GITHUB_ENV"
-          cp app/build/outputs/apk/release/app-release.apk "ArcadeGridz-Android.apk"
-          cp app/build/outputs/apk/release/app-release.apk "ArcadeGridz-Android-v$VERSION.apk"
+          echo "NM_VERSION=$NMV" >> "$GITHUB_ENV"
+          cp app/build/outputs/apk/arcadegridz/release/app-arcadegridz-release.apk "ArcadeGridz-Android.apk"
+          cp app/build/outputs/apk/arcadegridz/release/app-arcadegridz-release.apk "ArcadeGridz-Android-v$VERSION.apk"
+          cp app/build/outputs/apk/nhameo/release/app-nhameo-release.apk "NhaMeo-Android.apk"
+          cp app/build/outputs/apk/nhameo/release/app-nhameo-release.apk "NhaMeo-Android-v$NMV.apk"
           ls -la *.apk
       - name: Enable KVM
         run: |
@@ -99,3 +107,17 @@ jobs:
           files: |
             android/ArcadeGridz-Android.apk
             android/ArcadeGridz-Android-v${{ env.AG_VERSION }}.apk
+      - name: Publish solo release (Nhà Mèo, nhameo-android-vX.Y.Z, never latest)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nhameo-android-v${{ env.NM_VERSION }}
+          name: Nhà Mèo for Android v${{ env.NM_VERSION }}
+          target_commitish: ${{ github.sha }}
+          make_latest: "false"
+          prerelease: false
+          body: |
+            Nhà Mèo — a virtual DIY mini dollhouse full of cats, as its own Android app (Nhà Mèo Mobile, test build). Needs an internet connection.
+            Install: open this page on your phone, tap NhaMeo-Android.apk, then allow your browser to install apps when Android asks.
+          files: |
+            android/NhaMeo-Android.apk
+            android/NhaMeo-Android-v${{ env.NM_VERSION }}.apk

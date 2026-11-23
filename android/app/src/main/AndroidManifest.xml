@@ -11,7 +11,7 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
     <application
-        android:label="ArcadeGridz"
+        android:label="${appLabel}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:allowBackup="false"
@@ -34,7 +34,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="arcadegridz" />
+                <data android:scheme="${appScheme}" />
             </intent-filter>
         </activity>
         <service

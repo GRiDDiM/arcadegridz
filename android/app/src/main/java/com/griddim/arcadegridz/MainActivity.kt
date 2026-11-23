@@ -100,7 +100,7 @@ class MainActivity : Activity() {
         smokePlay = intent?.getStringExtra("agPlay")
         smokeSheet = intent?.getStringExtra("agSheet")
         smokeTrailer = intent?.getStringExtra("agTrailer") != null
-        Themes.current = Themes.get(settings.theme)
+        Themes.current = Themes.get(if (isSolo) "happy" else settings.theme)
         Net.userAgent = "ArcadeGridz-Android/${BuildConfig.VERSION_NAME}"
         Images.init(this)
         Sfx.init(this, !settings.sfxOff)
@@ -133,8 +133,7 @@ class MainActivity : Activity() {
         immersive()
         music.onChange = { refreshMusic() }
 
-        showSplash()
-        startup()
+        if (isSolo) { showSoloSplash(); soloStartup() } else { showSplash(); startup() }
         mainHandler.postDelayed({ handleAuthIntent(intent) }, 2500)
     }
 
@@ -265,6 +264,7 @@ class MainActivity : Activity() {
     }
 
     fun runDaily(force: Boolean) {
+        if (isSolo) return
         val t = token ?: return
         val id = account?.id ?: return
         bg({ Daily.visit(t, id, force) }) { st ->
@@ -426,6 +426,7 @@ class MainActivity : Activity() {
         applyOrientation()
         music.hold(false)
         Sfx.play("back")
+        if (isSolo) { launcherHost.visibility = View.INVISIBLE; soloHome(); return }
         // scores the run may have posted
         bg({ Leaderboards.load() }) { refreshScores() }
         if (selected?.id != g.id) selectGame(g)

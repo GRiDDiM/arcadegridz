@@ -4,7 +4,7 @@ set -u
 OUT=${1:-smoke}
 mkdir -p "$OUT"
 PKG=com.griddim.arcadegridz
-APK=app/build/outputs/apk/release/app-release.apk
+APK=app/build/outputs/apk/arcadegridz/release/app-arcadegridz-release.apk
 A() { timeout 60 adb "$@"; }
 shot() { timeout 30 adb exec-out screencap -p > "$OUT/$1.png" || true; echo "shot $1"; }
 start() { A shell am force-stop $PKG; sleep 1; A shell am start -n $PKG/.MainActivity "$@" >/dev/null; }
@@ -34,6 +34,11 @@ rot 0
 start --es agSheet 2diso-shift --es agTrailer 1; sleep 35; shot 05-sheet-trailer
 A shell input keyevent KEYCODE_BACK; sleep 3; shot 06-game-menu
 start --es agSheet 2diso-shift; sleep 35; shot 07-sheet-play
+# solo app: Nhà Mèo boots straight into its game
+adb install -r app/build/outputs/apk/nhameo/release/app-nhameo-release.apk || { echo "solo install failed"; exit 1; }
+A shell am start -n com.griddim.nhameo/com.griddim.arcadegridz.MainActivity >/dev/null; sleep 40; shot 20-solo-nhameo
+A shell input keyevent KEYCODE_BACK; sleep 3; shot 21-solo-menu
+A shell am force-stop com.griddim.nhameo
 A logcat -d -v time -t 30000 > "$OUT/logcat-full.txt" || true
 grep -E "ArcadeGridz|AndroidRuntime|chromium|FATAL" "$OUT/logcat-full.txt" > "$OUT/logcat.txt" || true
 if grep -q "FATAL EXCEPTION" "$OUT/logcat-full.txt"; then
