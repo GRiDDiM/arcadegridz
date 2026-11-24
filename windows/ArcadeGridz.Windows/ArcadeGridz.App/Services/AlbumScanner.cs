@@ -22,6 +22,24 @@ public static class AlbumScanner
         "Epic Games", "XboxGames", "WindowsApps", "Battle.net", "GOG Games", "EA Games", "Ubisoft", "Riot Games", ".cache", ".nuget", ".dotnet"
     };
 
+    // music-making and spoken-word folders: not albums (the whole folder tree is skipped)
+    static readonly System.Text.RegularExpressions.Regex SkipFolder = new(
+        @"\b(samples?|sample ?packs?|loops?|stems?|projects?|presets?|renders?|bounces?|bounced|backups?|drum ?kits?|kits|one ?shots?|construction ?kits?|multitracks?|podcasts?|audiobooks?|sfx|sound ?effects|voice ?memos?|voicemails?|recordings|temp|tmp|cache|old)\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>Song-name fingerprint: the same album as MP3s and as WAVs, or in differently named folders, matches.</summary>
+    static string? TrackSignature(List<FileInfo> songs)
+    {
+        if (songs.Count < MinSongs) return null;
+        var keys = songs.Select(f => NormName(System.Text.RegularExpressions.Regex.Replace(System.IO.Path.GetFileNameWithoutExtension(f.Name), @"^[\d\s._\-]+", "")))
+            .Where(k => k.Length > 0).Distinct().OrderBy(k => k).ToList();
+        return keys.Count < MinSongs ? null : "t|" + string.Join("|", keys);
+    }
+
+    static readonly System.Text.RegularExpressions.Regex StemName = new(
+        @"\b(kick|snare|hi ?hats?|hats?|clap|perc|drums?|bass|808|sub|vox|vocals?|lead|pad|synth|keys|piano|guitar|fx|stem|dry|wet|acapella|instrumental|master)\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
     public static string NormPath(string p)
     {
         try { return System.IO.Path.GetFullPath(p).TrimEnd('\\', '/').ToLowerInvariant(); } catch { return p.TrimEnd('\\', '/').ToLowerInvariant(); }
@@ -56,16 +74,14 @@ public static class AlbumScanner
         return norm.Where((p, i) => !norm.Take(i).Any(q => p.StartsWith(q + "\\")));
     }
 
-    /// <summary>Signature of an album folder's contents: its name plus its song sizes (catches the same album copied twice).</summary>
-    public static string? Signature(string folder)
+    /// <summary>Fingerprints of an album folder: name + song sizes (an exact copy) and its song names (another format / folder name).</summary>
+    public static IEnumerable<string> Signatures(string folder)
     {
-        try
-        {
-            var songs = Songs(folder);
-            if (songs.Count < MinSongs) return null;
-            return NormName(System.IO.Path.GetFileName(folder)) + "|" + string.Join(",", songs.Select(f => f.Length).OrderBy(x => x));
-        }
-        catch { return null; }
+        List<FileInfo> songs;
+        try { songs = Songs(folder); } catch { yield break; }
+        if (songs.Count < MinSongs) yield break;
+        yield return NormName(System.IO.Path.GetFileName(folder)) + "|" + string.Join(",", songs.Select(f => f.Length).OrderBy(x => x));
+        if (TrackSignature(songs) is { } t) yield return t;
     }
 
     static List<FileInfo> Songs(string folder) =>
@@ -96,12 +112,19 @@ public static class AlbumScanner
                         if (songs.Count >= MinSongs)
                         {
                             var sig = NormName(dir.Name) + "|" + string.Join(",", songs.Select(f => f.Length).OrderBy(x => x));
-                            if (sigs.Add(sig)) found.Add((dir.FullName, sig)); // a copy already in the library or already found: skipped
+                            var tracks = TrackSignature(songs);
+                            // a copy (exact, other format or other folder name) already in the library or already found: skipped
+                            if (!sigs.Contains(sig) && (tracks is null || !sigs.Contains(tracks)))
+                            {
+                                sigs.Add(sig);
+                                if (tracks is not null) sigs.Add(tracks);
+                                found.Add((dir.FullName, sig));
+                            }
                         }
                     }
                     foreach (var sub in dir.EnumerateDirectories())
                     {
-                        if (SkipNames.Contains(sub.Name) || sub.Name.StartsWith('.') || (sub.Attributes & (System.IO.FileAttributes.ReparsePoint | System.IO.FileAttributes.System)) != 0) continue;
+                        if (SkipNames.Contains(sub.Name) || SkipFolder.IsMatch(sub.Name) || sub.Name.StartsWith('.') || (sub.Attributes & (System.IO.FileAttributes.ReparsePoint | System.IO.FileAttributes.System)) != 0) continue;
                         Walk(sub, depth + 1);
                     }
                 }
@@ -118,16 +141,22 @@ public static class AlbumScanner
         {
             ct.ThrowIfCancellationRequested();
             string name = System.IO.Path.GetFileName(p), artist = "", genre = "";
+            var songs = Songs(p);
+            // stems: several files named like instrument parts
+            if (songs.Count(f => StemName.IsMatch(System.IO.Path.GetFileNameWithoutExtension(f.Name))) >= 2) continue;
+            var tagged = false;
             try
             {
-                var first = Songs(p).OrderBy(f => f.Name).First();
+                var first = songs.OrderBy(f => f.Name).First();
                 var file = await StorageFile.GetFileFromPathAsync(first.FullName);
                 var m = await file.Properties.GetMusicPropertiesAsync();
-                if (!string.IsNullOrWhiteSpace(m.Album)) name = m.Album.Trim();
+                if (!string.IsNullOrWhiteSpace(m.Album)) { name = m.Album.Trim(); tagged = true; }
                 artist = (!string.IsNullOrWhiteSpace(m.AlbumArtist) ? m.AlbumArtist : m.Artist ?? "").Trim();
                 genre = m.Genre?.FirstOrDefault()?.Trim() ?? "";
             }
             catch { }
+            // untagged folders of only WAV/AIFF are renders, bounces or sample packs, not albums
+            if (!tagged && songs.All(f => f.Extension.Equals(".wav", StringComparison.OrdinalIgnoreCase) || f.Extension.StartsWith(".aif", StringComparison.OrdinalIgnoreCase))) continue;
             if (artist.Length == 0)
             {
                 var parent = Directory.GetParent(p)?.Name ?? "";

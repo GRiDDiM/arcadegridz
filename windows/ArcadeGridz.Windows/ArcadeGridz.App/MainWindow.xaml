@@ -722,6 +722,9 @@
         <Button x:Name="AddScanButton" Click="AddScan_Click" HorizontalAlignment="Stretch" Visibility="Collapsed" ToolTipService.ToolTip="Look through your Music, Downloads, Desktop, Documents, OneDrive and other drives for album folders and add them all (skips ones already added and duplicates)">
          <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE721;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock x:Name="AddScanLabel" Text="SCAN THIS PC FOR ALBUMS"/></StackPanel>
         </Button>
+        <Button x:Name="AddScanUndoButton" Click="AddScanUndo_Click" HorizontalAlignment="Stretch" Visibility="Collapsed" ToolTipService.ToolTip="Take every album the scan added back out of the launcher (your music files stay where they are)">
+         <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE74D;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock x:Name="AddScanUndoLabel" Text="REMOVE SCANNED ALBUMS"/></StackPanel>
+        </Button>
         <TextBlock x:Name="AddPathLabel" Text="GAME FILE" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}"/>
         <Grid ColumnSpacing="10">
          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>

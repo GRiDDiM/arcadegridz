@@ -19,6 +19,7 @@ public sealed class LocalItem
     [JsonPropertyName("emulator")] public string Emulator { get; set; } = "";  // emulator id (ROMs)
     [JsonPropertyName("artist")] public string Artist { get; set; } = "";      // albums
     [JsonPropertyName("added")] public DateTime Added { get; set; } = DateTime.UtcNow;
+    [JsonPropertyName("scanned")] public bool Scanned { get; set; }               // added by SCAN THIS PC FOR ALBUMS
 }
 
 /// <summary>An emulator the player installed themselves. ArcadeGridz ships no emulators or ROMs.</summary>
@@ -90,12 +91,17 @@ public sealed class LocalLibraryService
         Save();
     }
 
-    public void Remove(string id)
+    public void Remove(string id) => RemoveMany([id]);
+
+    /// <summary>Removes items (and their copied covers) with one save. Never touches the player's own files.</summary>
+    public void RemoveMany(IEnumerable<string> ids)
     {
-        var item = Get(id);
-        if (item is null) return;
-        Data.Items.Remove(item);
-        try { if (item.Cover.StartsWith(CoversDir, StringComparison.OrdinalIgnoreCase) && File.Exists(item.Cover)) File.Delete(item.Cover); } catch { }
+        var set = ids.ToHashSet();
+        foreach (var item in Data.Items.Where(i => set.Contains(i.Id)).ToList())
+        {
+            Data.Items.Remove(item);
+            try { if (item.Cover.StartsWith(CoversDir, StringComparison.OrdinalIgnoreCase) && File.Exists(item.Cover)) File.Delete(item.Cover); } catch { }
+        }
         Save();
     }
 

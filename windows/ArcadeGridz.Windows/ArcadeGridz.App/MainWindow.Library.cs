@@ -321,6 +321,9 @@ public sealed partial class MainWindow
         AddArgsBox.Visibility = !album && !rom ? Visibility.Visible : Visibility.Collapsed;
         AddArtistBox.Visibility = album ? Visibility.Visible : Visibility.Collapsed;
         AddScanButton.Visibility = album && add ? Visibility.Visible : Visibility.Collapsed;
+        scanFound = null;
+        AddScanLabel.Text = "SCAN THIS PC FOR ALBUMS";
+        UpdateScanUndo();
         AddDescBox.PlaceholderText = album ? "What the album is" : "A line or two about it";
         UpdateCoverPreview();
     }
@@ -579,6 +582,7 @@ public sealed partial class MainWindow
     async void AddScan_Click(object sender, RoutedEventArgs e)
     {
         if (scanCts is not null) { scanCts.Cancel(); return; } // pressing it again stops the scan
+        if (scanFound is { } pending) { scanFound = null; await AddScannedAsync(pending); return; }
         var cts = scanCts = new CancellationTokenSource();
         AddScanLabel.Text = "SCANNING...  (PRESS AGAIN TO STOP)";
         AddSaveButton.IsEnabled = false;
@@ -587,17 +591,47 @@ public sealed partial class MainWindow
         try
         {
             var albums = library.Data.Items.Where(i => i.Kind == LocalLibraryService.KindAlbum).ToList();
-            var knownSigs = await Task.Run(() => albums.Select(a => AlbumScanner.Signature(a.Path)).OfType<string>().ToList(), cts.Token);
+            var knownSigs = await Task.Run(() => albums.SelectMany(a => AlbumScanner.Signatures(a.Path)).ToList(), cts.Token);
             var progress = new Progress<string>(ShowAddInfo);
             var found = await AlbumScanner.ScanAsync(AlbumScanner.DefaultRoots(), albums.Select(a => a.Path).ToList(), knownSigs, progress, cts.Token);
             if (found.Count == 0) { ShowAddInfo("No new albums found (ones already added and duplicates are skipped)."); return; }
+            // review: show what it found and add only on a second press
+            scanFound = found;
+            var names = string.Join(", ", found.Take(6).Select(c => c.Name)) + (found.Count > 6 ? $" and {found.Count - 6} more" : "");
+            ShowAddInfo($"Found {found.Count} albums: {names}. Press ADD to add them, or CANCEL.");
+            AddScanLabel.Text = $"ADD {found.Count} FOUND ALBUM{(found.Count == 1 ? "" : "S")}";
+            audio?.Play("select");
+            return;
+        }
+        catch (OperationCanceledException) { ShowAddInfo("Scan stopped."); }
+        catch (Exception ex) { StartupLog.Exception("Album scan", ex); ShowAddStatus("The scan hit a problem. Details are in the log."); }
+        finally
+        {
+            scanCts = null;
+            cts.Dispose();
+            if (scanFound is null) AddScanLabel.Text = "SCAN THIS PC FOR ALBUMS";
+            AddSaveButton.IsEnabled = true;
+        }
+    }
+
+    List<AlbumCandidate>? scanFound;
+
+    async Task AddScannedAsync(List<AlbumCandidate> found)
+    {
+        var cts = scanCts = new CancellationTokenSource();
+        AddScanLabel.Text = "ADDING...  (PRESS AGAIN TO STOP)";
+        AddSaveButton.IsEnabled = false;
+        var added = 0;
+        try
+        {
             foreach (var c in found)
             {
                 if (cts.IsCancellationRequested) break;
                 ShowAddInfo($"Adding {added + 1} of {found.Count}: {c.Name}");
+                await Task.Yield();
                 var item = new LocalItem
                 {
-                    Kind = LocalLibraryService.KindAlbum, Path = c.Path, Name = c.Name, Artist = c.Artist, Tags = c.Genre,
+                    Kind = LocalLibraryService.KindAlbum, Path = c.Path, Name = c.Name, Artist = c.Artist, Tags = c.Genre, Scanned = true,
                     Description = "Found on this PC by the album scan."
                 };
                 try
@@ -627,7 +661,7 @@ public sealed partial class MainWindow
             if (added > 0) { library.Save(); RebuildLibrary(null); }
             ShowAddInfo(added > 0 ? $"Scan stopped. Added {added}." : "Scan stopped.");
         }
-        catch (Exception ex) { StartupLog.Exception("Album scan", ex); ShowAddStatus("The scan hit a problem. Details are in the log."); }
+        catch (Exception ex) { StartupLog.Exception("Album scan add", ex); ShowAddStatus("Adding hit a problem. Details are in the log."); }
         finally
         {
             scanCts = null;
@@ -635,6 +669,32 @@ public sealed partial class MainWindow
             AddScanLabel.Text = "SCAN THIS PC FOR ALBUMS";
             AddSaveButton.IsEnabled = true;
         }
+    }
+
+    // ---- undo: take every scanned album back out (the music on the PC is untouched) ----
+    const string ScanMarker = "Found on this PC by the album scan.";
+    static bool IsScanned(LocalItem i) => i.Kind == LocalLibraryService.KindAlbum && (i.Scanned || i.Description == ScanMarker);
+    bool undoArmed;
+
+    void UpdateScanUndo()
+    {
+        var n = library.Data.Items.Count(IsScanned);
+        undoArmed = false;
+        AddScanUndoLabel.Text = $"REMOVE {n} SCANNED ALBUM{(n == 1 ? "" : "S")}";
+        AddScanUndoButton.Visibility = n > 0 && editKind == LocalLibraryService.KindAlbum && editId is null ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    void AddScanUndo_Click(object sender, RoutedEventArgs e)
+    {
+        var scanned = library.Data.Items.Where(IsScanned).ToList();
+        if (scanned.Count == 0) return;
+        if (!undoArmed) { undoArmed = true; AddScanUndoLabel.Text = $"PRESS AGAIN TO REMOVE {scanned.Count}"; audio?.Play("error"); return; }
+        library.RemoveMany(scanned.Select(i => i.Id));
+        StartupLog.Write("library", $"Removed {scanned.Count} scanned albums (files on the PC untouched)");
+        RebuildLibrary(null);
+        UpdateScanUndo();
+        ShowAddInfo($"Removed {scanned.Count} scanned albums. Your music files weren't touched.");
+        audio?.Play("back");
     }
 
     // ---- emulators (the player's own) ----
@@ -725,7 +785,7 @@ public sealed partial class MainWindow
         var list = new List<Control>();
         void Add(Control c) { if (c.Visibility == Visibility.Visible && IsShown(c)) list.Add(c); }
         if (AddKindRow.Visibility == Visibility.Visible) { Add(AddKindAppButton); Add(AddKindRomButton); }
-        Add(AddScanButton);
+        Add(AddScanButton); Add(AddScanUndoButton);
         Add(AddPathBox); Add(AddBrowseButton);
         if (AddEmuRow.Visibility == Visibility.Visible)
         {
@@ -781,6 +841,7 @@ public sealed partial class MainWindow
         if (b == AddKindAppButton) AddKindApp_Click(b, e);
         else if (b == AddKindRomButton) AddKindRom_Click(b, e);
         else if (b == AddScanButton) AddScan_Click(b, e);
+        else if (b == AddScanUndoButton) AddScanUndo_Click(b, e);
         else if (b == AddBrowseButton) AddBrowse_Click(b, e);
         else if (b == AddEmuNewButton) AddEmuNew_Click(b, e);
         else if (b == AddEmuEditButton) AddEmuEdit_Click(b, e);
