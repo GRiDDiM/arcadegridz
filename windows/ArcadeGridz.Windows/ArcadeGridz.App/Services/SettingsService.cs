@@ -23,6 +23,7 @@ public sealed class SettingsService
     public int SettingsVersion {get;set;}
     public bool MusicMuted {get;set;}
     public bool MusicShuffle {get;set;}
+    public bool MusicShuffleAll {get;set;} // with MusicShuffle: shuffle across every album
     public RepeatMode MusicRepeat {get;set;}=RepeatMode.All;
     public int MusicTrack {get;set;}
     public string MusicAlbum {get;set;}="game-over";

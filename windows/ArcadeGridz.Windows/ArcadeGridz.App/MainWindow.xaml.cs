@@ -2557,7 +2557,11 @@ public sealed partial class MainWindow : Window
             ToolTipService.SetToolTip(MusicAlbumButton, "Load music");
         }
         MusicPlayIcon.Glyph = music.IsPlaying ? "" : "";
-        MusicShuffleIcon.Foreground = music.Shuffle ? cyan : dim;
+        var magenta = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
+        MusicShuffleIcon.Foreground = music.ShuffleMode switch { ShuffleMode.All => magenta, ShuffleMode.Album => cyan, _ => dim };
+        MusicShuffleBadge.Visibility = music.ShuffleMode == ShuffleMode.All ? Visibility.Visible : Visibility.Collapsed;
+        MusicShuffleBadge.Foreground = magenta;
+        ToolTipService.SetToolTip(MusicShuffleButton, music.ShuffleMode switch { ShuffleMode.All => "Shuffle: all albums", ShuffleMode.Album => "Shuffle: this album", _ => "Shuffle: off" });
         MusicRepeatIcon.Glyph = music.Repeat == RepeatMode.One ? "" : "";
         MusicRepeatIcon.Foreground = music.Repeat == RepeatMode.Off ? dim : cyan;
         ToolTipService.SetToolTip(MusicRepeatButton, music.Repeat switch { RepeatMode.All => "Repeat: all", RepeatMode.One => "Repeat: this track", _ => "Repeat: off" });

@@ -7,6 +7,7 @@ using Windows.Media.Playback;
 namespace ArcadeGridz.App.Services;
 
 public enum RepeatMode { All, One, Off }
+public enum ShuffleMode { Off, Album, All }
 
 public sealed class AlbumTrack
 {
@@ -145,6 +146,7 @@ public sealed class MusicPlayerService : IDisposable
     public TimeSpan Position => player.PlaybackSession.Position;
     public TimeSpan Duration => player.PlaybackSession.NaturalDuration > TimeSpan.Zero ? player.PlaybackSession.NaturalDuration : TimeSpan.FromSeconds(Current?.Duration ?? 0);
     public bool Shuffle => settings.MusicShuffle;
+    public ShuffleMode ShuffleMode => !settings.MusicShuffle ? ShuffleMode.Off : settings.MusicShuffleAll ? ShuffleMode.All : ShuffleMode.Album;
     public RepeatMode Repeat => settings.MusicRepeat;
     public bool Muted => settings.MusicMuted;
     public double Volume => settings.MusicVolume;
@@ -407,6 +409,7 @@ public sealed class MusicPlayerService : IDisposable
     {
         if (Album is null || order.Count == 0) return;
         var wasPlaying = IsPlaying || auto;
+        if (ShuffleMode == ShuffleMode.All && albums.Count > 1) { _ = ShuffleAllNextAsync(wasPlaying); return; }
         if (pos + 1 >= order.Count)
         {
             // end of the album: stop (repeat off) or start over (repeat all); a fresh shuffle each lap
@@ -429,13 +432,70 @@ public sealed class MusicPlayerService : IDisposable
         // like any player: past 3 s, "previous" restarts the track
         if (player.PlaybackSession.Position > TimeSpan.FromSeconds(3)) { player.PlaybackSession.Position = TimeSpan.Zero; return; }
         var wasPlaying = IsPlaying;
+        if (ShuffleMode == ShuffleMode.All && history.Count > 0) { _ = ShuffleAllBackAsync(wasPlaying); return; }
         pos = pos > 0 ? pos - 1 : order.Count - 1;
         Load(play: wasPlaying);
     }
 
+    // ---- shuffle all: a random song from a random album each time (recent songs avoided); PREVIOUS walks back ----
+    readonly List<(string Album, int Track)> history = [];
+    readonly Queue<string> recent = new();
+    bool hopping;
+
+    async Task ShuffleAllNextAsync(bool play)
+    {
+        if (hopping || Album is null) return;
+        hopping = true;
+        try
+        {
+            history.Add((Album.Id, order[pos]));
+            if (history.Count > 100) history.RemoveAt(0);
+            for (var attempt = 0; attempt < 6; attempt++)
+            {
+                var ai = rng.Next(albums.Count);
+                var a = await GetAlbumAsync(albums[ai].Id);
+                if (a is null || a.Tracks.Count == 0) continue;
+                var t = rng.Next(a.Tracks.Count);
+                var key = a.Id + "#" + t;
+                if (recent.Contains(key) && attempt < 5) continue;
+                recent.Enqueue(key);
+                while (recent.Count > 40) recent.Dequeue();
+                pausedForGame = false;
+                await LoadAlbumAsync(ai, play, t);
+                return;
+            }
+            // nothing else loaded: next song in this album
+            pos = (pos + 1) % order.Count;
+            Load(play);
+        }
+        catch (Exception ex) { StartupLog.Write("music", $"Shuffle all hop failed: {ex.GetType().Name}"); }
+        finally { hopping = false; }
+    }
+
+    async Task ShuffleAllBackAsync(bool play)
+    {
+        if (hopping) return;
+        hopping = true;
+        try
+        {
+            var (id, track) = history[^1];
+            history.RemoveAt(history.Count - 1);
+            var i = albums.FindIndex(a => a.Id == id);
+            if (i >= 0) await LoadAlbumAsync(i, play, track);
+        }
+        finally { hopping = false; }
+    }
+
+    /// <summary>Shuffle off -> shuffle this album -> shuffle all albums -> off.</summary>
     public void ToggleShuffle()
     {
-        settings.MusicShuffle = !settings.MusicShuffle;
+        switch (ShuffleMode)
+        {
+            case ShuffleMode.Off: settings.MusicShuffle = true; settings.MusicShuffleAll = false; break;
+            case ShuffleMode.Album: settings.MusicShuffle = true; settings.MusicShuffleAll = true; break;
+            default: settings.MusicShuffle = false; settings.MusicShuffleAll = false; break;
+        }
+        history.Clear();
         settings.Save();
         if (Album is not null && order.Count > 0) BuildOrder(order[pos]);
         Changed?.Invoke();
