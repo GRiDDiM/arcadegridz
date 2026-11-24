@@ -604,7 +604,8 @@ public sealed partial class MainWindow
             var knownSigs = await Task.Run(() => albums.SelectMany(a => AlbumScanner.Signatures(a.Path)).ToList(), cts.Token);
             var knownKeys = await Task.Run(() => albums.Select(a => AlbumScanner.KnownTrackKeys(a.Path)).Where(k => k.Count > 0).ToList(), cts.Token);
             var progress = new Progress<string>(ShowAddInfo);
-            var found = await AlbumScanner.ScanAsync(AlbumScanner.DefaultRoots(), albums.Select(a => a.Path).ToList(), knownSigs, knownKeys, progress, cts.Token);
+            var found = await AlbumScanner.ScanAsync(AlbumScanner.DefaultRoots(), albums.Select(a => a.Path).ToList(), knownSigs, knownKeys,
+                albums.SelectMany(a => new[] { Path.GetFileName(a.Path.TrimEnd('\\', '/')), a.Name }).ToList(), progress, cts.Token);
             if (found.Count == 0) { ShowAddInfo("No new albums found (ones already added and duplicates are skipped)."); return; }
             // review: a ticked checklist of what it found; only the ticked ones get added
             scanFound = found;

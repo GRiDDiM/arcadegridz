@@ -13,7 +13,7 @@ public sealed record AlbumCandidate(string Path, string Name, string Artist, str
 public static class AlbumScanner
 {
     const long MinSongBytes = 1_000_000;
-    const int MinSongs = 3, MaxDepth = 9;
+    const int MinSongs = 5, MaxDepth = 9; // an album: 5+ MP3s
 
     static readonly HashSet<string> SkipNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -53,6 +53,25 @@ public static class AlbumScanner
     static readonly System.Text.RegularExpressions.Regex StemName = new(
         @"\b(kick|snare|hi ?hats?|hats?|clap|perc|drums?|bass|808|sub|vox|vocals?|lead|pad|synth|keys|piano|guitar|fx|stem|dry|wet|acapella|instrumental|master)\b",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    static List<string> Words(string name) =>
+        System.Text.RegularExpressions.Regex.Matches(name.ToLowerInvariant().Replace("'", "").Replace("\u2019", ""), @"[\p{L}\p{N}]+").Select(m => m.Value).ToList();
+
+    /// <summary>
+    /// Runs of 4 words in a row in a folder name. A run only counts with 2+ distinctive words: words found in lots of the
+    /// folder names (the artist name, "mp3", "techno", "vol") alone don't make two albums the same.
+    /// </summary>
+    static HashSet<string> NameRuns(string folderName, HashSet<string> common)
+    {
+        var w = Words(folderName);
+        var runs = new HashSet<string>();
+        for (var i = 0; i + 4 <= w.Count; i++)
+        {
+            var run = w.GetRange(i, 4);
+            if (run.Count(x => !common.Contains(x)) >= 2) runs.Add(string.Join(" ", run));
+        }
+        return runs;
+    }
 
     public static string NormPath(string p)
     {
@@ -100,11 +119,12 @@ public static class AlbumScanner
 
     static List<FileInfo> Songs(string folder) =>
         new DirectoryInfo(folder).EnumerateFiles()
-            .Where(f => LocalLibraryService.AudioExtensions.Contains(f.Extension.ToLowerInvariant()) && f.Length >= MinSongBytes)
+            .Where(f => f.Extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase) && f.Length >= MinSongBytes) // the scan only looks at MP3 albums
             .ToList();
 
     public static async Task<List<AlbumCandidate>> ScanAsync(IEnumerable<string> roots, IReadOnlyCollection<string> knownPaths,
-        IReadOnlyCollection<string> knownSignatures, IReadOnlyCollection<HashSet<string>> knownKeys, IProgress<string>? progress, CancellationToken ct)
+        IReadOnlyCollection<string> knownSignatures, IReadOnlyCollection<HashSet<string>> knownKeys, IReadOnlyCollection<string> knownNames,
+        IProgress<string>? progress, CancellationToken ct)
     {
         var known = new HashSet<string>(knownPaths.Select(NormPath));
         var sigs = new HashSet<string>(knownSignatures);
@@ -150,10 +170,18 @@ public static class AlbumScanner
 
         // songs reused between folders: biggest first, then skip any folder whose songs are mostly in one already kept
         var kept = new List<HashSet<string>>(knownKeys);
+        // folder names sharing 4+ words in a row are versions of one album ("X (2020)" / "X (2020) MASTERS"): keep the biggest
+        var allNames = found.Select(f => System.IO.Path.GetFileName(f.Path)).Concat(knownNames).ToList();
+        var freq = allNames.SelectMany(n => Words(n).Distinct()).GroupBy(x => x).ToDictionary(g => g.Key, g => g.Count());
+        var common = freq.Where(kv => kv.Value >= Math.Max(3, allNames.Count * 0.02)).Select(kv => kv.Key).ToHashSet();
+        var runsSeen = new HashSet<string>(knownNames.SelectMany(n => NameRuns(n, common)));
         var unique = new List<(string Path, string Sig)>();
         foreach (var f in found.OrderByDescending(f => f.Keys.Count))
         {
             if (MostlyCovered(f.Keys, kept)) continue;
+            var runs = NameRuns(System.IO.Path.GetFileName(f.Path), common);
+            if (runs.Overlaps(runsSeen)) continue;
+            runsSeen.UnionWith(runs);
             kept.Add(f.Keys);
             unique.Add((f.Path, f.Sig));
         }
