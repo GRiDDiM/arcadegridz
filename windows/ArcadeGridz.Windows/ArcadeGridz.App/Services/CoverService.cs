@@ -16,6 +16,16 @@ namespace ArcadeGridz.App.Services;
 public static class CoverService
 {
     static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(8) };
+    public static HttpClient Http => http;
+
+    /// <summary>Steam's tall library art for a known app id.</summary>
+    public static async Task<string?> SteamArtAsync(string appId, CancellationToken ct = default)
+    {
+        foreach (var art in new[] { "library_600x900_2x.jpg", "library_600x900.jpg" })
+            if (await Download($"https://cdn.cloudflare.steamstatic.com/steam/apps/{appId}/{art}", $"steam-{appId}.jpg", ct) is { } p) return p;
+        return null;
+    }
+
     static string TempDir => Path.Combine(Path.GetTempPath(), "ArcadeGridz-covers");
 
     static string Norm(string s) => Regex.Replace(s.ToLowerInvariant().Replace("&", "and"), @"[^a-z0-9]", "");

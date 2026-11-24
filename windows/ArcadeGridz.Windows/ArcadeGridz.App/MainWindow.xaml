@@ -719,6 +719,21 @@
           <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE7F8;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock Text="EMULATOR ROM"/></StackPanel>
          </Button>
         </StackPanel>
+        <!-- ADD GAME: find what's already on the PC (we supply no emulators or ROMs) -->
+        <StackPanel x:Name="AddGameScanRow" Spacing="8" Visibility="Collapsed">
+         <Button x:Name="AddScanGamesButton" Click="AddScanGames_Click" HorizontalAlignment="Stretch" ToolTipService.ToolTip="Add games installed through Steam, Epic, GOG and Battle.net (they launch through their store, so sign-ins work)">
+          <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE7FC;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock x:Name="AddScanGamesLabel" Text="SCAN FOR PC GAMES"/></StackPanel>
+         </Button>
+         <Grid ColumnSpacing="8">
+          <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+          <Button x:Name="AddScanEmusButton" Click="AddScanEmus_Click" HorizontalAlignment="Stretch" ToolTipService.ToolTip="Find emulators you installed (RetroArch, Dolphin, PCSX2, DuckStation...) and set them up">
+           <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE7FC;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock x:Name="AddScanEmusLabel" Text="FIND EMULATORS" TextTrimming="CharacterEllipsis"/></StackPanel>
+          </Button>
+          <Button x:Name="AddScanRomsButton" Grid.Column="1" Click="AddScanRoms_Click" HorizontalAlignment="Stretch">
+           <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE721;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock x:Name="AddScanRomsLabel" Text="SCAN FOR ROMS" TextTrimming="CharacterEllipsis"/></StackPanel>
+          </Button>
+         </Grid>
+        </StackPanel>
         <Button x:Name="AddScanButton" Click="AddScan_Click" HorizontalAlignment="Stretch" Visibility="Collapsed" ToolTipService.ToolTip="Look through your Music, Downloads, Desktop, Documents, OneDrive and other drives for MP3 album folders (5+ songs) and pick which to add (skips ones already added and duplicates)">
          <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE721;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock x:Name="AddScanLabel" Text="SCAN THIS PC FOR ALBUMS"/></StackPanel>
         </Button>

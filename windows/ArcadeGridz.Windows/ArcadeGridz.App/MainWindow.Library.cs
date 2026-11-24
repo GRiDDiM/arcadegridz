@@ -283,6 +283,7 @@ public sealed partial class MainWindow
 
     void ShowEditor()
     {
+        EndReview();
         removeArmed = emuDeleteArmed = false;
         EmuForm.Visibility = Visibility.Collapsed;
         AddStatus.Visibility = Visibility.Collapsed;
@@ -321,10 +322,7 @@ public sealed partial class MainWindow
         AddArgsBox.Visibility = !album && !rom ? Visibility.Visible : Visibility.Collapsed;
         AddArtistBox.Visibility = album ? Visibility.Visible : Visibility.Collapsed;
         AddScanButton.Visibility = album && add ? Visibility.Visible : Visibility.Collapsed;
-        scanFound = null;
-        ScanReview.Visibility = Visibility.Collapsed;
-        ScanList.Items.Clear();
-        AddScanLabel.Text = "SCAN THIS PC FOR ALBUMS";
+        AddGameScanRow.Visibility = !album && add ? Visibility.Visible : Visibility.Collapsed;
         UpdateScanUndo();
         AddDescBox.PlaceholderText = album ? "What the album is" : "A line or two about it";
         UpdateCoverPreview();
@@ -578,147 +576,296 @@ public sealed partial class MainWindow
         SetLauncherFocus(LauncherFocus.GameGrid);
     }
 
-    // ---- scan the PC for albums ----
+    // ---- scans: albums, PC games, emulators, ROMs. Each shows a ticked checklist; only ticked ones get added ----
     CancellationTokenSource? scanCts;
+    Func<List<int>, CancellationToken, Task>? reviewCommit;
+    TextBlock? reviewLabel;
+    string reviewNoun = "";
 
-    async void AddScan_Click(object sender, RoutedEventArgs e)
+    void ResetScanLabels()
     {
-        if (scanCts is not null) { scanCts.Cancel(); return; } // pressing it again stops the scan
-        if (scanFound is { } pending)
-        {
-            var picked = Enumerable.Range(0, pending.Count).Where(i => ScanList.SelectedRanges.Any(r => i >= r.FirstIndex && i <= r.LastIndex)).Select(i => pending[i]).ToList();
-            if (picked.Count == 0) { ShowAddStatus("Nothing ticked."); return; }
-            scanFound = null;
-            ScanReview.Visibility = Visibility.Collapsed;
-            await AddScannedAsync(picked);
-            return;
-        }
-        var cts = scanCts = new CancellationTokenSource();
-        AddScanLabel.Text = "SCANNING...  (PRESS AGAIN TO STOP)";
-        AddSaveButton.IsEnabled = false;
-        ShowAddInfo("Scanning this PC for albums...");
-        var added = 0;
-        try
-        {
-            var albums = library.Data.Items.Where(i => i.Kind == LocalLibraryService.KindAlbum).ToList();
-            var knownSigs = await Task.Run(() => albums.SelectMany(a => AlbumScanner.Signatures(a.Path)).ToList(), cts.Token);
-            var knownKeys = await Task.Run(() => albums.Select(a => AlbumScanner.KnownTrackKeys(a.Path)).Where(k => k.Count > 0).ToList(), cts.Token);
-            var progress = new Progress<string>(ShowAddInfo);
-            var found = await AlbumScanner.ScanAsync(AlbumScanner.DefaultRoots(), albums.Select(a => a.Path).ToList(), knownSigs, knownKeys,
-                albums.SelectMany(a => new[] { Path.GetFileName(a.Path.TrimEnd('\\', '/')), a.Name }).ToList(), progress, cts.Token);
-            if (found.Count == 0) { ShowAddInfo("No new albums found (ones already added and duplicates are skipped)."); return; }
-            // review: a ticked checklist of what it found; only the ticked ones get added
-            scanFound = found;
-            ScanList.Items.Clear();
-            foreach (var c in found) ScanList.Items.Add($"{c.Name}{(c.Artist.Length > 0 ? "  ·  " + c.Artist : "")}    {c.Path}");
-            ScanReview.Visibility = Visibility.Visible;
-            ScanList.SelectAll();
-            UpdateScanAddLabel();
-            ShowAddInfo($"Found {found.Count} albums. Untick anything that isn't one, then press ADD.");
-            audio?.Play("select");
-            return;
-        }
-        catch (OperationCanceledException) { ShowAddInfo("Scan stopped."); }
-        catch (Exception ex) { StartupLog.Exception("Album scan", ex); ShowAddStatus("The scan hit a problem. Details are in the log."); }
-        finally
-        {
-            scanCts = null;
-            cts.Dispose();
-            if (scanFound is null) AddScanLabel.Text = "SCAN THIS PC FOR ALBUMS";
-            AddSaveButton.IsEnabled = true;
-        }
+        AddScanLabel.Text = "SCAN THIS PC FOR ALBUMS";
+        AddScanGamesLabel.Text = "SCAN FOR PC GAMES";
+        AddScanEmusLabel.Text = "FIND EMULATORS";
+        AddScanRomsLabel.Text = "SCAN FOR ROMS";
+        AddScanRomsButton.IsEnabled = library.Data.Emulators.Any(e => e.Extensions.Trim().Length > 0);
+        ToolTipService.SetToolTip(AddScanRomsButton, AddScanRomsButton.IsEnabled
+            ? "Look for ROM files your emulators play (the ones you own; none are supplied)" : "Set up an emulator first (FIND EMULATORS)");
     }
 
-    List<AlbumCandidate>? scanFound;
+    void BeginReview(TextBlock label, string noun, IEnumerable<string> rows, Func<List<int>, CancellationToken, Task> commit)
+    {
+        ScanList.Items.Clear();
+        foreach (var r in rows) ScanList.Items.Add(r);
+        reviewLabel = label;
+        reviewNoun = noun;
+        reviewCommit = commit;
+        ScanReviewTitle.Text = $"FOUND {noun}S — UNTICK ANY YOU DON'T WANT";
+        ScanReview.Visibility = Visibility.Visible;
+        ScanList.SelectAll();
+        UpdateScanAddLabel();
+        audio?.Play("select");
+    }
+
+    void EndReview()
+    {
+        reviewCommit = null;
+        reviewLabel = null;
+        ScanReview.Visibility = Visibility.Collapsed;
+        ScanList.Items.Clear();
+        ResetScanLabels();
+    }
+
+    List<int> Ticked() => Enumerable.Range(0, ScanList.Items.Count).Where(i => ScanList.SelectedRanges.Any(r => i >= r.FirstIndex && i <= r.LastIndex)).ToList();
 
     void UpdateScanAddLabel()
     {
-        if (scanFound is null) return;
+        if (reviewLabel is null || reviewCommit is null) return;
         var n = ScanList.SelectedItems.Count;
-        AddScanLabel.Text = $"ADD {n} TICKED ALBUM{(n == 1 ? "" : "S")}";
+        reviewLabel.Text = $"ADD {n} TICKED {reviewNoun}{(n == 1 ? "" : "S")}";
     }
     void ScanList_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateScanAddLabel();
     void ScanAll_Click(object sender, RoutedEventArgs e) => ScanList.SelectAll();
     void ScanNone_Click(object sender, RoutedEventArgs e) { if (ScanList.Items.Count > 0) ScanList.DeselectRange(new Microsoft.UI.Xaml.Data.ItemIndexRange(0, (uint)ScanList.Items.Count)); }
 
-    async Task AddScannedAsync(List<AlbumCandidate> found)
+    /// <summary>One press scans, the next adds what's ticked; pressing while it works stops it.</summary>
+    async Task ScanButtonAsync(TextBlock label, Func<CancellationToken, Task> scan)
+    {
+        if (scanCts is not null) { scanCts.Cancel(); return; }
+        if (reviewCommit is not null && reviewLabel == label)
+        {
+            var ticked = Ticked();
+            if (ticked.Count == 0) { ShowAddStatus("Nothing ticked."); return; }
+            var commit = reviewCommit;
+            reviewCommit = null;
+            reviewLabel = null;
+            ScanReview.Visibility = Visibility.Collapsed;
+            await RunBusyAsync(label, "ADDING...", ct => commit(ticked, ct));
+            ScanList.Items.Clear();
+            return;
+        }
+        EndReview();
+        await RunBusyAsync(label, "SCANNING...", scan);
+    }
+
+    async Task RunBusyAsync(TextBlock label, string text, Func<CancellationToken, Task> work)
     {
         var cts = scanCts = new CancellationTokenSource();
-        AddScanLabel.Text = "ADDING...  (PRESS AGAIN TO STOP)";
+        label.Text = text + "  (PRESS AGAIN TO STOP)";
         AddSaveButton.IsEnabled = false;
-        var added = 0;
-        try
-        {
-            foreach (var c in found)
-            {
-                if (cts.IsCancellationRequested) break;
-                ShowAddInfo($"Adding {added + 1} of {found.Count}: {c.Name}");
-                await Task.Yield();
-                var item = new LocalItem
-                {
-                    Kind = LocalLibraryService.KindAlbum, Path = c.Path, Name = c.Name, Artist = c.Artist, Tags = c.Genre, Scanned = true,
-                    Description = "Found on this PC by the album scan."
-                };
-                try
-                {
-                    var cover = LocalLibraryService.FindFolderCover(c.Path);
-                    if (cover is null && found.Count <= 60)
-                        cover = (await CoverService.FindAlbumAsync(c.Name, c.Artist, strict: true, cts.Token))?.Path;
-                    cover ??= CoverService.Generate(c.Name, "MY LIBRARY · ALBUM", null);
-                    item.Cover = LocalLibraryService.ImportCover(cover, item.Id);
-                }
-                catch (OperationCanceledException) { }
-                catch (Exception ex) { StartupLog.Write("library", $"Scan cover for '{c.Name}' skipped: {ex.Message}"); }
-                library.Data.Items.Add(item);
-                added++;
-            }
-            library.Save();
-            StartupLog.Write("library", $"Album scan added {added} of {found.Count} found");
-            audio?.Play("launch");
-            AddLayer.Visibility = Visibility.Collapsed;
-            if (!albumMode) ToggleAlbumsView(fromPad: false);
-            RebuildLibrary(null);
-            SetLauncherFocus(LauncherFocus.GameGrid);
-            ShowMessage("ALBUM SCAN", $"Added {added} album{(added == 1 ? "" : "s")} from this PC. Albums already in your library and duplicate copies were skipped.");
-        }
-        catch (OperationCanceledException)
-        {
-            if (added > 0) { library.Save(); RebuildLibrary(null); }
-            ShowAddInfo(added > 0 ? $"Scan stopped. Added {added}." : "Scan stopped.");
-        }
-        catch (Exception ex) { StartupLog.Exception("Album scan add", ex); ShowAddStatus("Adding hit a problem. Details are in the log."); }
+        try { await work(cts.Token); }
+        catch (OperationCanceledException) { ShowAddInfo("Stopped."); }
+        catch (Exception ex) { StartupLog.Exception("Library scan", ex); ShowAddStatus("That hit a problem. Details are in the log."); }
         finally
         {
             scanCts = null;
             cts.Dispose();
-            AddScanLabel.Text = "SCAN THIS PC FOR ALBUMS";
             AddSaveButton.IsEnabled = true;
+            if (reviewCommit is null) ResetScanLabels(); else UpdateScanAddLabel();
         }
     }
 
-    // ---- undo: take every scanned album back out (the music on the PC is untouched) ----
+    // ---- albums ----
+    async void AddScan_Click(object sender, RoutedEventArgs e) => await ScanButtonAsync(AddScanLabel, async ct =>
+    {
+        ShowAddInfo("Scanning this PC for albums...");
+        var albums = library.Data.Items.Where(i => i.Kind == LocalLibraryService.KindAlbum).ToList();
+        var knownSigs = await Task.Run(() => albums.SelectMany(a => AlbumScanner.Signatures(a.Path)).ToList(), ct);
+        var knownKeys = await Task.Run(() => albums.Select(a => AlbumScanner.KnownTrackKeys(a.Path)).Where(k => k.Count > 0).ToList(), ct);
+        var found = await AlbumScanner.ScanAsync(AlbumScanner.DefaultRoots(), albums.Select(a => a.Path).ToList(), knownSigs, knownKeys,
+            albums.SelectMany(a => new[] { Path.GetFileName(a.Path.TrimEnd('\\', '/')), a.Name }).ToList(), new Progress<string>(ShowAddInfo), ct);
+        if (found.Count == 0) { ShowAddInfo("No new albums found (ones already added and duplicates are skipped)."); return; }
+        ShowAddInfo($"Found {found.Count} albums. Untick anything that isn't one, then press ADD.");
+        BeginReview(AddScanLabel, "ALBUM", found.Select(c => $"{c.Name}{(c.Artist.Length > 0 ? "  ·  " + c.Artist : "")}    {c.Path}"),
+            (picked, ct2) => AddAlbumsAsync(picked.Select(i => found[i]).ToList(), ct2));
+    });
+
+    async Task AddAlbumsAsync(List<AlbumCandidate> found, CancellationToken ct)
+    {
+        var added = 0;
+        foreach (var c in found)
+        {
+            if (ct.IsCancellationRequested) break;
+            ShowAddInfo($"Adding {added + 1} of {found.Count}: {c.Name}");
+            await Task.Yield();
+            var item = new LocalItem
+            {
+                Kind = LocalLibraryService.KindAlbum, Path = c.Path, Name = c.Name, Artist = c.Artist, Tags = c.Genre, Scanned = true,
+                Description = ScanMarker
+            };
+            try
+            {
+                var cover = LocalLibraryService.FindFolderCover(c.Path);
+                if (cover is null && found.Count <= 60) cover = (await CoverService.FindAlbumAsync(c.Name, c.Artist, strict: true, ct))?.Path;
+                cover ??= CoverService.Generate(c.Name, "MY LIBRARY · ALBUM", null);
+                item.Cover = LocalLibraryService.ImportCover(cover, item.Id);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { StartupLog.Write("library", $"Scan cover for '{c.Name}' skipped: {ex.Message}"); }
+            library.Data.Items.Add(item);
+            added++;
+        }
+        FinishBulkAdd(added, album: true, $"Added {added} album{(added == 1 ? "" : "s")} from this PC. Albums already in your library and duplicate copies were skipped.");
+    }
+
+    void FinishBulkAdd(int added, bool album, string message)
+    {
+        library.Save();
+        StartupLog.Write("library", $"Scan added {added} {(album ? "albums" : "games")}");
+        if (added == 0) { ShowAddInfo("Nothing added."); return; }
+        audio?.Play("launch");
+        AddLayer.Visibility = Visibility.Collapsed;
+        if (album) { if (!albumMode) ToggleAlbumsView(fromPad: false); RebuildLibrary(null); }
+        else
+        {
+            if (albumMode) ToggleAlbumsView(fromPad: false);
+            RebuildLibrary(null);
+            var ci = categories.IndexOf(LocalLibraryService.Category);
+            if (ci >= 0) { categoryIndex = ci; ApplyFilter(); }
+        }
+        SetLauncherFocus(LauncherFocus.GameGrid);
+        ShowMessage(album ? "ALBUM SCAN" : "ADDED TO MY LIBRARY", message);
+    }
+
+    // ---- PC games from Steam / Epic / GOG / Battle.net ----
+    async void AddScanGames_Click(object sender, RoutedEventArgs e) => await ScanButtonAsync(AddScanGamesLabel, async ct =>
+    {
+        ShowAddInfo("Checking Steam, Epic, GOG and Battle.net...");
+        var mine = library.Data.Items.Where(i => i.Kind == LocalLibraryService.KindApp).ToList();
+        var found = await Task.Run(() => GameScanner.FindPcGames(mine.Select(i => i.Name).ToList(), mine.Select(i => (i.Path + " " + i.Args).Trim()).ToList()), ct);
+        if (found.Count == 0) { ShowAddInfo("No new games found (Steam, Epic, GOG and Battle.net installs; ones already added are skipped)."); return; }
+        ShowAddInfo($"Found {found.Count} installed games. Untick any you don't want, then press ADD.");
+        BeginReview(AddScanGamesLabel, "GAME", found.Select(g => $"[{g.Store}]  {g.Name}"), (picked, ct2) => AddPcGamesAsync(picked.Select(i => found[i]).ToList(), ct2));
+    });
+
+    async Task AddPcGamesAsync(List<PcGameCandidate> found, CancellationToken ct)
+    {
+        var added = 0;
+        foreach (var g in found)
+        {
+            if (ct.IsCancellationRequested) break;
+            ShowAddInfo($"Adding {added + 1} of {found.Count}: {g.Name}");
+            var item = new LocalItem
+            {
+                Kind = LocalLibraryService.KindApp, Path = g.Path, Args = g.Args, Name = g.Name, Tags = g.Store, Scanned = true,
+                Description = $"Installed through {g.Store switch { "BATTLE.NET" => "Battle.net", "STEAM" => "Steam", "EPIC" => "Epic", _ => g.Store }}. Launches through it, so its sign-in works as usual."
+            };
+            try
+            {
+                string? cover = null;
+                if (g.SteamAppId.Length > 0) cover = await CoverService.SteamArtAsync(g.SteamAppId, ct);
+                if (cover is null) { try { cover = (await CoverService.FindGameAsync(g.Name, strict: true, ct))?.Path; } catch (HttpRequestException) { } }
+                if (cover is null)
+                {
+                    var exe = GameScanner.MainExe(g.IconFrom) ?? (g.Path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? g.Path : null);
+                    using var icon = exe is null ? null : await CoverService.IconAsync(exe);
+                    cover = CoverService.Generate(g.Name, "MY LIBRARY · " + g.Store, icon);
+                }
+                item.Cover = LocalLibraryService.ImportCover(cover, item.Id);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { StartupLog.Write("library", $"Cover for '{g.Name}' skipped: {ex.Message}"); }
+            library.Data.Items.Add(item);
+            added++;
+        }
+        FinishBulkAdd(added, album: false, $"Added {added} game{(added == 1 ? "" : "s")} to MY LIBRARY. They launch through their own store (Steam, Epic, GOG, Battle.net), so sign-ins work as usual.");
+    }
+
+    // ---- emulators the player installed ----
+    async void AddScanEmus_Click(object sender, RoutedEventArgs e) => await ScanButtonAsync(AddScanEmusLabel, async ct =>
+    {
+        ShowAddInfo("Looking for emulators on this PC...");
+        var found = (await GameScanner.FindEmulatorsAsync([], new Progress<string>(ShowAddInfo), ct))
+            .Where(c => !library.Data.Emulators.Any(x => AlbumScanner.NormPath(x.Exe) == AlbumScanner.NormPath(c.Exe) && x.Args == c.Args)).ToList();
+        if (found.Count == 0) { ShowAddInfo("No new emulators found. You can still set one up by hand: pick ROM, then + NEW."); return; }
+        ShowAddInfo($"Found {found.Count} emulator setups. Untick any you don't want, then press ADD.");
+        BeginReview(AddScanEmusLabel, "EMULATOR", found.Select(c => $"{c.Name}    {c.Exe}"), (picked, _) =>
+        {
+            foreach (var c in picked.Select(i => found[i]))
+                library.Data.Emulators.Add(new EmulatorConfig { Name = c.Name, Exe = c.Exe, Args = c.Args, Extensions = c.Extensions });
+            library.Save();
+            FillEmulators(null);
+            StartupLog.Write("library", $"Emulator scan added {picked.Count}");
+            ShowAddInfo($"Set up {picked.Count} emulator{(picked.Count == 1 ? "" : "s")}. Now SCAN FOR ROMS to add your games.");
+            audio?.Play("launch");
+            return Task.CompletedTask;
+        });
+    });
+
+    // ---- ROMs for those emulators ----
+    async void AddScanRoms_Click(object sender, RoutedEventArgs e) => await ScanButtonAsync(AddScanRomsLabel, async ct =>
+    {
+        var emus = library.Data.Emulators.Where(x => x.Extensions.Trim().Length > 0 && File.Exists(x.Exe)).ToList();
+        if (emus.Count == 0) { ShowAddStatus("Set up an emulator first (FIND EMULATORS), with the file types it plays."); return; }
+        ShowAddInfo("Looking for ROMs your emulators play...");
+        var known = library.Data.Items.Where(i => i.Kind == LocalLibraryService.KindRom).Select(i => i.Path).ToList();
+        var found = await GameScanner.FindRomsAsync(emus, known, new Progress<string>(ShowAddInfo), ct);
+        if (found.Count == 0) { ShowAddInfo("No new ROMs found for your emulators' file types."); return; }
+        ShowAddInfo($"Found {found.Count} ROMs. Untick any you don't want, then press ADD.");
+        BeginReview(AddScanRomsLabel, "ROM", found.Select(r => $"{r.Name}  ·  {r.EmulatorName}    {r.Path}"), (picked, ct2) => AddRomsAsync(picked.Select(i => found[i]).ToList(), ct2));
+    });
+
+    async Task AddRomsAsync(List<RomCandidate> found, CancellationToken ct)
+    {
+        var added = 0;
+        var icons = new Dictionary<string, System.Drawing.Bitmap?>();
+        try
+        {
+            foreach (var r in found)
+            {
+                if (ct.IsCancellationRequested) break;
+                ShowAddInfo($"Adding {added + 1} of {found.Count}: {r.Name}");
+                var item = new LocalItem
+                {
+                    Kind = LocalLibraryService.KindRom, Path = r.Path, Emulator = r.EmulatorId, Name = r.Name, Tags = r.EmulatorName, Scanned = true,
+                    Description = "Found on this PC by the ROM scan."
+                };
+                try
+                {
+                    var cover = found.Count <= 400 ? await GameScanner.RomBoxArtAsync(r, CoverService.Http, ct) : null;
+                    if (cover is null)
+                    {
+                        if (!icons.TryGetValue(r.EmulatorId, out var icon))
+                            icons[r.EmulatorId] = icon = library.Emulator(r.EmulatorId) is { } emu ? await CoverService.IconAsync(emu.Exe) : null;
+                        cover = CoverService.Generate(r.Name, "MY LIBRARY · ROM", icon);
+                    }
+                    item.Cover = LocalLibraryService.ImportCover(cover, item.Id);
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex) { StartupLog.Write("library", $"ROM cover for '{r.Name}' skipped: {ex.Message}"); }
+                library.Data.Items.Add(item);
+                added++;
+            }
+        }
+        finally { foreach (var b in icons.Values) b?.Dispose(); }
+        FinishBulkAdd(added, album: false, $"Added {added} ROM{(added == 1 ? "" : "s")} to MY LIBRARY. They play through the emulators you set up.");
+    }
+
+    // ---- undo: take every scanned item of this kind back out (files on the PC are untouched) ----
     const string ScanMarker = "Found on this PC by the album scan.";
     static bool IsScanned(LocalItem i) => i.Kind == LocalLibraryService.KindAlbum && (i.Scanned || i.Description == ScanMarker);
+    bool IsScannedHere(LocalItem i) => editKind == LocalLibraryService.KindAlbum ? IsScanned(i) : i.Kind != LocalLibraryService.KindAlbum && i.Scanned;
     bool undoArmed;
 
     void UpdateScanUndo()
     {
-        var n = library.Data.Items.Count(IsScanned);
+        var n = library.Data.Items.Count(IsScannedHere);
+        var noun = editKind == LocalLibraryService.KindAlbum ? "ALBUM" : "GAME";
         undoArmed = false;
-        AddScanUndoLabel.Text = $"REMOVE {n} SCANNED ALBUM{(n == 1 ? "" : "S")}";
-        AddScanUndoButton.Visibility = n > 0 && editKind == LocalLibraryService.KindAlbum && editId is null ? Visibility.Visible : Visibility.Collapsed;
+        AddScanUndoLabel.Text = $"REMOVE {n} SCANNED {noun}{(n == 1 ? "" : "S")}";
+        AddScanUndoButton.Visibility = n > 0 && editId is null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void AddScanUndo_Click(object sender, RoutedEventArgs e)
     {
-        var scanned = library.Data.Items.Where(IsScanned).ToList();
+        var scanned = library.Data.Items.Where(IsScannedHere).ToList();
         if (scanned.Count == 0) return;
         if (!undoArmed) { undoArmed = true; AddScanUndoLabel.Text = $"PRESS AGAIN TO REMOVE {scanned.Count}"; audio?.Play("error"); return; }
         library.RemoveMany(scanned.Select(i => i.Id));
-        StartupLog.Write("library", $"Removed {scanned.Count} scanned albums (files on the PC untouched)");
+        StartupLog.Write("library", $"Removed {scanned.Count} scanned items (files on the PC untouched)");
         RebuildLibrary(null);
         UpdateScanUndo();
-        ShowAddInfo($"Removed {scanned.Count} scanned albums. Your music files weren't touched.");
+        ShowAddInfo($"Removed {scanned.Count} scanned items. Nothing on your PC was touched.");
         audio?.Play("back");
     }
 
@@ -811,6 +958,7 @@ public sealed partial class MainWindow
         void Add(Control c) { if (c.Visibility == Visibility.Visible && IsShown(c)) list.Add(c); }
         if (AddKindRow.Visibility == Visibility.Visible) { Add(AddKindAppButton); Add(AddKindRomButton); }
         Add(AddScanButton);
+        if (AddGameScanRow.Visibility == Visibility.Visible) { Add(AddScanGamesButton); Add(AddScanEmusButton); Add(AddScanRomsButton); }
         if (ScanReview.Visibility == Visibility.Visible) { Add(ScanAllButton); Add(ScanNoneButton); Add(ScanList); }
         Add(AddScanUndoButton);
         Add(AddPathBox); Add(AddBrowseButton);
@@ -884,6 +1032,9 @@ public sealed partial class MainWindow
         if (b == AddKindAppButton) AddKindApp_Click(b, e);
         else if (b == AddKindRomButton) AddKindRom_Click(b, e);
         else if (b == AddScanButton) AddScan_Click(b, e);
+        else if (b == AddScanGamesButton) AddScanGames_Click(b, e);
+        else if (b == AddScanEmusButton) AddScanEmus_Click(b, e);
+        else if (b == AddScanRomsButton) AddScanRoms_Click(b, e);
         else if (b == AddScanUndoButton) AddScanUndo_Click(b, e);
         else if (b == ScanAllButton) ScanAll_Click(b, e);
         else if (b == ScanNoneButton) ScanNone_Click(b, e);
