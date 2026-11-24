@@ -101,7 +101,7 @@ public static class AlbumScanner
                     }
                     foreach (var sub in dir.EnumerateDirectories())
                     {
-                        if (SkipNames.Contains(sub.Name) || sub.Name.StartsWith('.') || (sub.Attributes & (FileAttributes.ReparsePoint | FileAttributes.System)) != 0) continue;
+                        if (SkipNames.Contains(sub.Name) || sub.Name.StartsWith('.') || (sub.Attributes & (System.IO.FileAttributes.ReparsePoint | System.IO.FileAttributes.System)) != 0) continue;
                         Walk(sub, depth + 1);
                     }
                 }
