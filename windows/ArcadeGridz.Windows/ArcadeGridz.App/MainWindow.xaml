@@ -725,6 +725,19 @@
         <Button x:Name="AddScanUndoButton" Click="AddScanUndo_Click" HorizontalAlignment="Stretch" Visibility="Collapsed" ToolTipService.ToolTip="Take every album the scan added back out of the launcher (your music files stay where they are)">
          <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE74D;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock x:Name="AddScanUndoLabel" Text="REMOVE SCANNED ALBUMS"/></StackPanel>
         </Button>
+        <!-- album scan: what it found, ticked; untick anything that isn't an album -->
+        <StackPanel x:Name="ScanReview" Visibility="Collapsed" Spacing="8">
+         <TextBlock x:Name="ScanReviewTitle" Text="FOUND ALBUMS — UNTICK ANYTHING THAT ISN'T ONE" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}"/>
+         <StackPanel Orientation="Horizontal" Spacing="10">
+          <Button x:Name="ScanAllButton" Click="ScanAll_Click"><TextBlock Text="TICK ALL"/></Button>
+          <Button x:Name="ScanNoneButton" Click="ScanNone_Click"><TextBlock Text="UNTICK ALL"/></Button>
+         </StackPanel>
+         <ListView x:Name="ScanList" SelectionMode="Multiple" IsMultiSelectCheckBoxEnabled="True" MaxHeight="380" SelectionChanged="ScanList_SelectionChanged">
+          <ListView.ItemTemplate>
+           <DataTemplate x:DataType="x:String"><TextBlock Text="{x:Bind}" FontFamily="{StaticResource AgBody}" FontSize="13" TextTrimming="CharacterEllipsis"/></DataTemplate>
+          </ListView.ItemTemplate>
+         </ListView>
+        </StackPanel>
         <TextBlock x:Name="AddPathLabel" Text="GAME FILE" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}"/>
         <Grid ColumnSpacing="10">
          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>

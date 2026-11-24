@@ -322,6 +322,8 @@ public sealed partial class MainWindow
         AddArtistBox.Visibility = album ? Visibility.Visible : Visibility.Collapsed;
         AddScanButton.Visibility = album && add ? Visibility.Visible : Visibility.Collapsed;
         scanFound = null;
+        ScanReview.Visibility = Visibility.Collapsed;
+        ScanList.Items.Clear();
         AddScanLabel.Text = "SCAN THIS PC FOR ALBUMS";
         UpdateScanUndo();
         AddDescBox.PlaceholderText = album ? "What the album is" : "A line or two about it";
@@ -582,7 +584,15 @@ public sealed partial class MainWindow
     async void AddScan_Click(object sender, RoutedEventArgs e)
     {
         if (scanCts is not null) { scanCts.Cancel(); return; } // pressing it again stops the scan
-        if (scanFound is { } pending) { scanFound = null; await AddScannedAsync(pending); return; }
+        if (scanFound is { } pending)
+        {
+            var picked = Enumerable.Range(0, pending.Count).Where(i => ScanList.SelectedRanges.Any(r => i >= r.FirstIndex && i <= r.LastIndex)).Select(i => pending[i]).ToList();
+            if (picked.Count == 0) { ShowAddStatus("Nothing ticked."); return; }
+            scanFound = null;
+            ScanReview.Visibility = Visibility.Collapsed;
+            await AddScannedAsync(picked);
+            return;
+        }
         var cts = scanCts = new CancellationTokenSource();
         AddScanLabel.Text = "SCANNING...  (PRESS AGAIN TO STOP)";
         AddSaveButton.IsEnabled = false;
@@ -592,14 +602,18 @@ public sealed partial class MainWindow
         {
             var albums = library.Data.Items.Where(i => i.Kind == LocalLibraryService.KindAlbum).ToList();
             var knownSigs = await Task.Run(() => albums.SelectMany(a => AlbumScanner.Signatures(a.Path)).ToList(), cts.Token);
+            var knownKeys = await Task.Run(() => albums.Select(a => AlbumScanner.KnownTrackKeys(a.Path)).Where(k => k.Count > 0).ToList(), cts.Token);
             var progress = new Progress<string>(ShowAddInfo);
-            var found = await AlbumScanner.ScanAsync(AlbumScanner.DefaultRoots(), albums.Select(a => a.Path).ToList(), knownSigs, progress, cts.Token);
+            var found = await AlbumScanner.ScanAsync(AlbumScanner.DefaultRoots(), albums.Select(a => a.Path).ToList(), knownSigs, knownKeys, progress, cts.Token);
             if (found.Count == 0) { ShowAddInfo("No new albums found (ones already added and duplicates are skipped)."); return; }
-            // review: show what it found and add only on a second press
+            // review: a ticked checklist of what it found; only the ticked ones get added
             scanFound = found;
-            var names = string.Join(", ", found.Take(6).Select(c => c.Name)) + (found.Count > 6 ? $" and {found.Count - 6} more" : "");
-            ShowAddInfo($"Found {found.Count} albums: {names}. Press ADD to add them, or CANCEL.");
-            AddScanLabel.Text = $"ADD {found.Count} FOUND ALBUM{(found.Count == 1 ? "" : "S")}";
+            ScanList.Items.Clear();
+            foreach (var c in found) ScanList.Items.Add($"{c.Name}{(c.Artist.Length > 0 ? "  ·  " + c.Artist : "")}    {c.Path}");
+            ScanReview.Visibility = Visibility.Visible;
+            ScanList.SelectAll();
+            UpdateScanAddLabel();
+            ShowAddInfo($"Found {found.Count} albums. Untick anything that isn't one, then press ADD.");
             audio?.Play("select");
             return;
         }
@@ -615,6 +629,16 @@ public sealed partial class MainWindow
     }
 
     List<AlbumCandidate>? scanFound;
+
+    void UpdateScanAddLabel()
+    {
+        if (scanFound is null) return;
+        var n = ScanList.SelectedItems.Count;
+        AddScanLabel.Text = $"ADD {n} TICKED ALBUM{(n == 1 ? "" : "S")}";
+    }
+    void ScanList_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateScanAddLabel();
+    void ScanAll_Click(object sender, RoutedEventArgs e) => ScanList.SelectAll();
+    void ScanNone_Click(object sender, RoutedEventArgs e) { if (ScanList.Items.Count > 0) ScanList.DeselectRange(new Microsoft.UI.Xaml.Data.ItemIndexRange(0, (uint)ScanList.Items.Count)); }
 
     async Task AddScannedAsync(List<AlbumCandidate> found)
     {
@@ -785,7 +809,9 @@ public sealed partial class MainWindow
         var list = new List<Control>();
         void Add(Control c) { if (c.Visibility == Visibility.Visible && IsShown(c)) list.Add(c); }
         if (AddKindRow.Visibility == Visibility.Visible) { Add(AddKindAppButton); Add(AddKindRomButton); }
-        Add(AddScanButton); Add(AddScanUndoButton);
+        Add(AddScanButton);
+        if (ScanReview.Visibility == Visibility.Visible) { Add(ScanAllButton); Add(ScanNoneButton); Add(ScanList); }
+        Add(AddScanUndoButton);
         Add(AddPathBox); Add(AddBrowseButton);
         if (AddEmuRow.Visibility == Visibility.Visible)
         {
@@ -810,6 +836,22 @@ public sealed partial class MainWindow
         var controls = EditorControls();
         if (controls.Count == 0) return;
         var focused = FocusManager.GetFocusedElement(AddLayer.XamlRoot) as Control;
+        if (focused is ListViewItem row && ScanList.IndexFromContainer(row) is var at && at >= 0)
+        {
+            var li = controls.IndexOf(ScanList);
+            void Row(int n) { ScanList.ScrollIntoView(ScanList.Items[n]); DispatcherQueue.TryEnqueue(() => (ScanList.ContainerFromIndex(n) as ListViewItem)?.Focus(FocusState.Keyboard)); }
+            switch (action)
+            {
+                case PadAction.A:
+                    var range = new Microsoft.UI.Xaml.Data.ItemIndexRange(at, 1);
+                    if (row.IsSelected) ScanList.DeselectRange(range); else ScanList.SelectRange(range);
+                    return;
+                case PadAction.Up: if (at > 0) Row(at - 1); else PadFocus(controls[Math.Max(0, li - 1)]); return;
+                case PadAction.Down: if (at < ScanList.Items.Count - 1) Row(at + 1); else PadFocus(controls[Math.Min(controls.Count - 1, li + 1)]); return;
+                case PadAction.LB: Row(Math.Max(0, at - 10)); return;
+                case PadAction.RB: Row(Math.Min(ScanList.Items.Count - 1, at + 10)); return;
+            }
+        }
         var i = focused is null ? -1 : controls.IndexOf(focused);
         switch (action)
         {
@@ -842,6 +884,8 @@ public sealed partial class MainWindow
         else if (b == AddKindRomButton) AddKindRom_Click(b, e);
         else if (b == AddScanButton) AddScan_Click(b, e);
         else if (b == AddScanUndoButton) AddScanUndo_Click(b, e);
+        else if (b == ScanAllButton) ScanAll_Click(b, e);
+        else if (b == ScanNoneButton) ScanNone_Click(b, e);
         else if (b == AddBrowseButton) AddBrowse_Click(b, e);
         else if (b == AddEmuNewButton) AddEmuNew_Click(b, e);
         else if (b == AddEmuEditButton) AddEmuEdit_Click(b, e);

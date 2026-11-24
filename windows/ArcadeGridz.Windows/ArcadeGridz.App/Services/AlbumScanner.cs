@@ -24,17 +24,31 @@ public static class AlbumScanner
 
     // music-making and spoken-word folders: not albums (the whole folder tree is skipped)
     static readonly System.Text.RegularExpressions.Regex SkipFolder = new(
-        @"\b(samples?|sample ?packs?|loops?|stems?|projects?|presets?|renders?|bounces?|bounced|backups?|drum ?kits?|kits|one ?shots?|construction ?kits?|multitracks?|podcasts?|audiobooks?|sfx|sound ?effects|voice ?memos?|voicemails?|recordings|temp|tmp|cache|old)\b",
+        // sample libraries, game assets, DAW/app folders, backups (the whole folder tree is skipped). Plain "projects" is NOT
+        // skipped: artists keep real albums under folders like "LASERBEAST projects".
+        @"\b(samples?|sample ?(banks?|packs?|libraries|library)|loops?|stems?|presets?|renders?|bounces?|bounced|backups?|drum ?kits?|kits|one ?shots?|" +
+        @"construction ?kits?|multitracks?|sfx|sound ?effects|sound ?banks?|soundfonts?|cymatics|splice|podcasts?|audiobooks?|voice ?memos?|voicemails?|" +
+        @"games?|game ?engines?|html5game|assets|bgm|serato|imported|(fl|ableton|daw|logic|reason|bitwig|cubase) ?(studio)? ?(mobile|projects?)|" +
+        @"my (samples|recordings)|recordings|writing|screenplays?|temp|tmp|cache)\b|^(sounds?|audio|wav|zips?|archive|old)$",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     /// <summary>Song-name fingerprint: the same album as MP3s and as WAVs, or in differently named folders, matches.</summary>
     static string? TrackSignature(List<FileInfo> songs)
     {
-        if (songs.Count < MinSongs) return null;
-        var keys = songs.Select(f => NormName(System.Text.RegularExpressions.Regex.Replace(System.IO.Path.GetFileNameWithoutExtension(f.Name), @"^[\d\s._\-]+", "")))
-            .Where(k => k.Length > 0).Distinct().OrderBy(k => k).ToList();
+        var keys = TrackKeys(songs).OrderBy(k => k).ToList();
         return keys.Count < MinSongs ? null : "t|" + string.Join("|", keys);
     }
+
+    static HashSet<string> TrackKeys(List<FileInfo> songs) =>
+        songs.Select(f => NormName(System.Text.RegularExpressions.Regex.Replace(System.IO.Path.GetFileNameWithoutExtension(f.Name), @"^[\d\s._\-]+", "")))
+            .Where(k => k.Length > 0).ToHashSet();
+
+    /// <summary>Song names of a folder already in the library (for the overlap check).</summary>
+    public static HashSet<string> KnownTrackKeys(string folder) { try { return TrackKeys(Songs(folder)); } catch { return []; } }
+
+    /// <summary>Most of its songs (80%+) are already in a bigger album: a reused-songs project, a partial copy, an EP inside the LP.</summary>
+    static bool MostlyCovered(HashSet<string> keys, IEnumerable<HashSet<string>> others) =>
+        keys.Count > 0 && others.Any(o => o.Count >= keys.Count && keys.Count(o.Contains) >= Math.Ceiling(keys.Count * 0.8));
 
     static readonly System.Text.RegularExpressions.Regex StemName = new(
         @"\b(kick|snare|hi ?hats?|hats?|clap|perc|drums?|bass|808|sub|vox|vocals?|lead|pad|synth|keys|piano|guitar|fx|stem|dry|wet|acapella|instrumental|master)\b",
@@ -90,11 +104,11 @@ public static class AlbumScanner
             .ToList();
 
     public static async Task<List<AlbumCandidate>> ScanAsync(IEnumerable<string> roots, IReadOnlyCollection<string> knownPaths,
-        IReadOnlyCollection<string> knownSignatures, IProgress<string>? progress, CancellationToken ct)
+        IReadOnlyCollection<string> knownSignatures, IReadOnlyCollection<HashSet<string>> knownKeys, IProgress<string>? progress, CancellationToken ct)
     {
         var known = new HashSet<string>(knownPaths.Select(NormPath));
         var sigs = new HashSet<string>(knownSignatures);
-        var found = new List<(string Path, string Sig)>();
+        var found = new List<(string Path, string Sig, HashSet<string> Keys)>();
         var scanned = 0;
         await Task.Run(() =>
         {
@@ -118,7 +132,7 @@ public static class AlbumScanner
                             {
                                 sigs.Add(sig);
                                 if (tracks is not null) sigs.Add(tracks);
-                                found.Add((dir.FullName, sig));
+                                found.Add((dir.FullName, sig, TrackKeys(songs)));
                             }
                         }
                     }
@@ -134,10 +148,19 @@ public static class AlbumScanner
             foreach (var r in roots) Walk(new DirectoryInfo(r), 0);
         }, ct);
 
+        // songs reused between folders: biggest first, then skip any folder whose songs are mostly in one already kept
+        var kept = new List<HashSet<string>>(knownKeys);
+        var unique = new List<(string Path, string Sig)>();
+        foreach (var f in found.OrderByDescending(f => f.Keys.Count))
+        {
+            if (MostlyCovered(f.Keys, kept)) continue;
+            kept.Add(f.Keys);
+            unique.Add((f.Path, f.Sig));
+        }
         // names from the songs' own tags (album / artist / genre), else the folder names
         var result = new List<AlbumCandidate>();
         var namesSeen = new HashSet<string>();
-        foreach (var (p, sig) in found)
+        foreach (var (p, sig) in unique.OrderBy(u => u.Path, StringComparer.OrdinalIgnoreCase))
         {
             ct.ThrowIfCancellationRequested();
             string name = System.IO.Path.GetFileName(p), artist = "", genre = "";
