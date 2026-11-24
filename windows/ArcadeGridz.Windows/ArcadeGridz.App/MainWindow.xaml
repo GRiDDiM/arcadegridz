@@ -719,6 +719,9 @@
           <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE7F8;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock Text="EMULATOR ROM"/></StackPanel>
          </Button>
         </StackPanel>
+        <Button x:Name="AddScanButton" Click="AddScan_Click" HorizontalAlignment="Stretch" Visibility="Collapsed" ToolTipService.ToolTip="Look through your Music, Downloads, Desktop, Documents, OneDrive and other drives for album folders and add them all (skips ones already added and duplicates)">
+         <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE721;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock x:Name="AddScanLabel" Text="SCAN THIS PC FOR ALBUMS"/></StackPanel>
+        </Button>
         <TextBlock x:Name="AddPathLabel" Text="GAME FILE" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgDim}"/>
         <Grid ColumnSpacing="10">
          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>

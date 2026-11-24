@@ -300,6 +300,7 @@ public sealed partial class MainWindow
 
     void CloseEditor()
     {
+        scanCts?.Cancel();
         AddLayer.Visibility = Visibility.Collapsed;
         SetLauncherFocus(launcherFocus == LauncherFocus.Trailer && TrailerButton.Visibility == Visibility.Visible ? LauncherFocus.Trailer : LauncherFocus.Play);
     }
@@ -319,6 +320,7 @@ public sealed partial class MainWindow
         AddEmuRow.Visibility = rom ? Visibility.Visible : Visibility.Collapsed;
         AddArgsBox.Visibility = !album && !rom ? Visibility.Visible : Visibility.Collapsed;
         AddArtistBox.Visibility = album ? Visibility.Visible : Visibility.Collapsed;
+        AddScanButton.Visibility = album && add ? Visibility.Visible : Visibility.Collapsed;
         AddDescBox.PlaceholderText = album ? "What the album is" : "A line or two about it";
         UpdateCoverPreview();
     }
@@ -571,6 +573,70 @@ public sealed partial class MainWindow
         SetLauncherFocus(LauncherFocus.GameGrid);
     }
 
+    // ---- scan the PC for albums ----
+    CancellationTokenSource? scanCts;
+
+    async void AddScan_Click(object sender, RoutedEventArgs e)
+    {
+        if (scanCts is not null) { scanCts.Cancel(); return; } // pressing it again stops the scan
+        var cts = scanCts = new CancellationTokenSource();
+        AddScanLabel.Text = "SCANNING...  (PRESS AGAIN TO STOP)";
+        AddSaveButton.IsEnabled = false;
+        ShowAddInfo("Scanning this PC for albums...");
+        var added = 0;
+        try
+        {
+            var albums = library.Data.Items.Where(i => i.Kind == LocalLibraryService.KindAlbum).ToList();
+            var knownSigs = await Task.Run(() => albums.Select(a => AlbumScanner.Signature(a.Path)).OfType<string>().ToList(), cts.Token);
+            var progress = new Progress<string>(ShowAddInfo);
+            var found = await AlbumScanner.ScanAsync(AlbumScanner.DefaultRoots(), albums.Select(a => a.Path).ToList(), knownSigs, progress, cts.Token);
+            if (found.Count == 0) { ShowAddInfo("No new albums found (ones already added and duplicates are skipped)."); return; }
+            foreach (var c in found)
+            {
+                if (cts.IsCancellationRequested) break;
+                ShowAddInfo($"Adding {added + 1} of {found.Count}: {c.Name}");
+                var item = new LocalItem
+                {
+                    Kind = LocalLibraryService.KindAlbum, Path = c.Path, Name = c.Name, Artist = c.Artist, Tags = c.Genre,
+                    Description = "Found on this PC by the album scan."
+                };
+                try
+                {
+                    var cover = LocalLibraryService.FindFolderCover(c.Path);
+                    if (cover is null && found.Count <= 60)
+                        cover = (await CoverService.FindAlbumAsync(c.Name, c.Artist, strict: true, cts.Token))?.Path;
+                    cover ??= CoverService.Generate(c.Name, "MY LIBRARY · ALBUM", null);
+                    item.Cover = LocalLibraryService.ImportCover(cover, item.Id);
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex) { StartupLog.Write("library", $"Scan cover for '{c.Name}' skipped: {ex.Message}"); }
+                library.Data.Items.Add(item);
+                added++;
+            }
+            library.Save();
+            StartupLog.Write("library", $"Album scan added {added} of {found.Count} found");
+            audio?.Play("launch");
+            AddLayer.Visibility = Visibility.Collapsed;
+            if (!albumMode) ToggleAlbumsView(fromPad: false);
+            RebuildLibrary(null);
+            SetLauncherFocus(LauncherFocus.GameGrid);
+            ShowMessage("ALBUM SCAN", $"Added {added} album{(added == 1 ? "" : "s")} from this PC. Albums already in your library and duplicate copies were skipped.");
+        }
+        catch (OperationCanceledException)
+        {
+            if (added > 0) { library.Save(); RebuildLibrary(null); }
+            ShowAddInfo(added > 0 ? $"Scan stopped. Added {added}." : "Scan stopped.");
+        }
+        catch (Exception ex) { StartupLog.Exception("Album scan", ex); ShowAddStatus("The scan hit a problem. Details are in the log."); }
+        finally
+        {
+            scanCts = null;
+            cts.Dispose();
+            AddScanLabel.Text = "SCAN THIS PC FOR ALBUMS";
+            AddSaveButton.IsEnabled = true;
+        }
+    }
+
     // ---- emulators (the player's own) ----
     void AddEmuNew_Click(object sender, RoutedEventArgs e)
     {
@@ -659,6 +725,7 @@ public sealed partial class MainWindow
         var list = new List<Control>();
         void Add(Control c) { if (c.Visibility == Visibility.Visible && IsShown(c)) list.Add(c); }
         if (AddKindRow.Visibility == Visibility.Visible) { Add(AddKindAppButton); Add(AddKindRomButton); }
+        Add(AddScanButton);
         Add(AddPathBox); Add(AddBrowseButton);
         if (AddEmuRow.Visibility == Visibility.Visible)
         {
@@ -713,6 +780,7 @@ public sealed partial class MainWindow
         var e = new RoutedEventArgs();
         if (b == AddKindAppButton) AddKindApp_Click(b, e);
         else if (b == AddKindRomButton) AddKindRom_Click(b, e);
+        else if (b == AddScanButton) AddScan_Click(b, e);
         else if (b == AddBrowseButton) AddBrowse_Click(b, e);
         else if (b == AddEmuNewButton) AddEmuNew_Click(b, e);
         else if (b == AddEmuEditButton) AddEmuEdit_Click(b, e);
