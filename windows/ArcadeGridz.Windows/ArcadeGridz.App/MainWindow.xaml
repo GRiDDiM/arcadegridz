@@ -586,6 +586,16 @@
            <ComboBox x:Name="ScreenCombo" Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" SelectionChanged="ScreenCombo_SelectionChanged"/>
           </Grid>
          </Border>
+         <Border x:Name="DisplayModeRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,12">
+          <Grid ColumnSpacing="16">
+           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="380"/></Grid.ColumnDefinitions>
+           <StackPanel VerticalAlignment="Center" Spacing="4"><TextBlock Text="DISPLAY MODE" Style="{StaticResource PixelLabel}" FontSize="10" Foreground="{StaticResource AgText}"/><TextBlock Text="Windowed lets you size and drag it like any app. Alt+Enter switches between them." Foreground="{StaticResource AgMuted}" FontFamily="{StaticResource AgBody}" FontSize="13" TextWrapping="Wrap"/></StackPanel>
+           <ComboBox x:Name="DisplayModeCombo" Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" SelectionChanged="DisplayModeCombo_SelectionChanged">
+            <x:String>FULLSCREEN</x:String>
+            <x:String>WINDOWED</x:String>
+           </ComboBox>
+          </Grid>
+         </Border>
          <Border x:Name="QualityRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,12">
           <Grid ColumnSpacing="16">
            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="380"/></Grid.ColumnDefinitions>

@@ -120,6 +120,11 @@ public sealed partial class MainWindow : Window
             Root.SizeChanged += (_, _) => FitLauncher();
             native.Exited += (_, _) => DispatcherQueue.TryEnqueue(ReturnToLauncher);
             Activated += OnActivated;
+            // if anything (Windows, a drag, a dropped presenter switch) leaves the arcade in the wrong mode, fix it right away
+            MainAppWindow().Changed += (_, args) =>
+            {
+                if (args.DidPresenterChange) DispatcherQueue.TryEnqueue(() => EnforcePresenter("presenter changed"));
+            };
             Root.Loaded += OnLoaded;
         }
         catch (Exception ex)
@@ -181,14 +186,9 @@ public sealed partial class MainWindow : Window
                 appWindow.SetIcon(iconPath);
                 StartupLog.Write("window", "ArcadeGridz icon applied");
             }
-            // the sign-in card floats as its own small window; the arcade itself is always true fullscreen (no title bar)
+            // the sign-in card floats as its own small window; everything else is fullscreen (or windowed if chosen)
             if (!floating && !dragging && !presenterApplied) ApplyMainPresenter();
-            else if (e.WindowActivationState != WindowActivationState.Deactivated && !applyingPresenter && !floating && !dragging
-                     && appWindow.Presenter.Kind != AppWindowPresenterKind.FullScreen)
-            {
-                StartupLog.Write("window", "Fullscreen setting but presenter is " + appWindow.Presenter.Kind + "; restoring fullscreen");
-                ApplyMainPresenter();
-            }
+            else if (e.WindowActivationState != WindowActivationState.Deactivated) EnforcePresenter("activated");
         }
         catch (Exception ex)
         {
@@ -222,6 +222,7 @@ public sealed partial class MainWindow : Window
             MusicToggle.IsOn = !settings.MusicOff;
             SfxToggle.IsOn = !settings.SfxOff;
             GpuToggle.IsOn = !settings.DisableGpu;
+            DisplayModeCombo.SelectedIndex = settings.Windowed ? 1 : 0;
             QualityCombo.SelectedIndex = 0; // HD isn't available yet
             initializingSettings = false;
             ApplyScanlines();
@@ -910,6 +911,7 @@ public sealed partial class MainWindow : Window
                     break;
                 case 1:
                     controls.Add(ScreenCombo);
+                    controls.Add(DisplayModeCombo);
                     controls.Add(QualityCombo);
                     controls.Add(ScanlinesToggle);
                     controls.Add(CityLifeToggle);
@@ -1035,6 +1037,7 @@ public sealed partial class MainWindow : Window
         MusicRow.BorderBrush = control == MusicToggle ? cyan : line;
         SfxRow.BorderBrush = control == SfxToggle ? cyan : line;
         ScreenRow.BorderBrush = control == ScreenCombo ? cyan : line;
+        DisplayModeRow.BorderBrush = control == DisplayModeCombo ? cyan : line;
         QualityRow.BorderBrush = control == QualityCombo ? cyan : line;
         ScanlinesRow.BorderBrush = control == ScanlinesToggle ? cyan : line;
         CityLifeRow.BorderBrush = control == CityLifeToggle ? cyan : line;
@@ -1086,6 +1089,10 @@ public sealed partial class MainWindow : Window
 
     void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // Alt+Enter = toggle fullscreen / windowed (anywhere except the floating sign-in card)
+        if (!floating && e.Key == VirtualKey.Enter &&
+            Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down))
+        { ToggleWindowed(); e.Handled = true; return; }
         if (consoleMode) { e.Handled = true; return; }
         if (AddLayer.Visibility == Visibility.Visible && !gameOpen)
         {
@@ -1492,6 +1499,7 @@ public sealed partial class MainWindow : Window
         revealDone = true;
         try { if (cloaked) SetCloaked(false); Activate(); }
         catch (Exception ex) { StartupLog.Exception("Reveal", ex); }
+        DispatcherQueue.TryEnqueue(() => EnforcePresenter("reveal"));
         if (SplashWindow.IsOpen) SplashWindow.FadeOutAndClose(DispatcherQueue);
     }
 
@@ -1643,7 +1651,7 @@ public sealed partial class MainWindow : Window
 
     void WelcomeClose_Click(object sender, RoutedEventArgs e) => CloseWelcome();
 
-    // ======== screens: fullscreen on the chosen monitor or TV ========
+    // ======== screens: fullscreen / windowed on the chosen monitor or TV ========
     bool presenterApplied, applyingPresenter, dragging, initializingDisplay;
     List<ScreenInfo> screens = [];
 
@@ -1663,7 +1671,7 @@ public sealed partial class MainWindow : Window
         return screens.FirstOrDefault(s => s.Contains(cx, cy)) ?? screens.FirstOrDefault(s => s.Primary) ?? screens.FirstOrDefault();
     }
 
-    /// <summary>Puts the arcade fullscreen on a screen; null = the saved screen, else where it is now.</summary>
+    /// <summary>Puts the arcade fullscreen (or in a normal window) on a screen; null = the saved screen, else where it is now.</summary>
     void ApplyMainPresenter(ScreenInfo? target = null)
     {
         presenterApplied = true; // set first: switching presenters can re-raise Activated
@@ -1676,13 +1684,22 @@ public sealed partial class MainWindow : Window
             {
                 // move while overlapped: a fullscreen window can't be moved, it takes the screen it is on
                 if (appWindow.Presenter.Kind != AppWindowPresenterKind.Overlapped) appWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
-                int w = Math.Min(target.WorkWidth, 1280);
-                int h = Math.Min(target.WorkHeight, 720);
+                int w = settings.Windowed ? target.WorkWidth * 3 / 4 : Math.Min(target.WorkWidth, 1280);
+                int h = settings.Windowed ? target.WorkHeight * 3 / 4 : Math.Min(target.WorkHeight, 720);
                 appWindow.MoveAndResize(new Windows.Graphics.RectInt32(target.WorkX + (target.WorkWidth - w) / 2, target.WorkY + (target.WorkHeight - h) / 2, w, h));
             }
-            appWindow.SetPresenter(AppWindowPresenterKind.FullScreen); // always true fullscreen: no windowed mode, no title bar
+            if (settings.Windowed)
+            {
+                var presenter = OverlappedPresenter.Create();
+                presenter.IsResizable = true;
+                presenter.IsMaximizable = true;
+                presenter.IsMinimizable = true;
+                presenter.SetBorderAndTitleBar(true, true);
+                appWindow.SetPresenter(presenter);
+            }
+            else appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
             if (target is not null && settings.Display != target.Key) { settings.Display = target.Key; settings.Save(); }
-            StartupLog.Write("window", $"Fullscreen on {target?.Label ?? "current screen"}");
+            StartupLog.Write("window", $"{(settings.Windowed ? "Windowed" : "Fullscreen")} on {target?.Label ?? "current screen"}");
             // refresh the dropdown after this event finishes (never swap its items inside its own SelectionChanged)
             if (OptionsDisplayTab.Visibility == Visibility.Visible) DispatcherQueue.TryEnqueue(RefreshScreens);
         }
@@ -1711,6 +1728,7 @@ public sealed partial class MainWindow : Window
             ScreenHint.Text = screens.Count > 1
                 ? $"{screens.Count} screens found. Pick the monitor or TV to play on."
                 : "Only one screen found. Plug in or turn on your TV, then reopen this tab.";
+            DisplayModeCombo.SelectedIndex = settings.Windowed ? 1 : 0;
         }
         finally { initializingDisplay = false; }
     }
@@ -1721,6 +1739,42 @@ public sealed partial class MainWindow : Window
         var target = screens[ScreenCombo.SelectedIndex];
         ApplyMainPresenter(target);
         DisplayStatus.Text = $"NOW PLAYING ON {target.Name}.";
+    }
+
+    /// <summary>Makes the window match the saved mode: FULLSCREEN = true fullscreen, no title bar; WINDOWED = normal window.</summary>
+    void EnforcePresenter(string why)
+    {
+        if (applyingPresenter || floating || dragging || !presenterApplied) return;
+        try
+        {
+            var kind = MainAppWindow().Presenter.Kind;
+            bool ok = settings.Windowed ? kind == AppWindowPresenterKind.Overlapped : kind == AppWindowPresenterKind.FullScreen;
+            if (ok) return;
+            StartupLog.Write("window", $"{(settings.Windowed ? "Windowed" : "Fullscreen")} setting but presenter is {kind} ({why}); fixing");
+            ApplyMainPresenter(ScreenOfWindow(MainAppWindow()));
+        }
+        catch (Exception ex) { StartupLog.Exception("Enforce presenter", ex); }
+    }
+
+    void ToggleWindowed()
+    {
+        settings.Windowed = !settings.Windowed;
+        settings.Save();
+        StartupLog.Write("window", "Alt+Enter toggle -> " + (settings.Windowed ? "Windowed" : "Fullscreen"));
+        ApplyMainPresenter(ScreenOfWindow(MainAppWindow()));
+        initializingDisplay = true;
+        try { DisplayModeCombo.SelectedIndex = settings.Windowed ? 1 : 0; } finally { initializingDisplay = false; }
+    }
+
+    void DisplayModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (initializingDisplay || initializingSettings || DisplayModeCombo.SelectedIndex < 0) return;
+        var windowed = DisplayModeCombo.SelectedIndex == 1;
+        // always re-apply, even if the saved setting already matches: the window may not (that's how a title bar
+        // could get stuck while OPTIONS still said FULLSCREEN)
+        if (windowed != settings.Windowed) { settings.Windowed = windowed; settings.Save(); }
+        ApplyMainPresenter(ScreenOfWindow(MainAppWindow()));
+        DisplayStatus.Text = windowed ? "WINDOWED. DRAG THE TITLE BAR ANYWHERE, OR MAXIMIZE IT." : "FULLSCREEN.";
     }
 
     void QualityCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1833,7 +1887,7 @@ public sealed partial class MainWindow : Window
             BeginNativeMove(false);
             return;
         }
-        if (gameOpen || startupOpen) return;
+        if (gameOpen || startupOpen || settings.Windowed) return;
         dragStart = point.Position;
     }
 

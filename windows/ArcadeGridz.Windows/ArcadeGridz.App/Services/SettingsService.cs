@@ -7,6 +7,8 @@ public sealed class SettingsService
     public bool ShowTesting {get;set;}
     /// <summary>Outer bounds ("x,y,w,h") of the display the app last ran fullscreen on, so it reopens there (e.g. the TV).</summary>
     public string? Display {get;set;}
+    /// <summary>Windowed (normal resizable window) instead of fullscreen.</summary>
+    public bool Windowed {get;set;}
     /// <summary>Launcher theme id (OPTIONS &gt; THEMES): neon, acid, brutal, happy, beige, console.</summary>
     public string Theme {get;set;}="neon";
     public bool HideScanlines {get;set;}
