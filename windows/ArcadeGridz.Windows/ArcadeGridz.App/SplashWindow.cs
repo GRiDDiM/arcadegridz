@@ -9,7 +9,7 @@ namespace ArcadeGridz.App;
 /// <summary>
 /// Startup splash like Photoshop / Steam: the ArcadeGridz logo floats in the middle of whatever is already on
 /// screen (no window frame, no fullscreen loading screen). It is a per-pixel-alpha layered Win32 window, so the
-/// desktop shows through everywhere except the logo and its soft neon glow. It is click-through, never takes
+/// desktop shows through everywhere except the logo and its soft neon glow. It can be dragged anywhere, never takes
 /// focus and has no taskbar button. The fullscreen launcher loads cloaked behind it and the splash fades out
 /// over it once the launcher is ready.
 /// All calls must come from the UI thread (Program.Main runs WinUI on the same thread).
@@ -22,6 +22,37 @@ static class SplashWindow
     static Microsoft.UI.Dispatching.DispatcherQueueTimer? fadeTimer;
 
     public static bool IsOpen => hwnd != IntPtr.Zero;
+
+    /// <summary>Raised (on the UI thread) when the player drops the dragged splash; screen point of its center.</summary>
+    public static event Action<int, int>? Dropped;
+    static bool moving;
+    delegate IntPtr WndProcFn(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
+    static readonly WndProcFn wndProc = WndProc; // kept alive for the life of the process
+
+    // the logo can be dragged anywhere (it's all "title bar"); the launcher then opens where it was dropped
+    static IntPtr WndProc(IntPtr h, int msg, IntPtr wParam, IntPtr lParam)
+    {
+        switch (msg)
+        {
+            case WM_NCHITTEST: return (IntPtr)HTCAPTION;
+            case WM_ENTERSIZEMOVE: moving = true; break;
+            case WM_MOVE:
+                if (GetWindowRect(h, out var r)) { left = r.left; top = r.top; }
+                break;
+            case WM_EXITSIZEMOVE:
+                moving = false;
+                if (GetWindowRect(h, out var d))
+                {
+                    left = d.left; top = d.top;
+                    int cx = d.left + width / 2, cy = d.top + height / 2;
+                    Program.LaunchPoint = (cx, cy);
+                    StartupLog.Write("splash", $"Splash dragged to {cx},{cy}");
+                    try { Dropped?.Invoke(cx, cy); } catch (Exception ex) { StartupLog.Exception("Splash drop", ex); }
+                }
+                break;
+        }
+        return DefWindowProc(h, msg, wParam, lParam);
+    }
 
     public static void Show()
     {
@@ -106,13 +137,13 @@ static class SplashWindow
             var wc = new WNDCLASSEX
             {
                 cbSize = Marshal.SizeOf<WNDCLASSEX>(),
-                lpfnWndProc = GetProcAddress(GetModuleHandle("user32.dll"), "DefWindowProcW"),
+                lpfnWndProc = Marshal.GetFunctionPointerForDelegate(wndProc),
                 hInstance = instance,
                 lpszClassName = ClassName
             };
             RegisterClassEx(ref wc); // harmless if already registered
             hwnd = CreateWindowEx(
-                WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
+                WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, // not click-through: it can be dragged
                 ClassName, "ArcadeGridz", WS_POPUP, left, top, width, height,
                 IntPtr.Zero, IntPtr.Zero, instance, IntPtr.Zero);
             if (hwnd == IntPtr.Zero) throw new InvalidOperationException($"CreateWindowEx failed ({Marshal.GetLastWin32Error()})");
@@ -136,6 +167,7 @@ static class SplashWindow
         fadeTimer.Interval = TimeSpan.FromMilliseconds(16);
         fadeTimer.Tick += (t, _) =>
         {
+            if (moving) { Present(255); return; } // hold it while it's being dragged
             alpha -= 18;
             if (alpha <= 0) { t.Stop(); fadeTimer = null; Close(); return; }
             Present((byte)alpha);
@@ -189,6 +221,9 @@ static class SplashWindow
         WS_EX_TRANSPARENT = 0x00000020, WS_EX_NOACTIVATE = 0x08000000;
     const int SW_SHOWNOACTIVATE = 4, ULW_ALPHA = 2, MONITOR_DEFAULTTOPRIMARY = 1;
     const byte AC_SRC_ALPHA = 1;
+    const int WM_NCHITTEST = 0x0084, HTCAPTION = 2, WM_MOVE = 0x0003, WM_ENTERSIZEMOVE = 0x0231, WM_EXITSIZEMOVE = 0x0232;
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr DefWindowProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
 
     [StructLayout(LayoutKind.Sequential)] struct POINT { public int x, y; }
     [StructLayout(LayoutKind.Sequential)] struct SIZE { public int cx, cy; }

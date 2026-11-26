@@ -83,6 +83,7 @@ public sealed partial class MainWindow : Window
         {
             InitializeComponent();
             StartupLog.Write("window", "InitializeComponent completed (WebView2 deferred)");
+            SplashWindow.Dropped += (x, y) => DispatcherQueue.TryEnqueue(() => OnSplashDropped(x, y));
             audio = new AudioService(DispatcherQueue, !settings.SfxOff);
             music = new MusicPlayerService(DispatcherQueue, settings);
             music.Changed += UpdateMusicUi;
@@ -1587,6 +1588,28 @@ public sealed partial class MainWindow : Window
     // ---- floating sign-in window: a small borderless window centered on the desktop (no fullscreen launcher) ----
     bool floating;
 
+    // the splash logo was dragged: put the floating card (or the arcade) where it was dropped
+    void OnSplashDropped(int x, int y)
+    {
+        try
+        {
+            screens = DisplayService.Detect();
+            var screen = screens.FirstOrDefault(s => s.Contains(x, y));
+            if (screen is null) return;
+            if (settings.Display != screen.Key) { settings.Display = screen.Key; settings.Save(); }
+            var appWindow = MainAppWindow();
+            if (floating)
+            {
+                int w = appWindow.Size.Width, h = appWindow.Size.Height;
+                int cx = Math.Clamp(x - w / 2, screen.WorkX, Math.Max(screen.WorkX, screen.WorkX + screen.WorkWidth - w));
+                int cy = Math.Clamp(y - h / 2, screen.WorkY, Math.Max(screen.WorkY, screen.WorkY + screen.WorkHeight - h));
+                appWindow.Move(new Windows.Graphics.PointInt32(cx, cy));
+            }
+            else if (presenterApplied && ScreenOfWindow(appWindow)?.Key != screen.Key) ApplyMainPresenter(screen);
+        }
+        catch (Exception ex) { StartupLog.Exception("Splash dropped", ex); }
+    }
+
     void FloatWelcome()
     {
         WelcomeGlow.Visibility = Visibility.Collapsed;
@@ -1902,12 +1925,12 @@ public sealed partial class MainWindow : Window
     void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (consoleMode || e.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse) return;
-        if (DailyLayer.Visibility == Visibility.Visible || updatePromptOpen) return; // popups: clicks never drag the window
+        if (DailyLayer.Visibility == Visibility.Visible || updatePromptOpen && !floating) return; // fullscreen popups: clicks never drag the window
         var point = e.GetCurrentPoint(Root);
         if (!point.Properties.IsLeftButtonPressed) return;
-        if (floating && !signInPanelOpen || floating && point.Position.Y < 90)
+        if (floating)
         {
-            // the floating sign-in card (or the email card's header): drag it like a title bar
+            // floating sign-in / email / update card: drag it from any empty spot (buttons and text boxes keep their clicks)
             e.Handled = true;
             BeginNativeMove(false);
             return;
