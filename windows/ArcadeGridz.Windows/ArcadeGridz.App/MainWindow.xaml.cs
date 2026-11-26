@@ -121,6 +121,12 @@ public sealed partial class MainWindow : Window
             Root.SizeChanged += (_, _) => FitLauncher();
             native.Exited += (_, _) => DispatcherQueue.TryEnqueue(ReturnToLauncher);
             Activated += OnActivated;
+            // Alt+Enter as a window-wide accelerator: works even when nothing in the arcade has keyboard focus
+            // (the PreviewKeyDown handler only saw it when focus was inside Root)
+            var altEnter = new KeyboardAccelerator { Key = VirtualKey.Enter, Modifiers = Windows.System.VirtualKeyModifiers.Menu };
+            altEnter.Invoked += (_, a) => { a.Handled = true; if (!floating) ToggleWindowed(); };
+            WindowShell.KeyboardAccelerators.Add(altEnter);
+            WindowShell.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
             // if anything (Windows, a drag, a dropped presenter switch) leaves the arcade in the wrong mode, fix it right away
             MainAppWindow().Changed += (_, args) =>
             {
@@ -1889,8 +1895,12 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) { StartupLog.Exception("Enforce presenter", ex); }
     }
 
+    DateTime lastToggle;
     void ToggleWindowed()
     {
+        // the accelerator and the key handler can both see one Alt+Enter: toggle once
+        if ((DateTime.UtcNow - lastToggle).TotalMilliseconds < 500) return;
+        lastToggle = DateTime.UtcNow;
         settings.Windowed = !settings.Windowed;
         settings.Save();
         StartupLog.Write("window", "Alt+Enter toggle -> " + (settings.Windowed ? "Windowed" : "Fullscreen"));
