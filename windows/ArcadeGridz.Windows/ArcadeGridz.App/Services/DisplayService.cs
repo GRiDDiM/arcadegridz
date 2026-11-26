@@ -16,7 +16,7 @@ public sealed record ScreenInfo(int Number, string Device, string Name, bool Pri
 /// <summary>Finds every connected display with its real name (e.g. "LG TV SSCR2") via QueryDisplayConfig.</summary>
 public static class DisplayService
 {
-    public static List<ScreenInfo> Detect()
+    public static List<ScreenInfo> Detect(bool log = true)
     {
         var names = FriendlyNames();
         var raw = new List<(string device, RECT bounds, RECT work, bool primary)>();
@@ -43,7 +43,7 @@ public static class DisplayService
                 b.Left, b.Top, b.Right - b.Left, b.Bottom - b.Top,
                 w.Left, w.Top, w.Right - w.Left, w.Bottom - w.Top));
         }
-        StartupLog.Write("display", "Detected: " + string.Join(" | ", screens.Select(s => s.Label)));
+        if (log) StartupLog.Write("display", "Detected: " + string.Join(" | ", screens.Select(s => s.Label)));
         return screens;
     }
 

@@ -132,6 +132,8 @@ public sealed partial class MainWindow : Window
             {
                 if (args.DidPresenterChange) DispatcherQueue.TryEnqueue(() => EnforcePresenter("presenter changed"));
                 if (args.DidPresenterChange || args.DidSizeChange) DispatcherQueue.TryEnqueue(UpdateWindowBar);
+                // fullscreen: if Windows rescales or nudges the window (DPI change, display change), put it back over the whole screen
+                if ((args.DidSizeChange || args.DidPositionChange) && !settings.Windowed) DispatcherQueue.TryEnqueue(SnapFullscreen);
             };
             Root.Loaded += OnLoaded;
         }
@@ -1756,7 +1758,15 @@ public sealed partial class MainWindow : Window
                 presenter.SetBorderAndTitleBar(true, false); // resizable frame, no system title bar: the app draws its own (WindowBar)
                 appWindow.SetPresenter(presenter);
             }
-            else appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+            else
+            {
+                // Borderless window covering the whole screen ("borderless fullscreen", like most PC games) instead of the
+                // system FullScreen presenter: Windows' DPI rescale (laptop 150% vs TV 300%) kept shrinking that one to ~75%
+                // of the screen. This one is snapped back to the full screen whenever anything resizes or moves it.
+                if (appWindow.Presenter is not OverlappedPresenter { HasTitleBar: false, HasBorder: false }) appWindow.SetPresenter(BorderlessPresenter());
+                var full = target ?? ScreenOfWindow(appWindow);
+                if (full is not null) appWindow.MoveAndResize(new Windows.Graphics.RectInt32(full.X, full.Y, full.Width, full.Height));
+            }
             UpdateWindowBar();
             if (target is not null) VerifyPlacementSoon(target);
             if (target is not null && settings.Display != target.Key) { settings.Display = target.Key; settings.Save(); }
@@ -1836,6 +1846,25 @@ public sealed partial class MainWindow : Window
         placementTimer.Start();
     }
 
+    /// <summary>Fullscreen mode: make the window cover exactly the screen it's on.</summary>
+    void SnapFullscreen()
+    {
+        if (settings.Windowed || floating || dragging || applyingPresenter || !presenterApplied) return;
+        try
+        {
+            var aw = MainAppWindow();
+            if (aw.Presenter is not OverlappedPresenter { HasTitleBar: false, HasBorder: false } op || op.State == OverlappedPresenterState.Minimized) return;
+            int cx = aw.Position.X + aw.Size.Width / 2, cy = aw.Position.Y + aw.Size.Height / 2;
+            var list = DisplayService.Detect(log: false);
+            var s = list.FirstOrDefault(x => x.Contains(cx, cy)) ?? list.FirstOrDefault(x => x.Primary) ?? list.FirstOrDefault();
+            if (s is null) return;
+            if (aw.Position.X == s.X && aw.Position.Y == s.Y && aw.Size.Width == s.Width && aw.Size.Height == s.Height) return;
+            StartupLog.Write("window", $"Fullscreen snap: {aw.Position.X},{aw.Position.Y} {aw.Size.Width}x{aw.Size.Height} -> {s.Label}");
+            aw.MoveAndResize(new Windows.Graphics.RectInt32(s.X, s.Y, s.Width, s.Height));
+        }
+        catch (Exception ex) { StartupLog.Exception("Fullscreen snap", ex); }
+    }
+
     static OverlappedPresenter BorderlessPresenter()
     {
         var p = OverlappedPresenter.Create();
@@ -1890,7 +1919,11 @@ public sealed partial class MainWindow : Window
         try
         {
             var kind = MainAppWindow().Presenter.Kind;
-            bool ok = settings.Windowed ? kind == AppWindowPresenterKind.Overlapped : kind == AppWindowPresenterKind.FullScreen;
+            var aw0 = MainAppWindow();
+            bool ok = settings.Windowed
+                ? kind == AppWindowPresenterKind.Overlapped && aw0.Presenter is OverlappedPresenter { HasTitleBar: false, HasBorder: true }
+                : aw0.Presenter is OverlappedPresenter { HasTitleBar: false, HasBorder: false };
+            if (ok && !settings.Windowed) { SnapFullscreen(); return; }
             if (ok) return;
             StartupLog.Write("window", $"{(settings.Windowed ? "Windowed" : "Fullscreen")} setting but presenter is {kind} ({why}); fixing");
             ApplyMainPresenter(ScreenOfWindow(MainAppWindow()));
