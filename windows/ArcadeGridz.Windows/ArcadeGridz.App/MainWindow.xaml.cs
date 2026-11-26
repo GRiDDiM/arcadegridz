@@ -1731,6 +1731,11 @@ public sealed partial class MainWindow : Window
                 if (appWindow.Presenter.Kind != AppWindowPresenterKind.Overlapped || !settings.Windowed) appWindow.SetPresenter(BorderlessPresenter());
                 int w = settings.Windowed ? target.WorkWidth * 3 / 4 : Math.Min(target.WorkWidth, 1280);
                 int h = settings.Windowed ? target.WorkHeight * 3 / 4 : Math.Min(target.WorkHeight, 720);
+                // Screens with different scaling (laptop 150% vs TV 300%): crossing onto the other screen makes Windows rescale
+                // the window, which threw off the size we set and left the arcade spread over two screens. So hop a small
+                // window onto the target screen first (that's where the rescale happens), then size it for real.
+                if (!target.Contains(appWindow.Position.X + appWindow.Size.Width / 2, appWindow.Position.Y + appWindow.Size.Height / 2))
+                    appWindow.MoveAndResize(new Windows.Graphics.RectInt32(target.WorkX + target.WorkWidth / 2 - 160, target.WorkY + target.WorkHeight / 2 - 90, 320, 180));
                 appWindow.MoveAndResize(new Windows.Graphics.RectInt32(target.WorkX + (target.WorkWidth - w) / 2, target.WorkY + (target.WorkHeight - h) / 2, w, h));
             }
             if (settings.Windowed)
@@ -1744,6 +1749,7 @@ public sealed partial class MainWindow : Window
             }
             else appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
             UpdateWindowBar();
+            if (target is not null) VerifyPlacementSoon(target);
             if (target is not null && settings.Display != target.Key) { settings.Display = target.Key; settings.Save(); }
             StartupLog.Write("window", $"{(settings.Windowed ? "Windowed" : "Fullscreen")} on {target?.Label ?? "current screen"}");
             // refresh the dropdown after this event finishes (never swap its items inside its own SelectionChanged)
@@ -1785,6 +1791,40 @@ public sealed partial class MainWindow : Window
         var target = screens[ScreenCombo.SelectedIndex];
         ApplyMainPresenter(target);
         DisplayStatus.Text = $"NOW PLAYING ON {target.Name}.";
+    }
+
+    // A late rescale from Windows can still land after the presenter switch; check the result and redo it once if it's off.
+    Microsoft.UI.Dispatching.DispatcherQueueTimer? placementTimer;
+    int placementRetries;
+    void VerifyPlacementSoon(ScreenInfo target)
+    {
+        placementTimer?.Stop();
+        placementTimer = DispatcherQueue.CreateTimer();
+        placementTimer.Interval = TimeSpan.FromMilliseconds(450);
+        placementTimer.IsRepeating = false;
+        placementTimer.Tick += (_, _) =>
+        {
+            try
+            {
+                if (floating || dragging || applyingPresenter) return;
+                var aw = MainAppWindow();
+                int l = aw.Position.X, t = aw.Position.Y, r = l + aw.Size.Width, b = t + aw.Size.Height;
+                bool ok;
+                if (settings.Windowed)
+                {
+                    // a normal window may be maximized or dragged freely afterwards; only fix one that spills off this screen
+                    var cx = l + aw.Size.Width / 2; var cy = t + aw.Size.Height / 2;
+                    ok = !target.Contains(cx, cy) || (l >= target.X - 16 && t >= target.Y - 16 && r <= target.X + target.Width + 16 && b <= target.Y + target.Height + 16);
+                }
+                else ok = Math.Abs(l - target.X) <= 2 && Math.Abs(t - target.Y) <= 2 && Math.Abs(r - (target.X + target.Width)) <= 2 && Math.Abs(b - (target.Y + target.Height)) <= 2;
+                if (ok) { placementRetries = 0; return; }
+                StartupLog.Write("window", $"Placement off after switch: window {l},{t},{r - l}x{b - t} vs {target.Label}; retry {placementRetries + 1}");
+                if (++placementRetries > 2) { placementRetries = 0; return; }
+                ApplyMainPresenter(target);
+            }
+            catch (Exception ex) { StartupLog.Exception("Verify placement", ex); }
+        };
+        placementTimer.Start();
     }
 
     static OverlappedPresenter BorderlessPresenter()
