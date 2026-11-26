@@ -2,4 +2,13 @@
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
   <assemblyIdentity version="1.0.0.0" name="ArcadeGridz.App"/>
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1"><application><maxversiontested Id="10.0.19041.0"/></application></compatibility>
+  <!-- v0.1.67: per-monitor DPI aware. Without this the process was DPI-unaware, so on a scaled
+       screen (4K TV at 150-300%) Windows rendered the app at the logical size and bitmap-stretched it (blurry).
+       The splash Win32 window is created before WinUI starts, so this must come from the manifest. -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2, PerMonitor</dpiAwareness>
+    </windowsSettings>
+  </application>
 </assembly>
