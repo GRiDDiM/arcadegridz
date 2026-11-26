@@ -5,6 +5,10 @@ public sealed class SettingsService
     public bool ShowAll {get;set;}
     /// <summary>Also list BETA and ALPHA games. Off by default: the launcher shows LIVE games only.</summary>
     public bool ShowTesting {get;set;}
+    /// <summary>Game browser FILTER: source (ALL, ARCADEGRIDZ, PC, ROMS), PC store (ALL, STEAM, EPIC...) and ROM system (ALL, SNES...).</summary>
+    public string FilterSource {get;set;}="ALL";
+    public string FilterStore {get;set;}="ALL";
+    public string FilterSystem {get;set;}="ALL";
     /// <summary>Outer bounds ("x,y,w,h") of the display the app last ran fullscreen on, so it reopens there (e.g. the TV).</summary>
     public string? Display {get;set;}
     /// <summary>Off = open on the screen the app was launched from (where the mouse was when the taskbar/Start/shortcut was clicked). On = always open on the saved Display.</summary>

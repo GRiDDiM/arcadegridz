@@ -380,7 +380,7 @@
      <Button x:Name="ScoresButton" MinWidth="220" Click="Scores_Click"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE734;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="HI-SCORES" VerticalAlignment="Center"/></StackPanel></Button>
      <Button x:Name="StoryboardsButton" MinWidth="240" Click="Storyboards_Click"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE8F1;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="STORYBOARDS" VerticalAlignment="Center"/></StackPanel></Button>
      <Button x:Name="OptionsButton" MinWidth="200" Click="Options_Click"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE713;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="OPTIONS" VerticalAlignment="Center"/></StackPanel></Button>
-     <Button x:Name="TestingButton" MinWidth="230" Click="Testing_Click" ToolTipService.ToolTip="Games still in testing (BETA and ALPHA) are hidden by default. Turn this on to list them too."><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon x:Name="TestingIcon" Glyph="&#xE71C;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock x:Name="TestingLabel" Text="LIVE ONLY" VerticalAlignment="Center"/></StackPanel></Button>
+     <Button x:Name="TestingButton" MinWidth="230" MaxWidth="420" Click="Testing_Click" ToolTipService.ToolTip="Filter the game browser: LIVE / BETAS &amp; ALPHAS, ArcadeGridz / PC games / ROMs, store and ROM system."><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon x:Name="TestingIcon" Glyph="&#xE71C;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock x:Name="TestingLabel" Text="LIVE ONLY" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/></StackPanel></Button>
     </StackPanel>
     <Button x:Name="ExitButton" Style="{StaticResource DangerButton}" HorizontalAlignment="Right" MinWidth="240" Click="Close_Click"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE7E8;" FontFamily="{StaticResource AgIcons}" FontSize="18"/><TextBlock Text="EXIT" VerticalAlignment="Center"/></StackPanel></Button>
    </Grid>
@@ -1000,6 +1000,43 @@
   </Grid>
 
   <!-- ===== Daily rewards (native; the app never loads the website's popup) ===== -->
+  <!-- game browser FILTER: each row cycles its value (A / click / left-right), B or DONE closes -->
+  <Grid x:Name="FilterLayer" Visibility="Collapsed" Background="#E607051A" Tapped="FilterBackdrop_Tapped">
+   <Image Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.3" IsHitTestVisible="False"/>
+   <Viewbox Stretch="Uniform" StretchDirection="DownOnly" Margin="24">
+   <Grid Width="720" HorizontalAlignment="Center" VerticalAlignment="Center" Tapped="FilterCard_Tapped">
+    <Border Margin="-8" CornerRadius="34" BorderThickness="8" BorderBrush="#335EE7FF"/>
+    <Border Background="{StaticResource AgCardSolid}" BorderBrush="{StaticResource AgCyan}" BorderThickness="2" CornerRadius="28" Padding="40,28">
+     <StackPanel Spacing="14">
+      <StackPanel Orientation="Horizontal" Spacing="14" HorizontalAlignment="Center">
+       <FontIcon Glyph="&#xE71C;" FontFamily="{StaticResource AgIcons}" FontSize="30" Foreground="{StaticResource AgCyan}"/>
+       <TextBlock FontFamily="{StaticResource AgDisplay}" FontSize="40" Foreground="{StaticResource AgNeonGradient}" Text="FILTER GAMES"/>
+      </StackPanel>
+      <TextBlock Text="A / CLICK OR LEFT-RIGHT TO CHANGE  ·  B TO CLOSE" HorizontalAlignment="Center" Style="{StaticResource PixelLabel}" FontSize="8" Foreground="{StaticResource AgMuted}"/>
+      <Button x:Name="FilterStatusButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="FilterRow_Click" ToolTipService.ToolTip="ArcadeGridz games still in testing (BETA, ALPHA) are hidden unless you show them.">
+       <Grid><TextBlock Text="ARCADEGRIDZ STATUS" VerticalAlignment="Center"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10"><FontIcon Glyph="&#xE76B;" FontFamily="{StaticResource AgIcons}" FontSize="12"/><TextBlock x:Name="FilterStatusValue" Text="LIVE ONLY" Foreground="{StaticResource AgCyan}"/><FontIcon Glyph="&#xE76C;" FontFamily="{StaticResource AgIcons}" FontSize="12"/></StackPanel></Grid>
+      </Button>
+      <Button x:Name="FilterSourceButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="FilterRow_Click" ToolTipService.ToolTip="Show everything, only ArcadeGridz games, only your PC games, or only your ROMs.">
+       <Grid><TextBlock Text="SHOW" VerticalAlignment="Center"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10"><FontIcon Glyph="&#xE76B;" FontFamily="{StaticResource AgIcons}" FontSize="12"/><TextBlock x:Name="FilterSourceValue" Text="EVERYTHING" Foreground="{StaticResource AgCyan}"/><FontIcon Glyph="&#xE76C;" FontFamily="{StaticResource AgIcons}" FontSize="12"/></StackPanel></Grid>
+      </Button>
+      <Button x:Name="FilterStoreButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="FilterRow_Click" ToolTipService.ToolTip="Only PC games from one store or launcher.">
+       <Grid><TextBlock Text="PC STORE" VerticalAlignment="Center"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10"><FontIcon Glyph="&#xE76B;" FontFamily="{StaticResource AgIcons}" FontSize="12"/><TextBlock x:Name="FilterStoreValue" Text="ANY" Foreground="{StaticResource AgCyan}"/><FontIcon Glyph="&#xE76C;" FontFamily="{StaticResource AgIcons}" FontSize="12"/></StackPanel></Grid>
+      </Button>
+      <Button x:Name="FilterSystemButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="FilterRow_Click" ToolTipService.ToolTip="Only ROMs for one system (SNES, NES, GBA...).">
+       <Grid><TextBlock Text="ROM SYSTEM" VerticalAlignment="Center"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10"><FontIcon Glyph="&#xE76B;" FontFamily="{StaticResource AgIcons}" FontSize="12"/><TextBlock x:Name="FilterSystemValue" Text="ANY" Foreground="{StaticResource AgCyan}"/><FontIcon Glyph="&#xE76C;" FontFamily="{StaticResource AgIcons}" FontSize="12"/></StackPanel></Grid>
+      </Button>
+      <TextBlock x:Name="FilterCount" HorizontalAlignment="Center" Style="{StaticResource PixelLabel}" FontSize="9" Foreground="{StaticResource AgGold}" Margin="0,4,0,0"/>
+      <Grid ColumnSpacing="12">
+       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+       <Button x:Name="FilterResetButton" HorizontalAlignment="Stretch" Click="FilterReset_Click"><StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE72C;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock Text="RESET"/></StackPanel></Button>
+       <Button x:Name="FilterDoneButton" Grid.Column="1" HorizontalAlignment="Stretch" Click="FilterDone_Click"><StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE73E;" FontFamily="{StaticResource AgIcons}" FontSize="15"/><TextBlock Text="DONE"/></StackPanel></Button>
+      </Grid>
+     </StackPanel>
+    </Border>
+   </Grid>
+   </Viewbox>
+  </Grid>
+
   <Grid x:Name="DailyLayer" Visibility="Collapsed" Background="#E607051A" Tapped="DailyBackdrop_Tapped">
    <Image Source="ms-appx:///Assets/scanlines.png" Stretch="Fill" Opacity="0.3" IsHitTestVisible="False"/>
    <!-- shrinks to fit short screens (720p TVs) so COLLECT and the X are always on screen -->

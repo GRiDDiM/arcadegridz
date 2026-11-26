@@ -49,7 +49,7 @@ public sealed partial class MainWindow : Window
     static bool IsStoryboard(GameEntry g) => g.Category.Equals(StoryboardCategory, StringComparison.OrdinalIgnoreCase);
     static bool IsLive(GameEntry g) => g.Status.Equals("live", StringComparison.OrdinalIgnoreCase);
     /// <summary>Launcher list rule: launchable (or SHOW UNSUPPORTED on) and LIVE (or BETAS &amp; ALPHAS toggled on next to OPTIONS).</summary>
-    bool Listed(GameEntry g) => LocalLibraryService.IsLocal(g) || (settings.ShowAll || (g.Potato && g.Playable)) && (settings.ShowTesting || IsLive(g));
+    bool Listed(GameEntry g) => PassesFilter(g) && (LocalLibraryService.IsLocal(g) || (settings.ShowAll || (g.Potato && g.Playable)) && (settings.ShowTesting || IsLive(g)));
     bool gameOpen;
     UpdateInfo? availableUpdate;
     LauncherFocus launcherFocus = LauncherFocus.GameGrid;
@@ -409,7 +409,8 @@ public sealed partial class MainWindow : Window
             HeroDescription.Text = albumMode ? "The album list is still loading. It shows up here as soon as the music is in."
                 : settings.ShowTesting
                 ? "No catalog entries match this filter."
-                : "Nothing LIVE here yet. Turn on BETAS & ALPHAS (next to OPTIONS) to see games still in testing.";
+                : FilterActive ? "Nothing matches this filter. Open the FILTER (next to OPTIONS) and change or RESET it."
+                : "Nothing LIVE here yet. Open the FILTER (next to OPTIONS) and show BETAS & ALPHAS to see games still in testing.";
             HeroArt.Source = null;
             PlayButton.IsEnabled = false;
             PlayLabel.Text = "UNAVAILABLE";
@@ -598,6 +599,7 @@ public sealed partial class MainWindow : Window
             else if (action == PadAction.B) CloseDaily();
             return;
         }
+        if (FilterLayer.Visibility == Visibility.Visible) { FilterPad(action); return; }
         if (updatePromptOpen) { HandleUpdatePromptAction(action); return; }
         if (startupOpen && WelcomePanel.Visibility == Visibility.Visible)
         {
@@ -1126,6 +1128,16 @@ public sealed partial class MainWindow : Window
             else if (e.Key == VirtualKey.Escape) { CloseDaily(); e.Handled = true; }
             return;
         }
+        if (FilterLayer.Visibility == Visibility.Visible)
+        {
+            PadAction? a = e.Key switch
+            {
+                VirtualKey.Up => PadAction.Up, VirtualKey.Down => PadAction.Down, VirtualKey.Left => PadAction.Left, VirtualKey.Right => PadAction.Right,
+                VirtualKey.Enter or VirtualKey.Space => PadAction.A, VirtualKey.Escape => PadAction.B, _ => null
+            };
+            if (a is { } act) { FilterPad(act); e.Handled = true; }
+            return;
+        }
         // Ctrl+Shift+Left/Right: hop the arcade to the next screen (handy for the TV)
         if (!gameOpen && e.Key is VirtualKey.Left or VirtualKey.Right &&
             Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down) &&
@@ -1319,22 +1331,13 @@ public sealed partial class MainWindow : Window
             UpdateProgress.Visibility = Visibility.Collapsed;
         }
     }
-    void Testing_Click(object sender, RoutedEventArgs e)
-    {
-        settings.ShowTesting = !settings.ShowTesting;
-        settings.Save();
-        audio?.Play(settings.ShowTesting ? "open" : "back");
-        UpdateTestingButton();
-        StartupLog.Write("nav", $"betas & alphas {(settings.ShowTesting ? "shown" : "hidden")}");
-        BuildCategories();
-        ApplyFilter();
-    }
+    void Testing_Click(object sender, RoutedEventArgs e) => OpenFilter();
 
     void UpdateTestingButton()
     {
-        TestingLabel.Text = settings.ShowTesting ? "+ BETAS & ALPHAS" : "LIVE ONLY";
-        TestingIcon.Glyph = settings.ShowTesting ? "\uE73A" : "\uE71C";
-        if (settings.ShowTesting) TestingButton.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
+        TestingLabel.Text = FilterSummary();
+        TestingIcon.Glyph = "\uE71C";
+        if (settings.ShowTesting || FilterActive) TestingButton.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
         else TestingButton.ClearValue(Control.BorderBrushProperty);
     }
 
@@ -2028,7 +2031,7 @@ public sealed partial class MainWindow : Window
     void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (consoleMode || e.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse) return;
-        if (DailyLayer.Visibility == Visibility.Visible || updatePromptOpen && !floating) return; // fullscreen popups: clicks never drag the window
+        if (DailyLayer.Visibility == Visibility.Visible || FilterLayer.Visibility == Visibility.Visible || updatePromptOpen && !floating) return; // fullscreen popups: clicks never drag the window
         var point = e.GetCurrentPoint(Root);
         if (!point.Properties.IsLeftButtonPressed) return;
         if (floating)
@@ -2338,7 +2341,7 @@ public sealed partial class MainWindow : Window
             }
             return;
         }
-        if (Launcher.Visibility != Visibility.Visible || Panel.Visibility == Visibility.Visible || gameOpen || DailyLayer.Visibility == Visibility.Visible) return;
+        if (Launcher.Visibility != Visibility.Visible || Panel.Visibility == Visibility.Visible || gameOpen || DailyLayer.Visibility == Visibility.Visible || FilterLayer.Visibility == Visibility.Visible) return;
         var point = e.GetCurrentPoint(Root);
         // bounds in Root coordinates (the launcher is scaled by a Viewbox, so ActualWidth/Height alone would be off)
         var bounds = GameGrid.TransformToVisual(Root).TransformBounds(new Windows.Foundation.Rect(0, 0, GameGrid.ActualWidth, GameGrid.ActualHeight));
