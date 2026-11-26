@@ -125,6 +125,7 @@ public sealed partial class MainWindow : Window
             MainAppWindow().Changed += (_, args) =>
             {
                 if (args.DidPresenterChange) DispatcherQueue.TryEnqueue(() => EnforcePresenter("presenter changed"));
+                if (args.DidPresenterChange || args.DidSizeChange) DispatcherQueue.TryEnqueue(UpdateWindowBar);
             };
             Root.Loaded += OnLoaded;
         }
@@ -1626,6 +1627,7 @@ public sealed partial class MainWindow : Window
             var appWindow = AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd));
             var wasFloating = floating && appWindow.Presenter.Kind == AppWindowPresenterKind.Overlapped;
             floating = on;
+            UpdateWindowBar();
             var chrome = on ? Visibility.Collapsed : Visibility.Visible;
             WelcomeGlow.Visibility = SignInGlow.Visibility = chrome;
             WelcomeDim.Visibility = WelcomeScan.Visibility = chrome;
@@ -1722,8 +1724,11 @@ public sealed partial class MainWindow : Window
             target ??= SavedScreen() ?? ScreenOfWindow(appWindow);
             if (target is not null)
             {
-                // move while overlapped: a fullscreen window can't be moved, it takes the screen it is on
-                if (appWindow.Presenter.Kind != AppWindowPresenterKind.Overlapped) appWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
+                // move while overlapped: a fullscreen window can't be moved, it takes the screen it is on. Use a borderless,
+                // un-maximized window for the move: going fullscreen straight from a maximized window with a system title bar
+                // could leave its minimize/maximize/close buttons drawn over the fullscreen arcade.
+                if (appWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Maximized or OverlappedPresenterState.Minimized } op) op.Restore();
+                if (appWindow.Presenter.Kind != AppWindowPresenterKind.Overlapped || !settings.Windowed) appWindow.SetPresenter(BorderlessPresenter());
                 int w = settings.Windowed ? target.WorkWidth * 3 / 4 : Math.Min(target.WorkWidth, 1280);
                 int h = settings.Windowed ? target.WorkHeight * 3 / 4 : Math.Min(target.WorkHeight, 720);
                 appWindow.MoveAndResize(new Windows.Graphics.RectInt32(target.WorkX + (target.WorkWidth - w) / 2, target.WorkY + (target.WorkHeight - h) / 2, w, h));
@@ -1734,10 +1739,11 @@ public sealed partial class MainWindow : Window
                 presenter.IsResizable = true;
                 presenter.IsMaximizable = true;
                 presenter.IsMinimizable = true;
-                presenter.SetBorderAndTitleBar(true, true);
+                presenter.SetBorderAndTitleBar(true, false); // resizable frame, no system title bar: the app draws its own (WindowBar)
                 appWindow.SetPresenter(presenter);
             }
             else appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+            UpdateWindowBar();
             if (target is not null && settings.Display != target.Key) { settings.Display = target.Key; settings.Save(); }
             StartupLog.Write("window", $"{(settings.Windowed ? "Windowed" : "Fullscreen")} on {target?.Label ?? "current screen"}");
             // refresh the dropdown after this event finishes (never swap its items inside its own SelectionChanged)
@@ -1780,6 +1786,53 @@ public sealed partial class MainWindow : Window
         ApplyMainPresenter(target);
         DisplayStatus.Text = $"NOW PLAYING ON {target.Name}.";
     }
+
+    static OverlappedPresenter BorderlessPresenter()
+    {
+        var p = OverlappedPresenter.Create();
+        p.IsResizable = false;
+        p.IsMaximizable = false;
+        p.SetBorderAndTitleBar(false, false);
+        return p;
+    }
+
+    // ---- the app's own title bar (windowed mode only) ----
+    void UpdateWindowBar()
+    {
+        try
+        {
+            var show = settings.Windowed && !floating && !dragging;
+            WindowBar.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            if (!show) return;
+            var max = MainAppWindow().Presenter is OverlappedPresenter { State: OverlappedPresenterState.Maximized };
+            WinMaxGlyph.Glyph = max ? "\uE923" : "\uE922";
+            ToolTipService.SetToolTip(WinMaxButton, max ? "Restore" : "Maximize");
+        }
+        catch (Exception ex) { StartupLog.Exception("Window bar", ex); }
+    }
+
+    DateTime lastBarPress;
+    void WindowBar_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(WindowBarDrag).Properties.IsLeftButtonPressed) return;
+        e.Handled = true;
+        var now = DateTime.UtcNow;
+        if ((now - lastBarPress).TotalMilliseconds < 450) { lastBarPress = default; ToggleMaximize(); return; }
+        lastBarPress = now;
+        if (MainAppWindow().Presenter is OverlappedPresenter { State: OverlappedPresenterState.Maximized }) return; // like Windows: restore first
+        BeginNativeMove(false); // Windows drags it (snap layouts and moving to the TV still work)
+    }
+
+    void ToggleMaximize()
+    {
+        if (MainAppWindow().Presenter is not OverlappedPresenter op) return;
+        if (op.State == OverlappedPresenterState.Maximized) op.Restore(); else op.Maximize();
+        UpdateWindowBar();
+    }
+
+    void WinMin_Click(object sender, RoutedEventArgs e) { if (MainAppWindow().Presenter is OverlappedPresenter op) op.Minimize(); }
+    void WinMax_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
+    void WinFull_Click(object sender, RoutedEventArgs e) { if (settings.Windowed) ToggleWindowed(); }
 
     /// <summary>Makes the window match the saved mode: FULLSCREEN = true fullscreen, no title bar; WINDOWED = normal window.</summary>
     void EnforcePresenter(string why)
