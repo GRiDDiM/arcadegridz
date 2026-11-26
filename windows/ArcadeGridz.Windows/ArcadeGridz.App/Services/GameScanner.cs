@@ -189,8 +189,8 @@ public static class GameScanner
         new("DeSmuME", @"desmume.*\.exe", "\"{rom}\"", ".nds"),
         new("mGBA", @"mgba\.exe", "-f \"{rom}\"", ".gba .gb .gbc"),
         new("VisualBoyAdvance-M", @"visualboyadvance-m\.exe", "\"{rom}\"", ".gba .gb .gbc"),
-        new("Snes9x", @"snes9x(-x64)?\.exe", "-fullscreen \"{rom}\"", ".sfc .smc"),
-        new("bsnes", @"bsnes\.exe", "--fullscreen \"{rom}\"", ".sfc .smc"),
+        new("Snes9x", @"snes9x[\w.\- ]*\.exe", "-fullscreen \"{rom}\"", ".sfc .smc"),
+        new("bsnes", @"bsnes[\w.\- ]*\.exe", "--fullscreen \"{rom}\"", ".sfc .smc"),
         new("Mesen", @"mesen\.exe", "--fullscreen \"{rom}\"", ".nes .fds"),
         new("Project64", @"project64\.exe", "\"{rom}\"", ".n64 .z64 .v64"),
         new("simple64", @"simple64-gui\.exe", "\"{rom}\"", ".n64 .z64 .v64"),
@@ -235,6 +235,16 @@ public static class GameScanner
         return list.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>Usual launch arguments and file types for a known emulator exe (by file name), e.g. bsnes -> .sfc .smc.</summary>
+    public static (string Args, string Extensions)? KnownSetup(string exePath)
+    {
+        var file = Path.GetFileName(exePath ?? "");
+        if (file.Length == 0) return null;
+        foreach (var e in Emus)
+            if (Regex.IsMatch(file, "^" + e.ExePattern + "$", RegexOptions.IgnoreCase)) return (e.Args, e.Extensions);
+        return null;
+    }
+
     public static async Task<List<EmulatorCandidate>> FindEmulatorsAsync(IReadOnlyCollection<string> knownExes, IProgress<string>? progress, CancellationToken ct)
     {
         var known = new HashSet<string>(knownExes.Select(AlbumScanner.NormPath));
@@ -274,7 +284,7 @@ public static class GameScanner
                     foreach (var sub in dir.EnumerateDirectories())
                     {
                         if (EmuSkip.Contains(sub.Name) || sub.Name.StartsWith('.') || sub.Name.StartsWith('$') ||
-                            (sub.Attributes & (System.IO.FileAttributes.ReparsePoint | System.IO.FileAttributes.System)) != 0) continue;
+                            (sub.Attributes & System.IO.FileAttributes.System) != 0 || IsLink(sub)) continue;
                         Walk(sub, depth + 1);
                     }
                 }
@@ -284,6 +294,13 @@ public static class GameScanner
             foreach (var r in EmuRoots()) Walk(new DirectoryInfo(r), 0);
         }, ct);
         return found.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    // junctions / symlinks loop or double-count; OneDrive folders also carry the reparse-point flag but are real folders
+    static bool IsLink(DirectoryInfo d)
+    {
+        if ((d.Attributes & System.IO.FileAttributes.ReparsePoint) == 0) return false;
+        try { return d.LinkTarget is not null; } catch { return true; }
     }
 
     // ======================= ROMs =======================
@@ -368,7 +385,7 @@ public static class GameScanner
                     {
                         if (EmuSkip.Contains(sub.Name) || RomSkipFolder.IsMatch(sub.Name) || sub.Name.StartsWith('.') || sub.Name.StartsWith('$') ||
                             sub.Name is "Program Files" or "Program Files (x86)" or "AppData" or "steamapps" ||
-                            (sub.Attributes & (System.IO.FileAttributes.ReparsePoint | System.IO.FileAttributes.System)) != 0) continue;
+                            (sub.Attributes & System.IO.FileAttributes.System) != 0 || IsLink(sub)) continue;
                         Walk(sub, depth + 1);
                     }
                 }

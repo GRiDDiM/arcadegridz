@@ -45,6 +45,12 @@ public sealed partial class MainWindow
     // ---------------- library <-> browser ----------------
     void InitLibrary()
     {
+        // emulators added by hand before v0.1.73 may have no ROM file types (SCAN FOR ROMS stayed greyed out): fill them in
+        var fixedAny = false;
+        foreach (var emu in library.Data.Emulators)
+            if (emu.Extensions.Trim().Length == 0 && GameScanner.KnownSetup(emu.Exe) is { } known && known.Extensions.Length > 0)
+            { emu.Extensions = known.Extensions; fixedAny = true; StartupLog.Write("library", $"Filled ROM types for {emu.Name}: {known.Extensions}"); }
+        if (fixedAny) library.Save();
         AddCardToggle.IsOn = settings.ShowAddCard;
         ThemeService.Exclude(AddCoverImage);
         SyncLocalAlbums();
@@ -323,6 +329,7 @@ public sealed partial class MainWindow
         AddArtistBox.Visibility = album ? Visibility.Visible : Visibility.Collapsed;
         AddScanButton.Visibility = album && add ? Visibility.Visible : Visibility.Collapsed;
         AddGameScanRow.Visibility = !album && add ? Visibility.Visible : Visibility.Collapsed;
+        UpdateRomScanButton();
         UpdateScanUndo();
         AddDescBox.PlaceholderText = album ? "What the album is" : "A line or two about it";
         UpdateCoverPreview();
@@ -343,6 +350,7 @@ public sealed partial class MainWindow
     {
         var keep = selectId ?? (AddEmuCombo.SelectedIndex >= 0 && AddEmuCombo.SelectedIndex < library.Data.Emulators.Count ? library.Data.Emulators[AddEmuCombo.SelectedIndex].Id : null);
         AddEmuCombo.Items.Clear();
+        UpdateRomScanButton();
         foreach (var e in library.Data.Emulators) AddEmuCombo.Items.Add(e.Name);
         AddEmuCombo.SelectedIndex = keep is null ? (library.Data.Emulators.Count == 1 ? 0 : -1) : library.Data.Emulators.FindIndex(e => e.Id == keep);
         AddEmuEditButton.IsEnabled = library.Data.Emulators.Count > 0;
@@ -588,9 +596,18 @@ public sealed partial class MainWindow
         AddScanGamesLabel.Text = "SCAN FOR PC GAMES";
         AddScanEmusLabel.Text = "FIND EMULATORS";
         AddScanRomsLabel.Text = "SCAN FOR ROMS";
+        UpdateRomScanButton();
+    }
+
+    /// <summary>SCAN FOR ROMS is available once any emulator has ROM file types. Re-checked whenever the emulator list
+    /// changes or the ADD screen opens (it used to only update after a scan, so it stayed grey after adding one by hand).</summary>
+    void UpdateRomScanButton()
+    {
+        if (reviewCommit is not null) return; // a scan review is open; leave its buttons alone
         AddScanRomsButton.IsEnabled = library.Data.Emulators.Any(e => e.Extensions.Trim().Length > 0);
         ToolTipService.SetToolTip(AddScanRomsButton, AddScanRomsButton.IsEnabled
-            ? "Look for ROM files your emulators play (the ones you own; none are supplied)" : "Set up an emulator first (FIND EMULATORS)");
+            ? "Look for ROM files your emulators play (the ones you own; none are supplied)"
+            : "Set up an emulator first (FIND EMULATORS), with the ROM file types it plays");
     }
 
     void BeginReview(TextBlock label, string noun, IEnumerable<string> rows, Func<List<int>, CancellationToken, Task> commit)
@@ -907,6 +924,12 @@ public sealed partial class MainWindow
             var file = await p.PickSingleFileAsync();
             if (file is null) return;
             EmuExeBox.Text = file.Path;
+            // a known emulator (bsnes, Snes9x, Dolphin...): fill in its usual launch arguments and ROM types
+            if (GameScanner.KnownSetup(file.Path) is { } known)
+            {
+                if (EmuArgsBox.Text.Trim() is "" or "\"{rom}\"") EmuArgsBox.Text = known.Args;
+                if (EmuExtBox.Text.Trim().Length == 0) EmuExtBox.Text = known.Extensions;
+            }
             if (string.IsNullOrWhiteSpace(EmuNameBox.Text))
             {
                 var v = FileVersionInfo.GetVersionInfo(file.Path);
@@ -928,6 +951,7 @@ public sealed partial class MainWindow
         emu.Exe = exe;
         emu.Args = args;
         emu.Extensions = EmuExtBox.Text.Trim();
+        if (emu.Extensions.Length == 0 && GameScanner.KnownSetup(exe) is { } known) emu.Extensions = known.Extensions;
         if (!library.Data.Emulators.Contains(emu)) library.Data.Emulators.Add(emu);
         library.Save();
         FillEmulators(emu.Id);
