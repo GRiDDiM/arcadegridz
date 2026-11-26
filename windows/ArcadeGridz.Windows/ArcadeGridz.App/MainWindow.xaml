@@ -586,6 +586,9 @@
            <ComboBox x:Name="ScreenCombo" Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" SelectionChanged="ScreenCombo_SelectionChanged"/>
           </Grid>
          </Border>
+         <Border x:Name="LaunchScreenRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,10">
+          <ToggleSwitch x:Name="LaunchScreenToggle" Header="OPEN ON THE SCREEN I LAUNCH FROM" Toggled="LaunchScreenToggle_Toggled"/>
+         </Border>
          <Border x:Name="DisplayModeRow" Background="#990C0A26" BorderBrush="{StaticResource AgLine}" BorderThickness="2" CornerRadius="14" Padding="22,12">
           <Grid ColumnSpacing="16">
            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="380"/></Grid.ColumnDefinitions>

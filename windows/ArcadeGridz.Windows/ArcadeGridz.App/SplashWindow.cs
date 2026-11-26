@@ -30,7 +30,16 @@ static class SplashWindow
             var logoPath = Path.Combine(AppContext.BaseDirectory, "Assets", "arcadegridz-logo.png");
             if (!File.Exists(logoPath)) { StartupLog.Write("splash", "Logo missing; splash skipped"); return; }
 
-            var monitor = MonitorFromPoint(default, MONITOR_DEFAULTTOPRIMARY);
+            var settings = SettingsService.Load();
+            var launch = Program.LaunchPoint;
+            // same screen the launcher will open on: the one launched from, unless the player pinned a screen
+            var at = !settings.PinScreen && launch is { } lp ? new POINT { x = lp.X, y = lp.Y } : default;
+            var monitor = MonitorFromPoint(at, MONITOR_DEFAULTTOPRIMARY);
+            if (settings.PinScreen && !string.IsNullOrEmpty(settings.Display))
+            {
+                var saved = DisplayService.Find(DisplayService.Detect(), settings.Display);
+                if (saved is not null) monitor = MonitorFromPoint(new POINT { x = saved.X + saved.Width / 2, y = saved.Y + saved.Height / 2 }, MONITOR_DEFAULTTOPRIMARY);
+            }
             var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
             if (!GetMonitorInfo(monitor, ref info)) { StartupLog.Write("splash", "No monitor info; splash skipped"); return; }
             int monitorW = info.rcMonitor.right - info.rcMonitor.left, monitorH = info.rcMonitor.bottom - info.rcMonitor.top;

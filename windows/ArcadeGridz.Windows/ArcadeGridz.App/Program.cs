@@ -7,6 +7,13 @@ namespace ArcadeGridz.App;
 
 public static class Program
 {
+    /// <summary>Mouse position at process start (physical pixels); the screen the user launched from.</summary>
+    public static (int X, int Y)? LaunchPoint;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct POINT { public int X, Y; }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool GetCursorPos(out POINT pt);
+
     [STAThread]
     public static void Main(string[] args)
     {

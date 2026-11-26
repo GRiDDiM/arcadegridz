@@ -216,6 +216,7 @@ public sealed partial class MainWindow : Window
             UpdateTestingButton();
             StartWithWindowsToggle.IsOn = WindowsStartupService.IsEnabled;
             ScanlinesToggle.IsOn = !settings.HideScanlines;
+            LaunchScreenToggle.IsOn = !settings.PinScreen;
             CityLifeToggle.IsOn = !settings.StillBackground;
             TrailerPreviewToggle.IsOn = !settings.NoTrailerPreview;
             try { InitLibrary(); } catch (Exception ex) { StartupLog.Exception("Library init", ex); }
@@ -911,6 +912,7 @@ public sealed partial class MainWindow : Window
                     break;
                 case 1:
                     controls.Add(ScreenCombo);
+                    controls.Add(LaunchScreenToggle);
                     controls.Add(DisplayModeCombo);
                     controls.Add(QualityCombo);
                     controls.Add(ScanlinesToggle);
@@ -1006,6 +1008,7 @@ public sealed partial class MainWindow : Window
             else if (control == MusicToggle) MusicToggle.IsOn = !MusicToggle.IsOn;
             else if (control == SfxToggle) SfxToggle.IsOn = !SfxToggle.IsOn;
             else if (control == ScanlinesToggle) ScanlinesToggle.IsOn = !ScanlinesToggle.IsOn;
+            else if (control == LaunchScreenToggle) LaunchScreenToggle.IsOn = !LaunchScreenToggle.IsOn;
             else if (control == CityLifeToggle) CityLifeToggle.IsOn = !CityLifeToggle.IsOn;
             else if (control == TrailerPreviewToggle) TrailerPreviewToggle.IsOn = !TrailerPreviewToggle.IsOn;
             else if (control == AddCardToggle) AddCardToggle.IsOn = !AddCardToggle.IsOn;
@@ -1037,6 +1040,7 @@ public sealed partial class MainWindow : Window
         MusicRow.BorderBrush = control == MusicToggle ? cyan : line;
         SfxRow.BorderBrush = control == SfxToggle ? cyan : line;
         ScreenRow.BorderBrush = control == ScreenCombo ? cyan : line;
+        LaunchScreenRow.BorderBrush = control == LaunchScreenToggle ? cyan : line;
         DisplayModeRow.BorderBrush = control == DisplayModeCombo ? cyan : line;
         QualityRow.BorderBrush = control == QualityCombo ? cyan : line;
         ScanlinesRow.BorderBrush = control == ScanlinesToggle ? cyan : line;
@@ -1658,9 +1662,22 @@ public sealed partial class MainWindow : Window
     AppWindow MainAppWindow() =>
         AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(WindowNative.GetWindowHandle(this)));
 
+    bool launchScreenUsed;
+
     ScreenInfo? SavedScreen()
     {
         if (screens.Count == 0) screens = DisplayService.Detect();
+        // first time at startup: open on the screen the app was launched from (taskbar icon / Start / shortcut)
+        if (!launchScreenUsed)
+        {
+            launchScreenUsed = true;
+            if (!settings.PinScreen && Program.LaunchPoint is { } lp && screens.FirstOrDefault(s => s.Contains(lp.X, lp.Y)) is { } launched)
+            {
+                StartupLog.Write("display", $"Opening on the launch screen {launched.Label}");
+                if (settings.Display != launched.Key) { settings.Display = launched.Key; settings.Save(); }
+                return launched;
+            }
+        }
         return DisplayService.Find(screens, settings.Display);
     }
 
@@ -1783,6 +1800,14 @@ public sealed partial class MainWindow : Window
         settings.Quality = QualityCombo.SelectedIndex == 1 ? "hd" : "standard";
         settings.Save();
         if (web is not null) web.Quality = settings.Quality;
+    }
+
+    void LaunchScreenToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (initializingSettings) return;
+        settings.PinScreen = !LaunchScreenToggle.IsOn;
+        settings.Save();
+        DisplayStatus.Text = settings.PinScreen ? "ALWAYS OPENS ON THE SCREEN PICKED ABOVE." : "OPENS ON WHICHEVER SCREEN YOU LAUNCH IT FROM.";
     }
 
     void ScanlinesToggle_Toggled(object sender, RoutedEventArgs e)

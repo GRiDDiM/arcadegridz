@@ -7,6 +7,8 @@ public sealed class SettingsService
     public bool ShowTesting {get;set;}
     /// <summary>Outer bounds ("x,y,w,h") of the display the app last ran fullscreen on, so it reopens there (e.g. the TV).</summary>
     public string? Display {get;set;}
+    /// <summary>Off = open on the screen the app was launched from (where the mouse was when the taskbar/Start/shortcut was clicked). On = always open on the saved Display.</summary>
+    public bool PinScreen {get;set;}
     /// <summary>Windowed (normal resizable window) instead of fullscreen.</summary>
     public bool Windowed {get;set;}
     /// <summary>Launcher theme id (OPTIONS &gt; THEMES): neon, acid, brutal, happy, beige, console.</summary>
