@@ -22,6 +22,9 @@ public static class Program
         {
             StartupLog.Write("main", "Initializing COM wrappers");
             ComWrappersSupport.InitializeComWrappers();
+            // where the mouse is right now = the screen it was launched from (taskbar icon, Start, a shortcut): splash and
+            // launcher both open there (this capture was missing, so everything fell back to the primary screen / saved TV)
+            if (GetCursorPos(out var cursor)) { LaunchPoint = (cursor.X, cursor.Y); StartupLog.Write("main", $"Launched with the mouse at {cursor.X},{cursor.Y}"); }
             // logo overlay pops up immediately, over whatever is on screen, while WinUI + the launcher load
             SplashWindow.Show();
             StartupLog.Write("main", "Entering WinUI Application.Start");
