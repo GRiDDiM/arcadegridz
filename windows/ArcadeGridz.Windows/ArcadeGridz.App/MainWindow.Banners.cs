@@ -62,6 +62,8 @@ public sealed partial class MainWindow
         // right edge of the visible tiles: grid padding + whole 224px columns, minus the tile's own 10px margin
         var tilesRight = GameGrid.Padding.Left + GridColumns() * 224 - 10;
         var free = Math.Max(0, w - tilesRight); // empty space left inside the grid's column
+        // the list scrollbar hugs the tiles (shifted left over that empty space); the banner centres in what's left after it
+        GridScrollTrack.RenderTransform = new Microsoft.UI.Xaml.Media.TranslateTransform { X = -free };
         const double heroInset = 24;            // the details panel's own left margin
         // band = [tiles right edge, hero left]; banner column starts at w, its 160px box at w + left
         var bandLeft = tilesRight - w;          // relative to the banner column start (<= 0)
