@@ -43,6 +43,44 @@ public sealed partial class MainWindow
     };
 
     // ---------------- library <-> browser ----------------
+    /// <summary>
+    /// One time: covers the app made before v0.1.79 had the name written in them, which clashed with the tile's own text.
+    /// Remake those (only ones the app generated: 448x600 PNGs) in the new text-free style.
+    /// </summary>
+    async Task RemakeGeneratedCoversAsync()
+    {
+        try
+        {
+            var items = library.Data.Items.Where(i => CoverService.LooksGenerated(i.Cover)).ToList();
+            var done = 0;
+            foreach (var i in items)
+            {
+                string? iconFrom = i.Kind switch
+                {
+                    LocalLibraryService.KindApp => GameScanner.MainExe(i.Path) ?? (i.Path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? i.Path : null),
+                    LocalLibraryService.KindRom => library.Emulator(i.Emulator)?.Exe,
+                    _ => null
+                };
+                try
+                {
+                    using var icon = iconFrom is null || i.Args.Contains("--exec") ? null : await CoverService.IconAsync(iconFrom);
+                    var label = i.Kind == LocalLibraryService.KindAlbum ? "ALBUM" : i.Kind == LocalLibraryService.KindRom ? "ROM" : "PC";
+                    var fresh = await Task.Run(() => CoverService.Generate(i.Name, label, icon));
+                    var old = i.Cover;
+                    i.Cover = LocalLibraryService.ImportCover(fresh, i.Id);
+                    try { File.Delete(old); } catch { }
+                    done++;
+                }
+                catch (Exception ex) { StartupLog.Write("library", $"Cover remake for '{i.Name}' skipped: {ex.Message}"); }
+            }
+            settings.CoversNoTextDone = true;
+            settings.Save();
+            if (done > 0) { library.Save(); RebuildLibrary(null); }
+            StartupLog.Write("library", $"Remade {done} generated covers without text");
+        }
+        catch (Exception ex) { StartupLog.Exception("Cover remake", ex); }
+    }
+
     void InitLibrary()
     {
         // emulators added by hand before v0.1.73 may have no ROM file types (SCAN FOR ROMS stayed greyed out): fill them in
@@ -52,6 +90,7 @@ public sealed partial class MainWindow
             { emu.Extensions = known.Extensions; fixedAny = true; StartupLog.Write("library", $"Filled ROM types for {emu.Name}: {known.Extensions}"); }
         if (fixedAny) library.Save();
         AddCardToggle.IsOn = settings.ShowAddCard;
+        if (!settings.CoversNoTextDone) _ = RemakeGeneratedCoversAsync();
         ThemeService.Exclude(AddCoverImage);
         SyncLocalAlbums();
     }

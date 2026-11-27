@@ -134,76 +134,135 @@ public static class CoverService
     static Color Mix(Color a, Color b, float t) =>
         Color.FromArgb((int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
 
-    /// <summary>A 3:4 neon cover: the icon (or initials) glowing over a retro grid, with the name underneath.</summary>
+    static int StableHash(string s) => Norm(s).Aggregate(17, (h, ch) => unchecked(h * 31 + ch));
+
+    /// <summary>
+    /// A 3:4 neon cover with NO text (the browser tile already prints the name, genre and badges over it): the program's
+    /// icon, or a vinyl record for albums / a pixel sprite for games, glowing over a retro grid. All the art sits in the top
+    /// part; the bottom fades dark so the tile's own text stays readable. Colours and shapes come from the name, so every
+    /// cover is different but always the same for the same name.
+    /// </summary>
     public static string Generate(string name, string label, Bitmap? icon)
     {
         const int W = 448, H = 600;
         name = string.IsNullOrWhiteSpace(name) ? "MY GAME" : name.Trim();
-        var accent = Palette[(uint)Norm(name).Aggregate(17, (h, ch) => h * 31 + ch) % Palette.Length];
+        var album = label.Contains("ALBUM", StringComparison.OrdinalIgnoreCase);
+        var hash = StableHash(name);
+        var rng = new Random(hash);
+        var accent = Palette[(uint)hash % Palette.Length];
+        var second = Palette[((uint)hash / 7 + 1 + (uint)rng.Next(Palette.Length - 1)) % Palette.Length];
+        if (second == accent) second = Palette[((uint)hash + 2) % Palette.Length];
         var dark = Color.FromArgb(10, 6, 22);
         using var bmp = new Bitmap(W, H, PixelFormat.Format32bppArgb);
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 
-        using (var bg = new LinearGradientBrush(new Rectangle(0, 0, W, H), dark, Mix(dark, accent, 0.28f), 90f)) g.FillRectangle(bg, 0, 0, W, H);
+        using (var bg = new LinearGradientBrush(new Rectangle(0, 0, W, H), Mix(dark, accent, 0.30f), dark, 90f)) g.FillRectangle(bg, 0, 0, W, H);
+        // a few stars
+        using (var star = new SolidBrush(Color.FromArgb(150, 255, 255, 255)))
+            for (var i = 0; i < 28; i++) { var x = rng.Next(W); var y = rng.Next(300); var r = rng.Next(1, 3); g.FillEllipse(star, x, y, r, r); }
         // synthwave floor
-        const float horizon = 372;
-        using (var grid = new Pen(Color.FromArgb(70, accent), 1.5f))
+        const float horizon = 352;
+        using (var grid = new Pen(Color.FromArgb(55, accent), 1.5f))
         {
             for (var i = 1; i <= 10; i++) { var t = i / 10f; var y = horizon + (H - horizon) * t * t; g.DrawLine(grid, 0, y, W, y); }
             for (var i = -9; i <= 9; i++) g.DrawLine(grid, W / 2f + i * 12, horizon, W / 2f + i * 80, H);
         }
-        using (var hz = new Pen(Color.FromArgb(160, accent), 2f)) g.DrawLine(hz, 0, horizon, W, horizon);
-        // glow behind the icon
-        const float cy = 205;
+        // glow behind the art
+        const float cy = 200;
         using (var glow = new GraphicsPath())
         {
-            glow.AddEllipse(W / 2f - 175, cy - 175, 350, 350);
+            glow.AddEllipse(W / 2f - 190, cy - 190, 380, 380);
             using var pg = new PathGradientBrush(glow) { CenterColor = Color.FromArgb(150, accent), SurroundColors = [Color.FromArgb(0, accent)] };
             g.FillPath(pg, glow);
         }
+
         if (icon is not null)
         {
-            const int s = 196;
+            const int s = 200;
             g.InterpolationMode = icon.Width < 96 ? InterpolationMode.NearestNeighbor : InterpolationMode.HighQualityBicubic;
             g.PixelOffsetMode = PixelOffsetMode.Half;
             g.DrawImage(icon, new Rectangle(W / 2 - s / 2, (int)cy - s / 2, s, s));
         }
-        else
-        {
-            var initials = string.Concat(Regex.Split(name, @"[\s\-_:]+").Where(w => w.Length > 0).Take(2).Select(w => char.ToUpperInvariant(w[0])));
-            using var f = new Font(PixelFont(), 64, FontStyle.Regular, GraphicsUnit.Pixel);
-            using var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            using (var sh = new SolidBrush(Color.FromArgb(200, accent))) g.DrawString(initials, f, sh, new RectangleF(5, cy - 95, W, 200), fmt);
-            g.DrawString(initials, f, Brushes.White, new RectangleF(0, cy - 100, W, 200), fmt);
-        }
-        // the name, as big as fits in two or three lines
-        using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisWord })
-        {
-            var rect = new RectangleF(26, 400, W - 52, 150);
-            var title = name.ToUpperInvariant();
-            Font? font = null;
-            for (var size = 30f; size >= 12; size -= 2)
-            {
-                font?.Dispose();
-                font = new Font(PixelFont(), size, FontStyle.Regular, GraphicsUnit.Pixel);
-                var m = g.MeasureString(title, font, (int)rect.Width);
-                if (m.Height <= rect.Height && m.Width <= rect.Width + 1) break;
-            }
-            using (var plate = new SolidBrush(Color.FromArgb(150, dark))) g.FillRectangle(plate, 0, rect.Y - 8, W, rect.Height + 16);
-            using (var sh = new SolidBrush(accent)) g.DrawString(title, font!, sh, new RectangleF(rect.X + 3, rect.Y + 3, rect.Width, rect.Height), fmt);
-            g.DrawString(title, font!, Brushes.White, rect, fmt);
-            font!.Dispose();
-        }
-        using (var lf = new Font(PixelFont(), 11, FontStyle.Regular, GraphicsUnit.Pixel))
-        using (var lb = new SolidBrush(accent))
-            g.DrawString(label.ToUpperInvariant(), lf, lb, 24, 24);
-        using (var frame = new Pen(Color.FromArgb(200, accent), 4)) g.DrawRectangle(frame, 2, 2, W - 5, H - 5);
+        else if (album) DrawRecord(g, W / 2f, cy, accent, second, rng);
+        else DrawSprite(g, W / 2f, cy, accent, second, rng);
+
+        // the bottom 45% fades to dark: the tile's name / genre text sits there
+        using (var fade = new LinearGradientBrush(new RectangleF(0, 330, W, H - 330), Color.FromArgb(0, dark), Color.FromArgb(235, dark), 90f))
+            g.FillRectangle(fade, 0, 330, W, H - 330);
+        using (var frame = new Pen(Color.FromArgb(170, accent), 4)) g.DrawRectangle(frame, 2, 2, W - 5, H - 5);
 
         Directory.CreateDirectory(TempDir);
         var path = Path.Combine(TempDir, $"gen-{Guid.NewGuid():N}.png");
         bmp.Save(path, ImageFormat.Png);
         return path;
+    }
+
+    /// <summary>A vinyl record: grooves, a two-colour label and a little shine.</summary>
+    static void DrawRecord(Graphics g, float cx, float cy, Color a, Color b, Random rng)
+    {
+        const float r = 150;
+        using (var shadow = new SolidBrush(Color.FromArgb(120, 0, 0, 0))) g.FillEllipse(shadow, cx - r + 8, cy - r + 10, r * 2, r * 2);
+        using (var disc = new SolidBrush(Color.FromArgb(18, 16, 24))) g.FillEllipse(disc, cx - r, cy - r, r * 2, r * 2);
+        using (var groove = new Pen(Color.FromArgb(40, 255, 255, 255), 1))
+            for (var gr = r - 8; gr > 58; gr -= 5) g.DrawEllipse(groove, cx - gr, cy - gr, gr * 2, gr * 2);
+        using (var rim = new Pen(Color.FromArgb(150, a), 3)) g.DrawEllipse(rim, cx - r, cy - r, r * 2, r * 2);
+        // shine
+        using (var shine = new Pen(Color.FromArgb(70, 255, 255, 255), 10)) { g.DrawArc(shine, cx - r + 20, cy - r + 20, (r - 20) * 2, (r - 20) * 2, 200, 50); g.DrawArc(shine, cx - r + 20, cy - r + 20, (r - 20) * 2, (r - 20) * 2, 20, 50); }
+        // label: split in two colours at a random angle
+        const float lr = 54;
+        using (var la = new SolidBrush(a)) g.FillEllipse(la, cx - lr, cy - lr, lr * 2, lr * 2);
+        using (var lb = new SolidBrush(b)) g.FillPie(lb, cx - lr, cy - lr, lr * 2, lr * 2, rng.Next(360), 180);
+        using (var ring = new Pen(Color.FromArgb(160, 255, 255, 255), 2)) g.DrawEllipse(ring, cx - lr * 0.62f, cy - lr * 0.62f, lr * 1.24f, lr * 1.24f);
+        using (var hole = new SolidBrush(Color.FromArgb(18, 16, 24))) g.FillEllipse(hole, cx - 7, cy - 7, 14, 14);
+    }
+
+    /// <summary>A symmetrical pixel sprite (like an arcade invader), different for every name.</summary>
+    static void DrawSprite(Graphics g, float cx, float cy, Color a, Color b, Random rng)
+    {
+        const int cols = 9, rows = 9, cell = 24;
+        var half = (cols + 1) / 2;
+        var on = new int[rows, cols];
+        for (var y = 0; y < rows; y++)
+            for (var x = 0; x < half; x++)
+            {
+                var edge = y == 0 || y == rows - 1 ? 0.35 : 0.55;
+                var v = rng.NextDouble() < edge ? (rng.NextDouble() < 0.25 ? 2 : 1) : 0;
+                on[y, x] = v;
+                on[y, cols - 1 - x] = v;
+            }
+        // make sure it has a solid middle so it never comes out empty
+        for (var y = 2; y < rows - 2; y++) if (on[y, half - 1] == 0) on[y, half - 1] = 1;
+        var ox = cx - cols * cell / 2f; var oy = cy - rows * cell / 2f;
+        using var shadow = new SolidBrush(Color.FromArgb(130, 0, 0, 0));
+        using var ba = new SolidBrush(a);
+        using var bb = new SolidBrush(b);
+        using var hi = new SolidBrush(Color.FromArgb(70, 255, 255, 255));
+        for (var y = 0; y < rows; y++)
+            for (var x = 0; x < cols; x++)
+                if (on[y, x] > 0) g.FillRectangle(shadow, ox + x * cell + 6, oy + y * cell + 8, cell, cell);
+        for (var y = 0; y < rows; y++)
+            for (var x = 0; x < cols; x++)
+            {
+                if (on[y, x] == 0) continue;
+                var rx = ox + x * cell; var ry = oy + y * cell;
+                g.FillRectangle(on[y, x] == 2 ? bb : ba, rx, ry, cell, cell);
+                g.FillRectangle(hi, rx, ry, cell, 5);
+            }
+    }
+
+    /// <summary>True for a cover this class made before (448x600 PNG), so it can be remade in the current style.</summary>
+    public static bool LooksGenerated(string path)
+    {
+        try
+        {
+            if (!path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) || !File.Exists(path)) return false;
+            using var f = File.OpenRead(path);
+            var h = new byte[24];
+            if (f.Read(h, 0, 24) < 24) return false;
+            int w = h[16] << 24 | h[17] << 16 | h[18] << 8 | h[19], ht = h[20] << 24 | h[21] << 16 | h[22] << 8 | h[23];
+            return w == 448 && ht == 600;
+        }
+        catch { return false; }
     }
 }
