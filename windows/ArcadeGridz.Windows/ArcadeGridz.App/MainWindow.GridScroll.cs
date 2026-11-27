@@ -42,7 +42,7 @@ public sealed partial class MainWindow
         GridScrollTrack.Visibility = overflow ? Visibility.Visible : Visibility.Collapsed;
         if (!overflow || track <= 0) return;
         var room = Math.Max(0, track - 4);
-        var thumb = Math.Clamp(room * view / extent, 28, room);
+        var thumb = Math.Clamp(room * view / extent, 34, room);
         GridScrollThumb.Height = thumb;
         var max = Math.Max(1, gridScroller.ScrollableHeight);
         GridScrollShift.Y = (room - thumb) * Math.Clamp(gridScroller.VerticalOffset / max, 0, 1);
