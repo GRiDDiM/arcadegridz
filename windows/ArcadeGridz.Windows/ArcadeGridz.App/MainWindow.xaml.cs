@@ -1764,8 +1764,9 @@ public sealed partial class MainWindow : Window
                 // system FullScreen presenter: Windows' DPI rescale (laptop 150% vs TV 300%) kept shrinking that one to ~75%
                 // of the screen. This one is snapped back to the full screen whenever anything resizes or moves it.
                 if (appWindow.Presenter is not OverlappedPresenter { HasTitleBar: false, HasBorder: false }) appWindow.SetPresenter(BorderlessPresenter());
-                var full = target ?? ScreenOfWindow(appWindow);
-                if (full is not null) appWindow.MoveAndResize(new Windows.Graphics.RectInt32(full.X, full.Y, full.Width, full.Height));
+                // the window is on the right screen now; take that screen's bounds from DisplayArea, which uses the same
+                // coordinates as the window itself (our own monitor list can disagree under mixed scaling)
+                appWindow.MoveAndResize(ScreenBoundsOf(appWindow));
             }
             UpdateWindowBar();
             if (target is not null) VerifyPlacementSoon(target);
@@ -1835,7 +1836,7 @@ public sealed partial class MainWindow : Window
                     var cx = l + aw.Size.Width / 2; var cy = t + aw.Size.Height / 2;
                     ok = !target.Contains(cx, cy) || (l >= target.X - 16 && t >= target.Y - 16 && r <= target.X + target.Width + 16 && b <= target.Y + target.Height + 16);
                 }
-                else ok = Math.Abs(l - target.X) <= 2 && Math.Abs(t - target.Y) <= 2 && Math.Abs(r - (target.X + target.Width)) <= 2 && Math.Abs(b - (target.Y + target.Height)) <= 2;
+                else { var sb = ScreenBoundsOf(aw); ok = Math.Abs(l - sb.X) <= 2 && Math.Abs(t - sb.Y) <= 2 && Math.Abs(r - (sb.X + sb.Width)) <= 2 && Math.Abs(b - (sb.Y + sb.Height)) <= 2; }
                 if (ok) { placementRetries = 0; return; }
                 StartupLog.Write("window", $"Placement off after switch: window {l},{t},{r - l}x{b - t} vs {target.Label}; retry {placementRetries + 1}");
                 if (++placementRetries > 2) { placementRetries = 0; return; }
@@ -1846,6 +1847,12 @@ public sealed partial class MainWindow : Window
         placementTimer.Start();
     }
 
+    long snapWindowStart; int snapCount;
+
+    /// <summary>Full bounds of the screen the window is on, in the window's own coordinates.</summary>
+    static Windows.Graphics.RectInt32 ScreenBoundsOf(AppWindow aw) =>
+        DisplayArea.GetFromWindowId(aw.Id, DisplayAreaFallback.Nearest).OuterBounds;
+
     /// <summary>Fullscreen mode: make the window cover exactly the screen it's on.</summary>
     void SnapFullscreen()
     {
@@ -1854,13 +1861,14 @@ public sealed partial class MainWindow : Window
         {
             var aw = MainAppWindow();
             if (aw.Presenter is not OverlappedPresenter { HasTitleBar: false, HasBorder: false } op || op.State == OverlappedPresenterState.Minimized) return;
-            int cx = aw.Position.X + aw.Size.Width / 2, cy = aw.Position.Y + aw.Size.Height / 2;
-            var list = DisplayService.Detect(log: false);
-            var s = list.FirstOrDefault(x => x.Contains(cx, cy)) ?? list.FirstOrDefault(x => x.Primary) ?? list.FirstOrDefault();
-            if (s is null) return;
-            if (aw.Position.X == s.X && aw.Position.Y == s.Y && aw.Size.Width == s.Width && aw.Size.Height == s.Height) return;
-            StartupLog.Write("window", $"Fullscreen snap: {aw.Position.X},{aw.Position.Y} {aw.Size.Width}x{aw.Size.Height} -> {s.Label}");
-            aw.MoveAndResize(new Windows.Graphics.RectInt32(s.X, s.Y, s.Width, s.Height));
+            var s = ScreenBoundsOf(aw);
+            if (Math.Abs(aw.Position.X - s.X) <= 1 && Math.Abs(aw.Position.Y - s.Y) <= 1 && Math.Abs(aw.Size.Width - s.Width) <= 1 && Math.Abs(aw.Size.Height - s.Height) <= 1) return;
+            // never loop: a snap that doesn't stick (v0.1.76 could spin forever and starve the controller polling)
+            var now = Environment.TickCount64;
+            if (now - snapWindowStart > 3000) { snapWindowStart = now; snapCount = 0; }
+            if (++snapCount > 3) { if (snapCount == 4) StartupLog.Write("window", "Fullscreen snap not sticking; giving up for now"); return; }
+            StartupLog.Write("window", $"Fullscreen snap: {aw.Position.X},{aw.Position.Y} {aw.Size.Width}x{aw.Size.Height} -> {s.X},{s.Y} {s.Width}x{s.Height}");
+            aw.MoveAndResize(s);
         }
         catch (Exception ex) { StartupLog.Exception("Fullscreen snap", ex); }
     }
