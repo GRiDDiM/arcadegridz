@@ -1337,7 +1337,9 @@ public sealed partial class MainWindow : Window
 
     void UpdateTestingButton()
     {
-        TestingLabel.Text = FilterSummary();
+        // the button just says FILTERS (pink when something is narrowed or betas are on); what's set shows on hover and in the panel
+        TestingLabel.Text = "FILTERS";
+        ToolTipService.SetToolTip(TestingButton, "Filters: " + FilterSummary());
         TestingIcon.Glyph = "\uE71C";
         if (settings.ShowTesting || FilterActive) TestingButton.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AgMagenta"];
         else TestingButton.ClearValue(Control.BorderBrushProperty);
