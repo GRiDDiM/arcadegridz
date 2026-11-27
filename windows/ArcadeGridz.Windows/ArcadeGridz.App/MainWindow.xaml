@@ -403,6 +403,8 @@
       </Grid>
      </Viewbox>
     </Grid>
+    <Grid>
+     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <GridView x:Name="GameGrid" Padding="12" IsItemClickEnabled="True" ItemClick="GameGrid_ItemClick" DoubleTapped="GameGrid_DoubleTapped" SelectionChanged="GameGrid_SelectionChanged" SelectionMode="Single" IsTabStop="True" UseSystemFocusVisuals="False" ItemContainerStyle="{StaticResource TileItemStyle}" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollMode="Enabled" ScrollViewer.IsVerticalRailEnabled="True">
      <GridView.ItemsPanel><ItemsPanelTemplate><ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="4" ItemWidth="224" ItemHeight="300"/></ItemsPanelTemplate></GridView.ItemsPanel>
      <GridView.ItemTemplate>
@@ -437,6 +439,16 @@
       </DataTemplate>
      </GridView.ItemTemplate>
     </GridView>
+     <!-- list scrollbar: shows how far down the game list you are; drag the thumb or click the track (MainWindow.GridScroll.cs) -->
+     <Grid x:Name="GridScrollTrack" Grid.Column="1" Width="14" Margin="4,16,2,16" Background="Transparent" Visibility="Collapsed"
+           PointerPressed="GridScroll_PointerPressed" PointerMoved="GridScroll_PointerMoved" PointerReleased="GridScroll_PointerReleased" PointerCaptureLost="GridScroll_PointerCaptureLost"
+           ToolTipService.ToolTip="Drag to scroll the game list">
+      <Border CornerRadius="7" Background="{StaticResource AgCardSolid}" BorderBrush="{StaticResource AgCyan}" BorderThickness="1" Opacity="0.55"/>
+      <Border x:Name="GridScrollThumb" VerticalAlignment="Top" Margin="2,2,2,0" Height="40" CornerRadius="5" Background="{StaticResource AgMagenta}" BorderBrush="{StaticResource AgCyan}" BorderThickness="1">
+       <Border.RenderTransform><TranslateTransform x:Name="GridScrollShift"/></Border.RenderTransform>
+      </Border>
+     </Grid>
+    </Grid>
 
     <!-- lights up when pad/keyboard focus is in the details panel (MainWindow.DetailsFocus.cs) -->
     <Border x:Name="DetailsFrame" Grid.Column="2" Margin="10,-8,-12,-10" CornerRadius="28" BorderThickness="3" BorderBrush="{StaticResource AgCyan}" Background="#145EE7FF" Opacity="0" IsHitTestVisible="False">

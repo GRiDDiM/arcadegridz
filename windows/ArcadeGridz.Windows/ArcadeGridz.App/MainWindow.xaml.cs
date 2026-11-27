@@ -83,6 +83,7 @@ public sealed partial class MainWindow : Window
         {
             InitializeComponent();
             StartupLog.Write("window", "InitializeComponent completed (WebView2 deferred)");
+            InitGridScroll();
             SplashWindow.Dropped += (x, y) => DispatcherQueue.TryEnqueue(() => OnSplashDropped(x, y));
             audio = new AudioService(DispatcherQueue, !settings.SfxOff);
             music = new MusicPlayerService(DispatcherQueue, settings);
