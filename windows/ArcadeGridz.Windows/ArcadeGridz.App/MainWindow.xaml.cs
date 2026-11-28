@@ -15,7 +15,7 @@ namespace ArcadeGridz.App;
 
 public sealed partial class MainWindow : Window
 {
-    enum LauncherFocus { Categories, Games, Scores, Storyboards, Options, Testing, Exit, GameGrid, Play, SignIn, Player, Trailer, Update }
+    enum LauncherFocus { Categories, Games, Scores, Storyboards, Shop, Options, Testing, Exit, GameGrid, Play, SignIn, Player, Trailer, Update }
     enum StartupFocus { Email, Google, Guest, Terms, Privacy }
     const string TermsUrl = "https://griddim.com/terms/";
     const string PrivacyUrl = "https://griddim.com/privacy/";
@@ -574,6 +574,7 @@ public sealed partial class MainWindow : Window
         GameCover.Visibility = Visibility.Visible;
         Panel.Visibility = Visibility.Collapsed;
         ScoresLayer.Visibility = Visibility.Collapsed;
+        ShopLayer.Visibility = Visibility.Collapsed;
         if (startupOpen && WelcomePanel.Visibility == Visibility.Visible)
         {
             // back on the floating sign-in card (e.g. cancelled email sign-in)
@@ -620,6 +621,7 @@ public sealed partial class MainWindow : Window
         if (localRunning && !windowActive) return; // a library game is in front: the pad is its
         if (AddLayer.Visibility == Visibility.Visible) { HandleEditorAction(action); return; }
         if (ScoresLayer.Visibility == Visibility.Visible) { await HandleScoresAction(action); return; }
+        if (ShopLayer.Visibility == Visibility.Visible) { HandleShopAction(action); return; }
         if (Panel.Visibility == Visibility.Visible) { await HandlePanelAction(action); return; }
         if (action == PadAction.LB) ChangeCategory(-1);
         else if (action == PadAction.RB) ChangeCategory(1);
@@ -759,6 +761,7 @@ public sealed partial class MainWindow : Window
                 case LauncherFocus.Games: ShowSection(false); break;
                 case LauncherFocus.Storyboards: ShowSection(true); break;
                 case LauncherFocus.Scores: Scores_Click(this, new RoutedEventArgs()); break;
+                case LauncherFocus.Shop: Shop_Click(this, new RoutedEventArgs()); break;
                 case LauncherFocus.Options: Options_Click(this, new RoutedEventArgs()); break;
                 case LauncherFocus.Testing: Testing_Click(this, new RoutedEventArgs()); break;
                 case LauncherFocus.Exit: Close(); break;
@@ -830,8 +833,8 @@ public sealed partial class MainWindow : Window
         }
 
         var menu = consoleMode
-            ? new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Storyboards, LauncherFocus.Options, LauncherFocus.Testing }
-            : new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Storyboards, LauncherFocus.Options, LauncherFocus.Testing, LauncherFocus.Exit };
+            ? new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Storyboards, LauncherFocus.Shop, LauncherFocus.Options, LauncherFocus.Testing }
+            : new[] { LauncherFocus.Games, LauncherFocus.Scores, LauncherFocus.Storyboards, LauncherFocus.Shop, LauncherFocus.Options, LauncherFocus.Testing, LauncherFocus.Exit };
         var menuIndex = Array.IndexOf(menu, launcherFocus);
         if (menuIndex >= 0)
         {
@@ -894,6 +897,7 @@ public sealed partial class MainWindow : Window
             LauncherFocus.Games => GamesButton,
             LauncherFocus.Scores => ScoresButton,
             LauncherFocus.Storyboards => StoryboardsButton,
+            LauncherFocus.Shop => ShopButton,
             LauncherFocus.Options => OptionsButton,
             LauncherFocus.Testing => TestingButton,
             LauncherFocus.Exit => ExitButton,
@@ -1156,6 +1160,7 @@ public sealed partial class MainWindow : Window
         if (e.Key == VirtualKey.Escape)
         {
             if (startupOpen && WelcomePanel.Visibility == Visibility.Visible) CloseWelcome();
+            else if (ShopLayer.Visibility == Visibility.Visible) CloseShop();
             else ReturnToLauncher();
             e.Handled = true;
         }
@@ -1179,7 +1184,8 @@ public sealed partial class MainWindow : Window
                 if (startupOpen && WelcomePanel.Visibility == Visibility.Visible)
                     HandleStartupAction(action.Value);
                 else
-                    _ = ScoresLayer.Visibility == Visibility.Visible ? HandleScoresAction(action.Value)
+                    if (ShopLayer.Visibility == Visibility.Visible) HandleShopAction(action.Value);
+                    else _ = ScoresLayer.Visibility == Visibility.Visible ? HandleScoresAction(action.Value)
                         : Panel.Visibility == Visibility.Visible ? HandlePanelAction(action.Value)
                         : HandleLauncherAction(action.Value);
             }
@@ -1552,10 +1558,12 @@ public sealed partial class MainWindow : Window
             else AccountAvatar.Visibility = AccountPanelAvatar.Visibility = Visibility.Collapsed;
             if (!NetworkState.Text.StartsWith("OFFLINE", StringComparison.OrdinalIgnoreCase)) NetworkState.Text = "GRID ONLINE";
             CheckDailyRewards();
+            RefreshSparkz();
         }
         else if (NetworkState.Text.StartsWith("SIGNED IN", StringComparison.OrdinalIgnoreCase)) NetworkState.Text = "GRID ONLINE";
         if (launcherFocus == LauncherFocus.SignIn && Launcher.Visibility == Visibility.Visible && Panel.Visibility != Visibility.Visible && !startupOpen)
             SetLauncherFocus(LauncherFocus.SignIn);
+        if (!signedIn) SetSparkz(null);
         StartupLog.Write("auth", signedIn ? "Account chip shown" : "Signed out; SIGN IN shown");
     }
 
@@ -2198,6 +2206,7 @@ public sealed partial class MainWindow : Window
         {
             if (account is null || web?.Token is not { Length: > 0 } token) return;
             var state = await daily.VisitAsync(token, account.Id, force);
+            if (state is not null && state.Balance.ValueKind == System.Text.Json.JsonValueKind.Number && state.Balance.TryGetInt64(out var bal)) SetSparkz(bal);
             if (state is null || state.NewSparkz <= 0) return;
             pendingDaily = state;
             TryShowDaily();
