@@ -9,7 +9,7 @@ namespace ArcadeGridz.App;
 /// <summary>
 /// Startup splash like Photoshop / Steam: the ArcadeGridz logo floats in the middle of whatever is already on
 /// screen (no window frame, no fullscreen loading screen). It is a per-pixel-alpha layered Win32 window, so the
-/// desktop shows through everywhere except the logo and its soft neon glow. It can be dragged anywhere, never takes
+/// desktop shows through everywhere except the logo and its soft black glow. It can be dragged anywhere, never takes
 /// focus and has no taskbar button. The fullscreen launcher loads cloaked behind it and the splash fades out
 /// over it once the launcher is ready.
 /// All calls must come from the UI thread (Program.Main runs WinUI on the same thread).
@@ -93,11 +93,11 @@ static class SplashWindow
                 g.InterpolationMode = Drawing2D.InterpolationMode.HighQualityBicubic;
                 g.CompositingQuality = Drawing2D.CompositingQuality.HighQuality;
                 g.PixelOffsetMode = Drawing2D.PixelOffsetMode.HighQuality;
-                // soft cyan -> magenta neon haze behind the logo (fades to fully transparent at the edges)
+                // soft black haze behind the logo (fades to fully transparent at the edges) so it pops on any desktop
                 FillGlow(g, new Drawing.RectangleF(0, padY * 0.35f, width, height - padY * 0.7f),
-                    Drawing.Color.FromArgb(120, 94, 231, 255), Drawing.Color.FromArgb(0, 255, 58, 167));
+                    Drawing.Color.FromArgb(170, 0, 0, 0), Drawing.Color.FromArgb(0, 0, 0, 0));
                 FillGlow(g, new Drawing.RectangleF(padX * 0.6f, padY * 0.7f, width - padX * 1.2f, height - padY * 1.4f),
-                    Drawing.Color.FromArgb(70, 255, 111, 181), Drawing.Color.FromArgb(0, 159, 124, 255));
+                    Drawing.Color.FromArgb(120, 0, 0, 0), Drawing.Color.FromArgb(0, 0, 0, 0));
                 g.DrawImage(logo, new Drawing.Rectangle(padX, padY, logoW, logoH));
             }
 
